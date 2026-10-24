@@ -1,0 +1,10 @@
+# participant data stays out of git
+data/
+*.zip
+*_frames.csv
+*_trials.csv
+*_imu.csv
+*_tlx.csv
+*_session.json
+.DS_Store
+__pycache__/

@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GripSpread</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --canvas:#D5D8DB;   /* reader background */
+    --rail:#F3F4F5;     /* instrument rail */
+    --ink:#1F2328;
+    --muted:#6B7178;
+    --hair:#D0D3D7;
+    --mark:#F5D020;     /* highlighter: active / neutral band */
+    --mark-soft:rgba(245,208,32,.28);
+    --alert:#C8372D;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--canvas);color:var(--ink);
+    font-family:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo",sans-serif;font-size:14px}
+  .num{font-variant-numeric:tabular-nums}
+  button{font:inherit;color:var(--ink);background:transparent;border:1px solid var(--hair);border-radius:6px;padding:6px 12px;cursor:pointer}
+  button:hover{background:#fff}
+  button:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button.primary:hover{background:#000}
+
+  .app{display:grid;grid-template-columns:360px 1fr;grid-template-rows:52px 1fr;height:100vh}
+
+  /* top bar */
+  header{grid-column:1/3;display:flex;align-items:center;gap:16px;padding:0 16px;background:var(--rail);border-bottom:1px solid var(--hair)}
+  .brand{font-weight:600;font-size:15px;letter-spacing:-.01em}
+  .status{display:flex;align-items:center;gap:8px;padding:5px 12px 5px 8px;border-radius:999px;background:#fff;border:1px solid var(--hair);position:relative;overflow:hidden;min-width:300px}
+  .status .lamp{width:10px;height:10px;border-radius:50%;background:#B9BDC2;flex:none}
+  .status.hold .lamp{background:transparent;border:2px solid var(--ink)}
+  .status.active{background:var(--mark);border-color:var(--mark)}
+  .status.active .lamp{background:var(--ink)}
+  .status.warn{background:#fff;border-color:var(--alert)}
+  .status.warn .lamp{background:var(--alert);border:0}
+  .status .prog{position:absolute;left:0;bottom:0;height:2px;width:0;background:var(--ink)}
+  .spacer{flex:1}
+  details.settings{position:relative}
+  details.settings summary{list-style:none;cursor:pointer;border:1px solid var(--hair);border-radius:6px;padding:6px 12px}
+  details.settings summary::-webkit-details-marker{display:none}
+  details.settings[open] summary{background:#fff}
+  .panel{position:absolute;right:0;top:40px;width:320px;background:#fff;border:1px solid var(--hair);border-radius:8px;padding:14px 16px;z-index:10;box-shadow:0 8px 24px rgba(31,35,40,.12)}
+  .panel label{display:grid;grid-template-columns:1fr 52px;gap:4px 8px;align-items:center;margin:0 0 10px;color:var(--muted);font-size:12px}
+  .panel label input{grid-column:1/3;accent-color:var(--ink)}
+  .panel label output{text-align:right;color:var(--ink)}
+  .panel .row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+
+  /* instrument rail */
+  aside{background:var(--rail);border-right:1px solid var(--hair);display:flex;flex-direction:column;min-height:0;overflow:auto}
+  .cam{flex:none;position:relative;aspect-ratio:4/3;background:#2A2E33;margin:16px 16px 0;border-radius:6px;overflow:hidden}
+  video,#overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .mirror{transform:scaleX(-1)}
+  .gauge{flex:none;padding:8px 16px 0}
+  aside > *{flex:none}
+  #gauge{width:100%;height:auto;display:block}
+  .readout{display:flex;justify-content:space-between;align-items:baseline;padding:0 16px 12px;border-bottom:1px solid var(--hair)}
+  .readout .big{font-size:28px;font-weight:600;letter-spacing:-.02em}
+  .readout .small{color:var(--muted);font-size:12px;text-align:right;line-height:1.5}
+  .signal{padding:12px 16px 4px}
+  .signal p{margin:0 0 6px;color:var(--muted);font-size:12px}
+  #graph{width:100%;height:110px;display:block}
+  .diag-wrap,.rec{padding:12px 16px;border-bottom:1px solid var(--hair)}
+  .diag-wrap p,.rec p{margin:0 0 6px;color:var(--muted);font-size:12px}
+  .diag{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:12px}
+  .diag span{color:var(--muted)} .diag b{font-weight:500;text-align:right}
+  .rec .row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px}
+  .rec button{padding:4px 8px;font-size:12px}
+  .rec button[aria-pressed="true"]{background:var(--mark);border-color:var(--mark)}
+  #recInfo{margin:2px 0 0}
+  .foot{margin-top:auto;padding:12px 16px 16px;color:var(--muted);font-size:12px;line-height:1.6}
+  .err{color:var(--alert)}
+
+  /* reader stage */
+  main{position:relative;min-height:0}
+  #docScroll{position:absolute;inset:0;overflow-y:scroll;padding:32px 0 80vh}
+  #docScroll img{display:block;width:min(820px, calc(100% - 64px));margin:0 auto 24px;background:#fff;box-shadow:0 1px 2px rgba(31,35,40,.18),0 6px 18px rgba(31,35,40,.08)}
+  .speed{position:absolute;right:18px;top:50%;transform:translateY(-50%);width:6px;height:240px;background:rgba(31,35,40,.12);border-radius:3px}
+  .speed i{position:absolute;left:0;right:0;top:50%;height:0;background:var(--ink);border-radius:3px}
+  .speed .zero{position:absolute;left:-4px;right:-4px;top:50%;height:1px;background:var(--ink);opacity:.4}
+  #vText{position:absolute;right:32px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted)}
+
+  @media (max-width:900px){ .app{grid-template-columns:1fr;grid-template-rows:52px auto 1fr} aside{border-right:0;border-bottom:1px solid var(--hair)} .status{min-width:0} }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span class="brand">GripSpread</span>
+    <div id="status" class="status"><span class="lamp"></span><span id="stateText">카메라 준비 중</span><span id="holdFill" class="prog"></span></div>
+    <span class="spacer"></span>
+    <button id="btnRange" class="primary">손 범위 재기</button>
+    <button id="btnRecal">편한 V 다시 잡기</button>
+    <details class="settings">
+      <summary>설정</summary>
+      <div class="panel">
+        <label>멈춤 구간 (편한 V 주변, 범위 대비)<output id="deadO"></output><input id="dead" type="range" min="0" max="0.5" step="0.01" value="0.15"></label>
+        <label>기본 속도 (px/s, 끝까지 굽혔을 때)<output id="gainO"></output><input id="gain" type="range" min="200" max="3000" step="50" value="800"></label>
+        <label>속도 곡선 지수<output id="gammaO"></output><input id="gamma" type="range" min="1" max="4" step="0.1" value="2.2"></label>
+        <label>유지 가속 최대 배수<output id="boostMaxO"></output><input id="boostMax" type="range" min="1" max="5" step="0.1" value="2.5"></label>
+        <label>유지 가속 도달 시간 (ms)<output id="boostMsO"></output><input id="boostMs" type="range" min="200" max="3000" step="50" value="1200"></label>
+        <label>가속 반응 (ms)<output id="accMsO"></output><input id="accMs" type="range" min="20" max="800" step="10" value="250"></label>
+        <label>감속 반응 (ms)<output id="brakeMsO"></output><input id="brakeMs" type="range" min="10" max="400" step="10" value="60"></label>
+        <label>활성화 대기 (ms)<output id="holdMsO"></output><input id="holdMs" type="range" min="300" max="1500" step="50" value="700"></label>
+        <label>굽힘 허용 한계 (검지·중지 마디 합)<output id="curlMaxO"></output><input id="curlMax" type="range" min="20" max="150" step="5" value="80"></label>
+        <label>스무딩<output id="smoothO"></output><input id="smooth" type="range" min="0.05" max="0.9" step="0.05" value="0.35"></label>
+        <div class="row">
+          <button id="btnMirror">좌우 반전 켜짐</button>
+          <button id="btnDir">오므리면 아래로</button>
+          <button id="btnSound">소리 켜짐</button>
+        </div>
+      </div>
+    </details>
+  </header>
+
+  <aside>
+    <div class="cam">
+      <video id="video" class="mirror" autoplay playsinline muted></video>
+      <canvas id="overlay" class="mirror"></canvas>
+    </div>
+    <div class="gauge"><svg id="gauge" viewBox="0 0 320 212" role="img" aria-label="검지와 중지의 벌림 정도"></svg></div>
+    <div class="readout">
+      <div><span id="mR" class="big num">–</span></div>
+      <div class="small num">편한 V <span id="mR0">–</span><br>손 범위 <span id="mRange">–</span><br><span id="mFps">–</span> fps</div>
+    </div>
+    <div class="diag-wrap">
+      <p>판정용 수치 (검지 / 중지)</p>
+      <div id="diag" class="diag num"></div>
+    </div>
+    <div class="rec">
+      <p>자세 기록 (단축키 1–4 라벨, R 기록)</p>
+      <div class="row">
+        <button data-label="0">V자로 쥠</button><button data-label="1">감싸 쥠</button><button data-label="2">펴고 쥠</button><button data-label="3">기타</button>
+      </div>
+      <div class="row">
+        <button id="btnRec">기록 시작</button><button id="btnSave">CSV 저장</button><button id="btnClear">비우기</button>
+      </div>
+      <p id="recInfo" class="num"></p>
+    </div>
+    <div class="signal">
+      <p>벌림 각도 θ: 검지·중지 뿌리 중간에서 두 손가락 끝을 본 각도, 최근 8초</p>
+      <canvas id="graph"></canvas>
+    </div>
+    <div class="foot">
+      처음 쓰는 사람은 <b>손 범위 재기</b>로 최대로 벌린 폭과 오므린 폭을 먼저 재. 그다음 컵을 쥔 손을 올리고 편한 V로 잠깐 멈추면 켜져. 오므리면 아래로, 벌리면 위로 스크롤되고, 노란 멈춤 구간 안에서는 멈춰. 손을 내리면 꺼져.
+      <div id="err" class="err"></div>
+    </div>
+  </aside>
+
+  <main>
+    <div id="docScroll">{{PAGES}}</div>
+    <div class="speed" aria-hidden="true"><span class="zero"></span><i id="vBar"></i></div>
+    <span id="vText" class="num"></span>
+  </main>
+</div>
+
+<script type="module">
+import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const docEl = document.getElementById('docScroll');
+const statusEl = document.getElementById('status');
+
+// ---------- params ----------
+const P = {};
+const bindRange = (id, fmt=v=>v) => {
+  const el = document.getElementById(id), out = document.getElementById(id+'O');
+  const upd = () => { P[id] = parseFloat(el.value); out.textContent = fmt(P[id]); };
+  el.addEventListener('input', upd); upd();
+};
+bindRange('dead', v=>Math.round(v*100)+'%'); bindRange('gain'); bindRange('gamma', v=>v.toFixed(1));
+bindRange('holdMs'); bindRange('smooth', v=>v.toFixed(2)); bindRange('curlMax', v=>v+'°'); bindRange('boostMax', v=>'×'+v.toFixed(1)); bindRange('boostMs'); bindRange('accMs'); bindRange('brakeMs');
+let mirror = true, dirSign = -1, soundOn = true; // default: close -> scroll down (larger range for the frequent direction)
+const video = document.getElementById('video'), overlay = document.getElementById('overlay');
+document.getElementById('btnMirror').onclick = e => {
+  mirror = !mirror; video.classList.toggle('mirror', mirror); overlay.classList.toggle('mirror', mirror);
+  e.target.textContent = '좌우 반전 ' + (mirror ? '켜짐' : '꺼짐');
+};
+const dirText = () => dirSign > 0 ? '벌리면 아래로, 오므리면 위로' : '오므리면 아래로, 벌리면 위로';
+document.getElementById('btnDir').onclick = e => { dirSign *= -1; e.target.textContent = dirSign>0 ? '벌리면 아래로' : '오므리면 아래로'; STATE_TEXT.ACTIVE = '켜짐. ' + dirText(); if(state==='ACTIVE') stateText.textContent = STATE_TEXT.ACTIVE; };
+document.getElementById('btnSound').onclick = e => { soundOn = !soundOn; e.target.textContent = '소리 ' + (soundOn?'켜짐':'꺼짐'); };
+document.getElementById('btnRecal').onclick = () => setState('IDLE');
+
+// ---------- audio feedback ----------
+let actx = null;
+function beep(freq, dur=0.08){
+  if(!soundOn) return;
+  try{
+    actx = actx || new AudioContext();
+    const o = actx.createOscillator(), gn = actx.createGain();
+    o.frequency.value = freq; o.type = 'sine';
+    gn.gain.setValueAtTime(0.15, actx.currentTime);
+    gn.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + dur);
+    o.connect(gn).connect(actx.destination); o.start(); o.stop(actx.currentTime + dur);
+  }catch(e){}
+}
+document.addEventListener('click', () => { try{ actx = actx || new AudioContext(); actx.resume(); }catch(e){} }, {once:true});
+
+// ---------- state machine ----------
+// IDLE: no hand / waiting. HOLD: hand visible, waiting for stable spread. ACTIVE: scrolling.
+let state = 'IDLE', holdStart = 0, r0 = null, lastSeen = 0, rSmooth = null, velocity = 0;
+const holdBuf = [];
+const stateText = document.getElementById('stateText'), holdFill = document.getElementById('holdFill');
+const STATE_TEXT = {IDLE:'컵을 쥔 손을 카메라 앞에 올려줘', HOLD:'편한 V로 잠깐 멈춰', ACTIVE:'켜짐. 오므리면 아래로, 벌리면 위로'};
+function setStatusClass(c){ statusEl.className = 'status ' + c; }
+function setState(s){
+  if(s === state) return;
+  if(s === 'ACTIVE') beep(880); if(state === 'ACTIVE' && s !== 'ACTIVE') beep(440);
+  state = s; setStatusClass(s.toLowerCase());
+  stateText.textContent = STATE_TEXT[s];
+  if(s !== 'ACTIVE'){ velocity = 0; }
+  if(s === 'IDLE'){ r0 = null; holdBuf.length = 0; holdFill.style.width = '0%'; }
+  if(s === 'HOLD'){ holdBuf.length = 0; holdStart = performance.now(); }
+}
+setState('HOLD'); setState('IDLE'); stateText.textContent = '카메라 준비 중';
+let reliable = false, warnShown = false, unreliableReason = null, jumpCount = 0, foldFrames = 0;
+const WARN_TEXT = { facing:'손등을 카메라 쪽으로 돌려줘 (입력 멈춤)', folded:'손가락 접힘 (입력 멈춤)', lost:'손 인식이 불안정해 (입력 멈춤)' };
+// While the palm is seen edge-on, input freezes (no scrolling) and the status says why.
+function showReliability(lm){
+  const warn = !!lm && !reliable;
+  if(warn && !warnShown){ stateText.dataset.prev = stateText.textContent; statusEl.classList.add('warn'); }
+  if(warn) stateText.textContent = WARN_TEXT[unreliableReason] || WARN_TEXT.lost;
+  if(!warn && warnShown){ stateText.textContent = calib.step ? (stateText.dataset.prev || '') : STATE_TEXT[state]; statusEl.classList.remove('warn'); }
+  warnShown = warn;
+}
+
+// ---------- range calibration (per user) ----------
+const RANGE_KEY = 'gripspread_range_deg_v1';
+let range = null; // {min, max}
+try{ const v = JSON.parse(localStorage.getItem(RANGE_KEY)); if(v && v.max > v.min) range = v; }catch(e){}
+const mRange = document.getElementById('mRange');
+function showRange(){ mRange.textContent = range ? `${range.min.toFixed(0)}–${range.max.toFixed(0)}°` : '미설정'; }
+showRange();
+// calib.step: 'max' -> 'min' -> null.
+// Each step: wait for hand -> 3 s countdown (tick each second) -> start tone -> collect 1.5 s -> end tone.
+const CALIB_MS = 1500, COUNT_MS = 3000;
+const STEP_TEXT = { max:'① 최대로 벌려', min:'② 최대로 오므려' };
+let calib = { step:null, phase:'wait', start:0, lastTick:0, buf:[], got:{} };
+let needHandDown = false; // after range calibration, wait for the hand to drop before taking a new neutral
+const pct = (arr, q) => { const a = [...arr].sort((x,y)=>x-y); return a[Math.min(a.length-1, Math.max(0, Math.round(q*(a.length-1))))]; };
+document.getElementById('btnRange').onclick = () => { setState('IDLE'); startStep('max', {}); };
+function startStep(step, got){
+  calib = { step, phase:'wait', start:0, lastTick:0, buf:[], got };
+  stateText.textContent = STEP_TEXT[step] + '. 손을 올리면 카운트다운 시작';
+  setStatusClass('hold'); holdFill.style.width = '0%';
+}
+function calibTick(now, sv){
+  if(sv == null){
+    if(calib.phase !== 'wait'){ calib.phase = 'wait'; calib.buf.length = 0; holdFill.style.width = '0%';
+      stateText.textContent = STEP_TEXT[calib.step] + '. 손이 안 보여, 다시 올려줘'; }
+    return;
+  }
+  if(calib.phase === 'wait'){ calib.phase = 'count'; calib.start = now; calib.lastTick = 0; }
+  if(calib.phase === 'count'){
+    const left = Math.ceil((COUNT_MS - (now - calib.start)) / 1000);
+    if(left !== calib.lastTick && left > 0){ calib.lastTick = left; beep(520, 0.06); }
+    stateText.textContent = `${STEP_TEXT[calib.step]}  ${left > 0 ? left : ''}`;
+    holdFill.style.width = '0%';
+    if(now - calib.start >= COUNT_MS){ calib.phase = 'capture'; calib.start = now; calib.buf.length = 0; beep(880, 0.12);
+      stateText.textContent = STEP_TEXT[calib.step] + '. 측정 중, 그대로 유지'; }
+    return;
+  }
+  calib.buf.push(sv);
+  const prog = Math.min(1, (now - calib.start) / CALIB_MS);
+  holdFill.style.width = (prog*100) + '%';
+  if(prog < 1) return;
+  if(calib.step === 'max'){
+    beep(660, 0.1);
+    startStep('min', { max: pct(calib.buf, 0.9) });
+  } else {
+    const got = { ...calib.got, min: pct(calib.buf, 0.1) };
+    if(got.max - got.min > 8){
+      range = { min: got.min, max: got.max };
+      try{ localStorage.setItem(RANGE_KEY, JSON.stringify(range)); }catch(e){}
+      showRange(); beep(990, 0.15);
+      calib = { step:null, phase:'wait', start:0, lastTick:0, buf:[], got:{} };
+      setState('HOLD'); setState('IDLE'); needHandDown = true;
+      stateText.textContent = '손 범위 저장됨. 손을 내렸다가 편한 V로 다시 올려줘';
+    } else {
+      beep(220, 0.25);
+      startStep('max', {});
+      stateText.textContent = '손 범위가 너무 좁게 나왔어. 다시 ' + STEP_TEXT.max;
+    }
+  }
+  holdFill.style.width = '0%';
+}
+// Normalized deviation e in [-1, 1]: opening side divided by (max - s0), closing side by (s0 - min).
+const MIN_SIDE = 10, BOOST_ON = 0.6, BOOST_DECAY_MS = 200; // same as the experiment engine
+function normDev(sv){
+  const e = sv - r0;
+  if(!range) return Math.max(-1, Math.min(1, e / 15));
+  const den = e >= 0 ? Math.max(MIN_SIDE, range.max - r0) : Math.max(MIN_SIDE, r0 - range.min);
+  return Math.max(-1, Math.min(1, e / den));
+}
+// dead-zone band edges in s units (asymmetric)
+function deadBand(){
+  if(r0 == null) return null;
+  if(!range) return [r0 - P.dead*15, r0 + P.dead*15];
+  return [r0 - P.dead*Math.max(MIN_SIDE, r0 - range.min), r0 + P.dead*Math.max(MIN_SIDE, range.max - r0)];
+}
+
+// ---------- geometry ----------
+const sub = (a,b) => ({x:a.x-b.x, y:a.y-b.y, z:a.z-b.z});
+const dot = (a,b) => a.x*b.x + a.y*b.y + a.z*b.z;
+const cross = (a,b) => ({x:a.y*b.z-a.z*b.y, y:a.z*b.x-a.x*b.z, z:a.x*b.y-a.y*b.x});
+const norm = a => Math.hypot(a.x, a.y, a.z);
+const EXT_MIN = 0.55;   // in-plane knuckle->tip length / palm length below this = fingers folded
+const JUMP_MAX = 20;   // deg per frame; bigger jumps are dropped unless they persist
+const FACING_MIN = 0.35; // |palm normal · camera axis| below this = palm seen nearly edge-on -> unreliable
+// Visible V angle: from the midpoint of the index and middle knuckles (5, 9), the angle between the two
+// fingertips (8, 12), measured inside the palm plane (0,5,17) so finger flexion is projected out.
+// Tips touching -> 0 deg. Returns {deg, facing} or null.
+function spreadAngle(world){
+  const n0 = cross(sub(world[5], world[0]), sub(world[17], world[0])), nl = norm(n0);
+  if(nl < 1e-9) return null;
+  const n = {x:n0.x/nl, y:n0.y/nl, z:n0.z/nl};
+  const proj = v => { const k = dot(v, n); return {x:v.x-k*n.x, y:v.y-k*n.y, z:v.z-k*n.z}; };
+  const m = {x:(world[5].x+world[9].x)/2, y:(world[5].y+world[9].y)/2, z:(world[5].z+world[9].z)/2};
+  const a0 = sub(world[8], m), b0 = sub(world[12], m);
+  const a = proj(a0), b = proj(b0), la = norm(a), lb = norm(b);
+  const facing = Math.abs(n.z);
+  // Folded fingers: tips come back toward the knuckles, rays get short and the angle turns into noise.
+  const palmLen = norm(sub(world[9], world[0]));
+  const extI = la / palmLen, extM = lb / palmLen;
+  const c = Math.max(-1, Math.min(1, dot(a,b)/(la*lb)));
+  const deg = Math.acos(c) * 180 / Math.PI;
+  if(Math.min(extI, extM) < EXT_MIN) return { deg:null, rawDeg:deg, folded:true, facing, extI, extM };
+  return { deg, rawDeg:deg, folded:false, facing, extI, extM };
+}
+
+// Joint bend (deg, 0 = straight) summed over PIP and DIP, used to tell a V grip from fingers wrapped around the object.
+const angBetween = (u,v) => Math.acos(Math.max(-1, Math.min(1, dot(u,v)/(norm(u)*norm(v)+1e-12)))) * 180 / Math.PI;
+const bend = (w,a,b,c) => angBetween(sub(w[b],w[a]), sub(w[c],w[b]));
+function fingerCurl(w, mcp){ return bend(w,mcp,mcp+1,mcp+2) + bend(w,mcp+1,mcp+2,mcp+3); }
+function tipExt2D(lm, mcp){ // image-space knuckle->tip length over image-space palm length (wrist->middle knuckle)
+  const d = (i,j) => Math.hypot(lm[i].x-lm[j].x, lm[i].y-lm[j].y);
+  return d(mcp, mcp+3) / Math.max(1e-6, d(0, 9));
+}
+
+// ---------- scrolling ----------
+let lastT = performance.now(), holdDir = 0, B = 1;
+const vText = document.getElementById('vText'), vBar = document.getElementById('vBar');
+function scrollTick(now){
+  const dt = Math.min(0.05, (now - lastT) / 1000); lastT = now;
+  // acceleration model (same as the experiment engine): hold-time boost + slow speed-up / fast brake
+  let cmd = 0;
+  if(state === 'ACTIVE' && rSmooth != null && r0 != null && reliable){
+    const e = normDev(rSmooth);
+    const mag = Math.max(0, Math.abs(e) - P.dead) / Math.max(0.01, 1 - P.dead);
+    const dir = mag > 0 ? Math.sign(e) * dirSign : 0;
+    if(dir !== holdDir){ holdDir = dir; B = 1; }
+    // boost builds only while pushed hard, and drains as soon as the finger eases off
+    if(dir && mag >= BOOST_ON) B = Math.min(P.boostMax, B + (P.boostMax - 1) * dt * 1000 / P.boostMs);
+    else B = 1 + (B - 1) * Math.exp(-dt * 1000 / BOOST_DECAY_MS);
+    cmd = dir * P.gain * Math.pow(mag, P.gamma) * B;
+    if(range){ if(rSmooth > range.max){ range.max = rSmooth; showRange(); } if(rSmooth < range.min){ range.min = rSmooth; showRange(); } }
+  } else { holdDir = 0; B = 1; }
+  const speedingUp = (Math.sign(cmd) === Math.sign(velocity) && Math.abs(cmd) > Math.abs(velocity)) || (velocity === 0 && cmd !== 0);
+  const tau = (speedingUp ? P.accMs : P.brakeMs) / 1000;
+  velocity += (cmd - velocity) * (1 - Math.exp(-dt / Math.max(0.001, tau)));
+  if(cmd === 0 && Math.abs(velocity) < 5) velocity = 0;
+  docEl.scrollTop += velocity * dt;
+  vText.textContent = velocity ? Math.round(Math.abs(velocity)) + ' px/s' : '';
+  const h = Math.min(120, Math.abs(velocity) / (P.gain * P.boostMax) * 120);
+  vBar.style.height = h + 'px'; vBar.style.top = velocity >= 0 ? '50%' : `calc(50% - ${h}px)`;
+}
+
+// ---------- V gauge ----------
+// Two finger strokes rotate around a pivot. Half-angle follows s within the calibrated range.
+const gaugeEl = document.getElementById('gauge');
+const PIV = {x:160, y:200}, LEN = 150, A_MIN = 3, A_MAX = 40; // degrees from vertical
+const sLo = () => range ? range.min : 0, sHi = () => range ? range.max : 45;
+const ang = s => A_MIN + Math.max(0, Math.min(1, (s - sLo()) / Math.max(3, sHi() - sLo()))) * (A_MAX - A_MIN);
+const tip = (deg, len=LEN) => { const r = deg*Math.PI/180; return {x: PIV.x + len*Math.sin(r), y: PIV.y - len*Math.cos(r)}; };
+function arcPath(d1, d2, rad){
+  const a = tip(d1, rad), b = tip(d2, rad), large = Math.abs(d2-d1) > 180 ? 1 : 0, sweep = d2 > d1 ? 1 : 0;
+  return `M${a.x.toFixed(1)},${a.y.toFixed(1)} A${rad},${rad} 0 ${large} ${sweep} ${b.x.toFixed(1)},${b.y.toFixed(1)}`;
+}
+function drawGauge(){
+  const parts = [];
+  // scale arc + ticks at min / max
+  parts.push(`<path d="${arcPath(-A_MAX-4, A_MAX+4, LEN+10)}" fill="none" stroke="var(--hair)" stroke-width="1"/>`);
+  for(const sgn of [-1,1]) for(const a of [A_MIN, A_MAX]){
+    const p1 = tip(sgn*a, LEN+6), p2 = tip(sgn*a, LEN+16);
+    parts.push(`<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="var(--muted)" stroke-width="1.5"/>`);
+  }
+  const lblMin = tip(0, LEN+26), lblMax = tip(-A_MAX-3, LEN+22);
+  parts.push(`<text x="${lblMin.x}" y="${lblMin.y}" font-size="11" fill="var(--muted)" text-anchor="middle">오므림</text>`);
+  parts.push(`<text x="${lblMax.x}" y="${lblMax.y}" font-size="11" fill="var(--muted)" text-anchor="end">벌림</text>`);
+  // neutral band
+  const band = deadBand();
+  if(band){
+    for(const sgn of [-1,1]){
+      const a1 = sgn*ang(band[0]), a2 = sgn*ang(band[1]);
+      parts.push(`<path d="${arcPath(Math.min(a1,a2), Math.max(a1,a2), LEN+10)}" fill="none" stroke="var(--mark)" stroke-width="10" stroke-linecap="butt"/>`);
+      const n = tip(sgn*ang(r0), LEN);
+      parts.push(`<line x1="${PIV.x}" y1="${PIV.y}" x2="${n.x}" y2="${n.y}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 4"/>`);
+    }
+  }
+  // fingers
+  if(rSmooth != null){
+    const a = ang(rSmooth), L = tip(-a), R = tip(a);
+    if(state === 'ACTIVE') parts.push(`<path d="M${PIV.x},${PIV.y} L${L.x},${L.y} ${arcPath(-a, a, LEN).replace('M','L')} Z" fill="var(--mark-soft)"/>`);
+    for(const t of [L,R]){
+      parts.push(`<line x1="${PIV.x}" y1="${PIV.y}" x2="${t.x}" y2="${t.y}" stroke="var(--ink)" stroke-width="12" stroke-linecap="round"/>`);
+    }
+  } else {
+    parts.push(`<text x="${PIV.x}" y="${PIV.y-60}" font-size="12" fill="var(--muted)" text-anchor="middle">손이 보이면 여기에 표시돼</text>`);
+  }
+  parts.push(`<circle cx="${PIV.x}" cy="${PIV.y}" r="7" fill="var(--ink)"/>`);
+  gaugeEl.innerHTML = parts.join('');
+}
+
+// ---------- signal graph ----------
+const gc = document.getElementById('graph'), g = gc.getContext('2d');
+const hist = []; const HIST_MS = 8000;
+const C = { ink:'#1F2328', muted:'#6B7178', hair:'#D0D3D7', mark:'#F5D020' }; // kept in sync with :root
+function drawGraph(now){
+  const W = gc.clientWidth, H = gc.clientHeight;
+  if(gc.width !== Math.round(W*devicePixelRatio)){ gc.width = Math.round(W*devicePixelRatio); gc.height = Math.round(H*devicePixelRatio); }
+  g.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0); g.clearRect(0,0,W,H);
+  while(hist.length && now - hist[0].t > HIST_MS) hist.shift();
+  const lo = 0, hi = Math.max(50, sHi()+5), L = 26;
+  const y = v => H - 6 - (v-lo)/(hi-lo)*(H-12);
+  g.font = '10px "IBM Plex Sans KR", sans-serif'; g.fillStyle = C.muted; g.lineWidth = 1;
+  for(const v of [0,20,40]){ g.strokeStyle = C.hair; g.beginPath(); g.moveTo(L,y(v)); g.lineTo(W,y(v)); g.stroke(); g.fillText(v+'°', 2, y(v)+3); }
+  const band = deadBand();
+  if(band){ g.fillStyle = C.mark; g.globalAlpha = .55; g.fillRect(L, y(band[1]), W-L, y(band[0])-y(band[1])); g.globalAlpha = 1; }
+  if(range){ g.strokeStyle = C.muted; g.setLineDash([2,3]);
+    for(const v of [range.min, range.max]){ g.beginPath(); g.moveTo(L,y(v)); g.lineTo(W,y(v)); g.stroke(); } g.setLineDash([]); }
+  g.strokeStyle = C.ink; g.lineWidth = 1.75; g.beginPath(); let started = false;
+  for(const p of hist){
+    const x = L + (1 - (now - p.t)/HIST_MS) * (W-L);
+    if(p.r == null){ started = false; continue; }
+    if(!started){ g.moveTo(x, y(p.r)); started = true; } else g.lineTo(x, y(p.r));
+  }
+  g.stroke();
+}
+
+// ---------- camera overlay ----------
+const oc = overlay.getContext('2d');
+const CONN = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
+// Only the landmarks that feed the angle are drawn strongly; thumb, ring and pinky (unused, often occluded by the cup) stay faint.
+const USED_CONN = [[0,5],[5,9],[9,13],[13,17],[0,17],[5,6],[6,7],[7,8],[9,10],[10,11],[11,12]];
+const USED_PTS = [0,5,9,17,8,12];
+function drawOverlay(lm){
+  overlay.width = video.videoWidth; overlay.height = video.videoHeight;
+  oc.clearRect(0,0,overlay.width,overlay.height);
+  if(!lm) return;
+  const X = p => p.x*overlay.width, Y = p => p.y*overlay.height;
+  oc.lineWidth = 2;
+  oc.strokeStyle = 'rgba(255,255,255,.18)';
+  for(const [a,b] of CONN){ oc.beginPath(); oc.moveTo(X(lm[a]),Y(lm[a])); oc.lineTo(X(lm[b]),Y(lm[b])); oc.stroke(); }
+  oc.strokeStyle = 'rgba(255,255,255,.75)';
+  for(const [a,b] of USED_CONN){ oc.beginPath(); oc.moveTo(X(lm[a]),Y(lm[a])); oc.lineTo(X(lm[b]),Y(lm[b])); oc.stroke(); }
+  oc.fillStyle = 'rgba(255,255,255,.12)';
+  oc.beginPath(); oc.moveTo(X(lm[0]),Y(lm[0])); oc.lineTo(X(lm[5]),Y(lm[5])); oc.lineTo(X(lm[17]),Y(lm[17])); oc.closePath(); oc.fill();
+  const mx = (X(lm[5])+X(lm[9]))/2, my = (Y(lm[5])+Y(lm[9]))/2;
+  oc.strokeStyle = reliable ? C.mark : '#C8372D'; oc.lineWidth = 4;
+  for(const t of [8,12]){ oc.beginPath(); oc.moveTo(mx,my); oc.lineTo(X(lm[t]),Y(lm[t])); oc.stroke(); }
+  for(const i of USED_PTS){ const key = i===8||i===12;
+    oc.fillStyle = key ? C.mark : '#fff'; oc.beginPath(); oc.arc(X(lm[i]),Y(lm[i]), key?7:4, 0, 7); oc.fill(); }
+}
+
+// ---------- diagnostics + data recorder ----------
+let feat = null;
+const diagEl = document.getElementById('diag');
+const f2 = (v, d=2) => v == null || isNaN(v) ? '–' : v.toFixed(d);
+function showDiag(f){
+  diagEl.innerHTML = f ? `
+    <span>펴짐 3D</span><b>${f2(f.extI)} / ${f2(f.extM)}</b>
+    <span>펴짐 2D</span><b>${f2(f.ext2I)} / ${f2(f.ext2M)}</b>
+    <span>마디 굽힘</span><b style="color:${Math.max(f.curlI,f.curlM) > P.curlMax ? 'var(--alert)' : 'inherit'}">${f2(f.curlI,0)}° / ${f2(f.curlM,0)}° (한계 ${P.curlMax}°)</b>
+    <span>손바닥 방향</span><b>${f2(f.facing)}</b>
+    <span>인식 점수</span><b>${f2(f.score)}</b>` : '<span>손이 보이면 표시돼</span>';
+}
+showDiag(null);
+const LABELS = ['V자로 쥠','감싸 쥠','펴고 쥠','기타'];
+let label = 0, recording = false;
+const rows = [];
+const recBtn = document.getElementById('btnRec'), recInfo = document.getElementById('recInfo');
+const labelBtns = [...document.querySelectorAll('[data-label]')];
+function setLabel(i){ label = i; labelBtns.forEach((b,k)=>b.setAttribute('aria-pressed', k===i)); updRec(); }
+function updRec(){
+  const n = rows.length, byLabel = LABELS.map((_,i)=>rows.filter(r=>r[1]===i).length);
+  recInfo.textContent = `${recording ? '기록 중 · ' : ''}${n}프레임 (` + LABELS.map((l,i)=>`${l} ${byLabel[i]}`).join(', ') + ')';
+  recBtn.textContent = recording ? '기록 멈춤' : '기록 시작';
+  recBtn.classList.toggle('primary', recording);
+}
+labelBtns.forEach((b,i)=>b.onclick = () => setLabel(i));
+recBtn.onclick = () => { recording = !recording; beep(recording ? 700 : 400, 0.08); updRec(); };
+document.getElementById('btnSave').onclick = () => {
+  if(!rows.length) return;
+  const head = ['t_ms','label','label_name','theta','facing','extI','extM','ext2I','ext2M','curlI','curlM','score','state'];
+  for(let i=0;i<21;i++) head.push(`img${i}_x`,`img${i}_y`,`img${i}_z`);
+  for(let i=0;i<21;i++) head.push(`w${i}_x`,`w${i}_y`,`w${i}_z`);
+  const csv = [head.join(',')].concat(rows.map(r=>r.join(','))).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+  a.download = `gripspread_poses_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+};
+document.getElementById('btnClear').onclick = () => { rows.length = 0; updRec(); };
+document.addEventListener('keydown', e => {
+  if(e.target.tagName === 'INPUT') return;
+  if(e.key >= '1' && e.key <= '4') setLabel(+e.key - 1);
+  if(e.key === 'r' || e.key === 'R') recBtn.click();
+});
+let recT0 = null;
+function recordFrame(now, f, lm, w){
+  if(recT0 == null) recT0 = now;
+  const r = [Math.round(now - recT0), label, LABELS[label], f.theta, f.facing, f.extI, f.extM, f.ext2I, f.ext2M, f.curlI, f.curlM, f.score, state]
+    .map(v => typeof v === 'number' ? +v.toFixed(5) : v);
+  for(const p of lm) r.push(+p.x.toFixed(5), +p.y.toFixed(5), +p.z.toFixed(5));
+  for(const p of w) r.push(+p.x.toFixed(5), +p.y.toFixed(5), +p.z.toFixed(5));
+  rows.push(r);
+  if(rows.length % 30 === 0) updRec();
+}
+setLabel(0);
+
+// ---------- main loop ----------
+let landmarker, lastVideoTime = -1, fpsCount = 0, fpsT = performance.now();
+const mR = document.getElementById('mR'), mR0 = document.getElementById('mR0'), mFps = document.getElementById('mFps');
+function loop(){
+  const now = performance.now();
+  if(landmarker && video.readyState >= 2 && video.currentTime !== lastVideoTime){
+    lastVideoTime = video.currentTime; fpsCount++;
+    const res = landmarker.detectForVideo(video, now);
+    const lm = res.landmarks && res.landmarks[0], world = res.worldLandmarks && res.worldLandmarks[0];
+    drawOverlay(lm);
+    if(lm && world){
+      lastSeen = now;
+      const m = spreadAngle(world);
+      feat = m ? {
+        theta: m.rawDeg, facing: m.facing, extI: m.extI, extM: m.extM,
+        curlI: fingerCurl(world, 5), curlM: fingerCurl(world, 9),
+        ext2I: tipExt2D(lm, 5), ext2M: tipExt2D(lm, 9),
+        score: res.handedness && res.handedness[0] && res.handedness[0][0] ? res.handedness[0][0].score : null
+      } : null;
+      showDiag(feat);
+      if(recording && feat) recordFrame(now, feat, lm, world);
+      const curled = feat && Math.max(feat.curlI, feat.curlM) > P.curlMax;
+      const foldedNow = !!m && (m.folded || curled);
+      foldFrames = foldedNow ? foldFrames + 1 : 0;   // ~0.1 s persistence before freezing
+      unreliableReason = !m ? 'lost' : m.facing < FACING_MIN ? 'facing' : foldFrames >= 6 ? 'folded' : null;
+      reliable = !unreliableReason;
+      if(reliable && !foldedNow){
+        // spike rejection: drop single-frame jumps, accept if they persist for 3 frames
+        if(rSmooth != null && Math.abs(m.deg - rSmooth) > JUMP_MAX && ++jumpCount < 3){ /* skip frame */ }
+        else { jumpCount = 0; rSmooth = rSmooth == null ? m.deg : rSmooth + P.smooth * (m.deg - rSmooth); }
+      }
+    } else { reliable = false; unreliableReason = null; feat = null; showDiag(null); }
+    hist.push({t:now, r: lm && reliable ? rSmooth : null});
+    showReliability(lm);
+    if(calib.step){
+      if(!lm) calibTick(now, null); else if(reliable) calibTick(now, rSmooth);
+    } else if(!lm){
+      if(now - lastSeen > 500){ setState('IDLE'); rSmooth = null; needHandDown = false; }
+    } else if(state === 'IDLE' && !needHandDown){
+      setState('HOLD');
+    } else if(state === 'HOLD' && rSmooth != null && reliable){
+      holdBuf.push(rSmooth);
+      const mean = holdBuf.reduce((a,b)=>a+b,0)/holdBuf.length;
+      const sd = Math.sqrt(holdBuf.reduce((a,b)=>a+(b-mean)**2,0)/holdBuf.length);
+      if(sd > 2.5){ holdBuf.length = 0; holdStart = now; } // moved: restart hold
+      const prog = Math.min(1, (now - holdStart) / P.holdMs);
+      holdFill.style.width = (prog*100) + '%';
+      if(prog >= 1 && holdBuf.length >= 5){ r0 = mean; setState('ACTIVE'); holdFill.style.width = '0%'; }
+    }
+    mR.textContent = rSmooth != null ? 'θ ' + rSmooth.toFixed(1) + '°' : '–';
+    mR0.textContent = r0 != null ? r0.toFixed(1) + '°' : '–';
+  }
+  if(now - fpsT > 1000){ mFps.textContent = fpsCount; fpsCount = 0; fpsT = now; }
+  scrollTick(now); drawGraph(now); drawGauge();
+  requestAnimationFrame(loop);
+}
+
+// ---------- init ----------
+async function init(){
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({video:{width:640, height:480, frameRate:{ideal:60}}, audio:false});
+    video.srcObject = stream; await video.play();
+  }catch(e){ document.getElementById('err').textContent = '카메라를 열 수 없어. 브라우저 카메라 권한을 확인해줘. (' + e.message + ')'; return; }
+  stateText.textContent = '손 인식 모델 불러오는 중';
+  try{
+    const fileset = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+    const opts = (delegate) => ({
+      baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate },
+      runningMode:"VIDEO", numHands:1, minHandDetectionConfidence:0.5, minHandPresenceConfidence:0.5, minTrackingConfidence:0.5
+    });
+    try{ landmarker = await HandLandmarker.createFromOptions(fileset, opts("GPU")); }
+    catch(e){ landmarker = await HandLandmarker.createFromOptions(fileset, opts("CPU")); }
+    setState('HOLD'); setState('IDLE');
+  }catch(e){ document.getElementById('err').textContent = '손 인식 모델을 받지 못했어. 인터넷 연결을 확인해줘. (' + e.message + ')'; }
+}
+requestAnimationFrame(loop);
+init();
+</script>
+</body>
+</html>

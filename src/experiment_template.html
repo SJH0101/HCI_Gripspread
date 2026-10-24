@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GripSpread 실험</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --canvas:#D5D8DB; --rail:#F3F4F5; --ink:#1F2328; --muted:#6B7178; --hair:#D0D3D7;
+    --mark:#F5D020; --mark-soft:rgba(245,208,32,.35); --alert:#C8372D; --ok:#2F7D4F;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--canvas);color:var(--ink);
+    font-family:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo",sans-serif;font-size:14px}
+  .num{font-variant-numeric:tabular-nums}
+  button{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--hair);border-radius:6px;padding:6px 12px;cursor:pointer}
+  button:hover{border-color:var(--ink)}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button:disabled{opacity:.45;cursor:default}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  input,select{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--hair);border-radius:6px;padding:6px 8px}
+
+  .app{display:grid;grid-template-columns:300px 1fr;grid-template-rows:52px 1fr;height:100vh}
+  header{grid-column:1/3;display:flex;align-items:center;gap:12px;padding:0 16px;background:var(--rail);border-bottom:1px solid var(--hair)}
+  .brand{font-weight:600;font-size:15px}
+  .cond{font-weight:500}
+  .prog{color:var(--muted)}
+  .spacer{flex:1}
+
+  aside{background:var(--rail);border-right:1px solid var(--hair);display:flex;flex-direction:column;overflow:auto}
+  aside > *{flex:none}
+  .cam{position:relative;aspect-ratio:4/3;background:#2A2E33;margin:16px 16px 0;border-radius:6px;overflow:hidden}
+  video,#overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  .status{display:flex;align-items:center;gap:8px;margin:12px 16px 0;padding:6px 12px 6px 8px;border-radius:999px;background:#fff;border:1px solid var(--hair);position:relative;overflow:hidden;font-size:13px}
+  .status .lamp{width:10px;height:10px;border-radius:50%;background:#B9BDC2;flex:none}
+  .status.hold .lamp{background:transparent;border:2px solid var(--ink)}
+  .status.active{background:var(--mark);border-color:var(--mark)}
+  .status.active .lamp{background:var(--ink)}
+  .status.warn{border-color:var(--alert)} .status.warn .lamp{background:var(--alert)}
+  .status .bar{position:absolute;left:0;bottom:0;height:2px;width:0;background:var(--ink)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;padding:12px 16px;font-size:13px}
+  .kv span{color:var(--muted)} .kv b{font-weight:500;text-align:right}
+  .rail-actions{display:flex;flex-direction:column;gap:6px;padding:0 16px 16px}
+  .keys{margin-top:auto;padding:12px 16px 16px;color:var(--muted);font-size:12px;line-height:1.7;border-top:1px solid var(--hair)}
+  kbd{font:inherit;border:1px solid var(--hair);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:#fff;color:var(--ink)}
+
+  main{position:relative;min-height:0;overflow:hidden}
+  .screen{position:absolute;inset:0;display:none;overflow:auto}
+  .screen.on{display:block}
+  .sheet{max-width:720px;margin:40px auto;background:#fff;border-radius:8px;padding:28px 32px;box-shadow:0 1px 2px rgba(31,35,40,.18),0 6px 18px rgba(31,35,40,.08)}
+  .sheet h1{font-size:22px;margin:0 0 4px;letter-spacing:-.01em}
+  .sheet h2{font-size:15px;margin:24px 0 8px}
+  .sheet p{line-height:1.65;margin:0 0 10px;color:#3A3F45}
+  .form{display:grid;grid-template-columns:200px 1fr;gap:10px 16px;align-items:center}
+  .form label{color:var(--muted)}
+  .order{background:var(--rail);border-radius:6px;padding:12px 14px;line-height:1.7;margin-top:12px}
+  .actions{display:flex;gap:8px;margin-top:20px}
+  .big-cond{font-size:30px;font-weight:600;letter-spacing:-.02em;margin:6px 0 12px}
+
+  /* task */
+  #track{position:absolute;inset:0;overflow-y:scroll;scrollbar-width:none;overscroll-behavior:none}
+  #track::-webkit-scrollbar{display:none}
+  #content{position:relative;width:min(760px, calc(100% - 64px));margin:0 auto;background:#fff;
+    background-image:repeating-linear-gradient(to bottom, transparent 0 22px, #EEF0F2 22px 30px, transparent 30px 36px);
+    background-size:100% 36px;background-origin:content-box;padding:0 56px}
+  #target{position:absolute;left:0;right:0;height:8px;margin-top:-4px;background:var(--mark);box-shadow:0 0 0 1px var(--ink)}
+  #frame{position:absolute;left:50%;transform:translateX(-50%);width:min(820px, calc(100% - 24px));border:2px solid var(--ink);border-radius:2px;pointer-events:none}
+  #frame.in{background:var(--mark-soft)}
+  #frame .dw{position:absolute;left:0;bottom:-2px;height:4px;width:0;background:var(--ink)}
+  #taskMsg{position:absolute;left:50%;top:24px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:999px;padding:6px 14px;font-size:13px;pointer-events:none}
+  #taskMsg:empty{display:none}
+
+  .cue{position:absolute;left:50%;transform:translateX(-50%);background:var(--mark);color:var(--ink);font-weight:600;
+    border-radius:999px;padding:6px 16px;font-size:14px;pointer-events:none;display:none;box-shadow:0 0 0 1px var(--ink)}
+  .cue.up{top:16px} .cue.down{bottom:16px}
+  .cue.on{display:block}
+  #minimap{position:absolute;right:20px;top:24px;bottom:24px;width:14px;background:rgba(31,35,40,.10);border-radius:7px;pointer-events:none}
+  #mmView{position:absolute;left:0;right:0;background:rgba(31,35,40,.35);border-radius:7px}
+  #mmTarget{position:absolute;left:-5px;right:-5px;height:4px;margin-top:-2px;background:var(--mark);box-shadow:0 0 0 1px var(--ink)}
+
+  /* tlx */
+  .tlx-item{margin:0 0 18px}
+  .tlx-item .q{font-weight:500;margin-bottom:2px}
+  .tlx-item .d{color:var(--muted);font-size:12px;margin-bottom:6px}
+  .tlx-item input{width:100%;accent-color:var(--ink);padding:0;border:0}
+  .tlx-item .ends{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span class="brand">GripSpread 실험</span>
+    <span id="hCond" class="cond"></span>
+    <span id="hProg" class="prog num"></span>
+    <span class="spacer"></span>
+    <select id="hJump" aria-label="단계로 이동" style="display:none"></select>
+    <span id="hSaved" class="prog"></span>
+  </header>
+
+  <aside>
+    <div class="cam"><video id="video" autoplay playsinline muted></video><canvas id="overlay"></canvas></div>
+    <div id="status" class="status"><span class="lamp"></span><span id="stateText">카메라 준비 중</span><span id="holdBar" class="bar"></span></div>
+    <div class="kv num">
+      <span>벌림 각도</span><b id="kTheta">–</b>
+      <span>편한 V</span><b id="kR0">–</b>
+      <span>손 범위</span><b id="kRange">–</b>
+      <span>카메라</span><b id="kFps">–</b>
+      <span>컵 IMU</span><b id="kImu">연결 안 됨</b>
+    </div>
+    <div class="rail-actions">
+      <button id="btnRange">손 범위 재기</button>
+      <button id="btnRecal">편한 V 다시 잡기</button>
+      <button id="btnImu">컵 IMU 연결</button>
+      <button id="btnSaveNow">지금까지 저장 (zip)</button>
+    </div>
+    <div class="keys">
+      <kbd>Space</kbd> 다음 조건 시작<br>
+      <kbd>P</kbd> 지금 시행 끝나면 일시정지<br>
+      <kbd>S</kbd> 연습 끝내기 (실험자)<br>
+      <kbd>N</kbd> 이 시행 건너뛰기<br>
+      <kbd>K</kbd> 이 조건 건너뛰기
+    </div>
+  </aside>
+
+  <main>
+    <!-- 1. setup -->
+    <section id="sSetup" class="screen on">
+      <div class="sheet">
+        <h1>참가자 설정</h1>
+        <p>참가자 번호로 기법 순서와 컵 순서가 정해져. 손 길이는 손목 주름에서 중지 끝까지, span은 엄지 끝에서 소지 끝까지 최대로 벌린 길이야.</p>
+        <div class="form">
+          <label for="fPid">참가자 번호 (1–16)</label><input id="fPid" type="number" min="1" max="99" value="1">
+          <label for="fHandLen">손 길이 (mm)</label><input id="fHandLen" type="number" min="100" max="250" placeholder="예: 185">
+          <label for="fSpan">손 span (mm)</label><input id="fSpan" type="number" min="100" max="300" placeholder="예: 210">
+          <label for="fHand">주손 (컵을 드는 손)</label><select id="fHand"><option value="R">오른손</option><option value="L">왼손</option></select>
+          <label for="fNote">메모</label><input id="fNote" placeholder="선택">
+        </div>
+        <div id="orderBox" class="order num"></div>
+
+        <h2>과제 설정 (파일럿에서 조정)</h2>
+        <div class="form num">
+          <label for="fD">스크롤 거리 D (px)</label><input id="fD" value="400, 1200, 3600">
+          <label for="fW">허용 폭 W (px)</label><input id="fW" value="40, 120">
+          <label for="fReps">조합당 반복</label><input id="fReps" type="number" min="2" max="20" step="2" value="6">
+          <label for="fWarm">조건마다 적응 시행</label><input id="fWarm" type="number" min="0" max="6" value="2">
+          <label for="fDwell">유지 시간 (ms)</label><input id="fDwell" type="number" min="200" max="1500" step="50" value="500">
+          <label for="fTimeout">시간 초과 (초)</label><input id="fTimeout" type="number" min="5" max="60" value="15">
+          <label for="fPrac">연습 시행 (최소, 최대)</label><input id="fPrac" value="10, 30">
+          <label for="fSave">파일 저장</label><select id="fSave"><option value="1">끝날 때 zip 하나로 저장 (본 실험)</option><option value="0">저장 안 함 (검토 모드)</option></select>
+          <label for="fFrames">프레임 기록</label><select id="fFrames"><option value="1">켜기</option><option value="2">켜기 + 손 랜드마크</option><option value="0">끄기</option></select>
+        </div>
+        <h2>GripSpread 값 (파일럿에서 조정)</h2>
+        <div class="form num">
+          <label for="gDead">멈춤 구간 (범위 대비, 0–0.5)</label><input id="gDead" type="number" step="0.01" min="0" max="0.5" value="0.15">
+          <label for="gGain">기본 속도 (px/s)</label><input id="gGain" type="number" step="50" min="200" max="5000" value="800">
+          <label for="gGamma">속도 곡선 지수 (클수록 미세 조정 쉬움)</label><input id="gGamma" type="number" step="0.1" min="1" max="4" value="2.2">
+          <label for="gBoost">유지 가속 최대 배수</label><input id="gBoost" type="number" step="0.1" min="1" max="5" value="2.5">
+          <label for="gBoostMs">유지 가속 도달 시간 (ms)</label><input id="gBoostMs" type="number" step="50" min="200" max="3000" value="1200">
+          <label for="gBoostOn">가속 시작 굽힘 (0–1)</label><input id="gBoostOn" type="number" step="0.05" min="0" max="1" value="0.6">
+          <label for="gMinSide">한쪽 최소 여유 (°)</label><input id="gMinSide" type="number" step="1" min="3" max="30" value="10">
+          <label for="gAcc">가속 반응 (ms)</label><input id="gAcc" type="number" step="10" min="20" max="800" value="250">
+          <label for="gBrake">감속 반응 (ms)</label><input id="gBrake" type="number" step="10" min="10" max="400" value="60">
+          <label for="gCurl">굽힘 허용 한계 (°)</label><input id="gCurl" type="number" step="5" min="20" max="150" value="80">
+          <label for="gHold">활성화 대기 (ms)</label><input id="gHold" type="number" step="50" min="300" max="1500" value="700">
+        </div>
+        <div class="actions"><button id="btnStart" class="primary">실험 시작</button></div>
+        <div id="recoverBox" style="display:none">
+          <h2>브라우저에 백업된 세션</h2>
+          <p>실험 도중 창이 닫혔다면 여기서 그때까지의 데이터를 zip으로 받을 수 있어.</p>
+          <div id="recoverList" class="order num"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. brief before each step -->
+    <section id="sBrief" class="screen">
+      <div class="sheet">
+        <p id="bKind" style="color:var(--muted);margin:0"></p>
+        <div id="bTitle" class="big-cond"></div>
+        <p id="bText"></p>
+        <div class="order" id="bCheck"></div>
+        <div class="actions"><button id="btnGo" class="primary">시작 (Space)</button></div>
+      </div>
+    </section>
+
+    <!-- 3. task -->
+    <section id="sTask" class="screen" style="overflow:hidden">
+      <div id="track"><div id="content"><div id="target"></div></div></div>
+      <div id="frame"><span class="dw" id="dwellBar"></span></div>
+      <div id="taskMsg"></div>
+      <div id="cueUp" class="cue up" aria-hidden="true">▲ 위로</div>
+      <div id="cueDown" class="cue down" aria-hidden="true">▼ 아래로</div>
+      <div id="minimap" aria-hidden="true"><span id="mmView"></span><span id="mmTarget"></span></div>
+    </section>
+
+    <!-- 4. NASA-TLX -->
+    <section id="sTlx" class="screen">
+      <div class="sheet">
+        <h1 id="tlxTitle">방금 쓴 방법은 어땠어?</h1>
+        <p>막대를 움직여서 표시해줘. 정답은 없어.</p>
+        <div id="tlxItems"></div>
+        <div class="actions"><button id="btnTlx" class="primary">제출</button></div>
+      </div>
+    </section>
+
+    <!-- 5. rest -->
+    <section id="sRest" class="screen">
+      <div class="sheet">
+        <h1>앉아서 쉬어요</h1>
+        <p>다음 방법으로 넘어가기 전에 3분 정도 쉬어. 손목 스트랩도 잠깐 풀어도 돼.</p>
+        <div class="big-cond num" id="restClock">3:00</div>
+        <div class="actions"><button id="btnRestDone" class="primary">계속하기</button></div>
+      </div>
+    </section>
+
+    <!-- 6. done -->
+    <section id="sDone" class="screen">
+      <div class="sheet">
+        <h1>실험 끝</h1>
+        <p>데이터가 zip 파일 하나로 저장됐어. 다운로드가 안 됐으면 아래 버튼으로 다시 받아.</p>
+        <div id="doneSummary" class="order num"></div>
+        <div class="actions"><button id="btnSaveAll" class="primary">zip 다시 받기</button></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script type="module">
+import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+{{ENGINE}}
+
+const $ = id => document.getElementById(id);
+const CUPS = { none:'컵 없음', 60:'60mm 컵', 75:'75mm 컵', 90:'90mm 컵' };
+const TECH = { trackpad:'트랙패드', gs:'GripSpread' };
+// 4x4 balanced Latin square for cup order (each condition follows every other exactly once)
+const LATIN = [['none','60','90','75'], ['60','75','none','90'], ['75','90','60','none'], ['90','none','75','60']];
+const LATIN_NAME = ['A','B','C','D'];
+
+// ---------- audio ----------
+let actx = null;
+function beep(freq, dur=0.08, vol=0.15){
+  try{ actx = actx || new AudioContext(); const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = freq; g.gain.setValueAtTime(vol, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime+dur);
+    o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime+dur); }catch(e){}
+}
+document.addEventListener('click', () => { try{ actx = actx || new AudioContext(); actx.resume(); }catch(e){} }, {once:true});
+
+// ---------- engine wiring ----------
+const E = GripEngine;
+const statusEl = $('status'), stateText = $('stateText'), holdBar = $('holdBar');
+E.onBeep = (f,d) => beep(f,d);
+E.onStatus = (text, cls, prog) => { stateText.textContent = text; statusEl.className = 'status ' + cls; holdBar.style.width = (prog*100)+'%'; };
+$('btnRange').onclick = () => E.startRange();
+$('btnRecal').onclick = () => E.resetNeutral();
+const video = $('video'), overlay = $('overlay'), oc = overlay.getContext('2d');
+function drawOverlay(){
+  overlay.width = video.videoWidth || 640; overlay.height = video.videoHeight || 480; oc.clearRect(0,0,overlay.width,overlay.height);
+  const lm = E.lm; if(!lm) return;
+  const X = p => p.x*overlay.width, Y = p => p.y*overlay.height;
+  oc.fillStyle = 'rgba(255,255,255,.15)'; oc.beginPath(); oc.moveTo(X(lm[0]),Y(lm[0])); oc.lineTo(X(lm[5]),Y(lm[5])); oc.lineTo(X(lm[17]),Y(lm[17])); oc.closePath(); oc.fill();
+  const mx = (X(lm[5])+X(lm[9]))/2, my = (Y(lm[5])+Y(lm[9]))/2;
+  oc.strokeStyle = E.reliable ? '#F5D020' : '#C8372D'; oc.lineWidth = 4;
+  for(const t of [8,12]){ oc.beginPath(); oc.moveTo(mx,my); oc.lineTo(X(lm[t]),Y(lm[t])); oc.stroke(); }
+}
+
+// ---------- session ----------
+const S = { pid:null, hand:'R', handLen:null, span:null, note:'', seq:null, techOrder:null, latinRow:null,
+  cfg:null, steps:[], stepIdx:-1, startedAt:null, tlx:[], files:[] };
+const allTrials = [], tlxRows = [];
+let frames = [], imuRows = [], stepTrials = [];
+
+function parseList(v){ return v.split(',').map(x=>parseFloat(x.trim())).filter(x=>!isNaN(x)); }
+function orderFor(pid){
+  const seq = (pid - 1) % 8;
+  const techOrder = seq < 4 ? ['trackpad','gs'] : ['gs','trackpad'];
+  const latinRow = seq % 4;
+  return { seq, techOrder, latinRow, cups: LATIN[latinRow] };
+}
+function showOrder(){
+  const pid = parseInt($('fPid').value) || 1, o = orderFor(pid);
+  $('orderBox').innerHTML = `순서 ${o.seq+1}/8 · 라틴 방격 ${LATIN_NAME[o.latinRow]}<br>` +
+    o.techOrder.map((t,i)=>`${i+1}. ${TECH[t]}: 연습 → ${o.cups.map(c=>CUPS[c]).join(' → ')} → 설문`).join('<br>');
+}
+$('fPid').addEventListener('input', showOrder); showOrder();
+
+function buildSteps(){
+  const o = orderFor(S.pid), steps = [];
+  o.techOrder.forEach((tech, bi) => {
+    steps.push({ type:'practice', tech, cup:'none' });
+    steps.push({ type:'practice', tech, cup:'75' });
+    o.cups.forEach((cup, ci) => steps.push({ type:'measure', tech, cup, condIndex: ci+1 }));
+    steps.push({ type:'tlx', tech });
+    if(bi === 0) steps.push({ type:'rest' });
+  });
+  steps.push({ type:'done' });
+  return steps;
+}
+
+$('btnStart').onclick = () => {
+  const pid = parseInt($('fPid').value);
+  if(!pid){ $('fPid').focus(); return; }
+  Object.assign(S, { pid, hand:$('fHand').value, handLen:+$('fHandLen').value || null, span:+$('fSpan').value || null, note:$('fNote').value });
+  const o = orderFor(pid); Object.assign(S, { seq:o.seq, techOrder:o.techOrder, latinRow:LATIN_NAME[o.latinRow] });
+  const [pMin, pMax] = parseList($('fPrac').value);
+  S.cfg = { D:parseList($('fD').value), W:parseList($('fW').value), reps:+$('fReps').value, warmup:+$('fWarm').value,
+    dwell:+$('fDwell').value, timeout:+$('fTimeout').value*1000, pracMin:pMin||10, pracMax:pMax||30, frames:+$('fFrames').value, save:+$('fSave').value,
+    preMs:1000, itiMs:500 };
+  Object.assign(E.P, { dead:+$('gDead').value, gain:+$('gGain').value, gamma:+$('gGamma').value, curlMax:+$('gCurl').value, holdMs:+$('gHold').value,
+    boostMax:+$('gBoost').value, boostMs:+$('gBoostMs').value, boostOn:+$('gBoostOn').value, minSide:+$('gMinSide').value, accMs:+$('gAcc').value, brakeMs:+$('gBrake').value });
+  S.steps = buildSteps(); S.stepIdx = -1; S.startedAt = new Date().toISOString();
+  const jump = $('hJump');
+  jump.innerHTML = S.steps.map((st,i) => `<option value="${i}">${i+1}. ${stepName(st)}</option>`).join('');
+  jump.style.display = S.cfg.save ? 'none' : '';
+  jump.onchange = () => gotoStep(+jump.value);
+  nextStep();
+};
+
+function stepName(st){
+  if(st.type === 'practice') return `${TECH[st.tech]} 연습 · ${CUPS[st.cup]}`;
+  if(st.type === 'measure') return `${TECH[st.tech]} · ${CUPS[st.cup]}`;
+  return { tlx:`${TECH[st.tech]} 설문`, rest:'휴식', done:'끝' }[st.type] || st.type;
+}
+function gotoStep(i){
+  if(run){ run.trial = null; run = null; }
+  clearInterval(restTimer); S.stepIdx = i - 1; nextStep();
+}
+function show(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on', s.id === id)); }
+function header(){
+  const st = S.steps[S.stepIdx]; if(!st) return;
+  const measureSteps = S.steps.filter(s=>s.type==='measure'), mi = measureSteps.indexOf(st);
+  $('hCond').textContent = st.tech ? `${TECH[st.tech]}${st.cup ? ' · ' + CUPS[st.cup] : ''}${st.type==='practice' ? ' · 연습' : ''}` : '';
+  $('hProg').textContent = `P${String(S.pid).padStart(2,'0')}` + (mi >= 0 ? ` · 조건 ${mi+1}/${measureSteps.length}` : '');
+}
+
+function nextStep(){
+  S.stepIdx++;
+  const st = S.steps[S.stepIdx]; header();
+  if($('hJump').options.length) $('hJump').value = S.stepIdx;
+  if(st.type === 'practice' || st.type === 'measure') return showBrief(st);
+  if(st.type === 'tlx') return showTlx(st);
+  if(st.type === 'rest') return showRest();
+  if(st.type === 'done') return showDone();
+}
+
+// ---------- brief ----------
+function showBrief(st){
+  $('bKind').textContent = st.type === 'practice' ? '연습' : `본 측정 · 조건 ${st.condIndex}/4`;
+  $('bTitle').textContent = `${TECH[st.tech]} · ${CUPS[st.cup]}`;
+  const how = st.tech === 'gs'
+    ? '컵을 쥔 손을 카메라 앞에 올리고 편한 V로 멈춰 켜. 오므리면 아래로, 벌리면 위로 움직여. 노란 줄을 가운데 네모 안에 넣고 잠깐 멈추면 다음으로 넘어가.'
+    : '컵을 쥔 손 그대로, 편한 손가락으로 트랙패드를 써. 노란 줄을 가운데 네모 안에 넣고 잠깐 멈추면 다음으로 넘어가.';
+  $('bText').textContent = how + (st.type === 'practice' ? ' 연습은 익숙해질 때까지 계속돼.' : ' 최대한 빠르고 정확하게 해줘.');
+  const checks = [];
+  if(st.cup !== 'none') checks.push(`${CUPS[st.cup]} 준비, 비즈가 입구 1cm 아래까지 차 있는지 확인`);
+  else checks.push('컵 없이 빈손');
+  checks.push('반대손은 손목 스트랩으로 고정');
+  if(st.tech === 'gs' && !E.range) checks.push('<b style="color:var(--alert)">손 범위를 아직 안 쟀어. 왼쪽 "손 범위 재기"를 먼저 해줘</b>');
+  $('bCheck').innerHTML = checks.map(c=>'· '+c).join('<br>');
+  show('sBrief');
+}
+$('btnGo').onclick = () => startStep();
+
+// ---------- trial generation ----------
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; }
+function buildTrials(st){
+  const { D, W, reps, warmup } = S.cfg, list = [];
+  if(st.type === 'practice'){
+    for(let i=0;i<S.cfg.pracMax;i++) list.push({ D: D[i % D.length], W: W[Math.floor(i / D.length) % W.length], dir: i%2 ? 'up':'down', warm:0 });
+    return shuffle(list);
+  }
+  for(const d of D) for(const w of W){
+    const dirs = shuffle(Array.from({length:reps}, (_,i)=> i < reps/2 ? 'down' : 'up'));
+    for(const dir of dirs) list.push({ D:d, W:w, dir, warm:0 });
+  }
+  shuffle(list);
+  const warm = Array.from({length:warmup}, () => ({ D: D[Math.floor(Math.random()*D.length)], W: W[Math.floor(Math.random()*W.length)], dir: Math.random()<.5?'up':'down', warm:1 }));
+  return warm.concat(list);
+}
+
+// ---------- task runtime ----------
+const track = $('track'), content = $('content'), target = $('target'), frameEl = $('frame'), dwellBar = $('dwellBar'), taskMsg = $('taskMsg');
+const CONTENT_H = 12000;
+content.style.height = CONTENT_H + 'px';
+let run = null; // current step runtime
+let pauseRequested = false;
+
+function startStep(){
+  const st = S.steps[S.stepIdx];
+  frames = []; imuRows = []; stepTrials = [];
+  run = { st, trials: buildTrials(st), i: -1, trial: null, phase:'idle', pracDone:false };
+  track.style.overflowY = st.tech === 'trackpad' ? 'scroll' : 'hidden';
+  show('sTask'); nextTrial();
+}
+function frameCenter(){ return track.clientHeight / 2; }
+
+function nextTrial(){
+  const st = run.st;
+  if(st.type === 'practice' && practiceCriterion()) return endStep();
+  run.i++;
+  if(run.i >= run.trials.length) return endStep();
+  if(pauseRequested){ pauseRequested = false; taskMsg.textContent = '일시정지. Space를 누르면 계속해'; run.phase = 'paused'; return; }
+  const t = run.trials[run.i], fc = frameCenter(), viewH = track.clientHeight;
+  // choose a start scroll S so that the target ends up reachable and inside the content
+  let lo, hi;
+  if(t.dir === 'down'){ lo = 0; hi = Math.min(CONTENT_H - viewH - t.D, CONTENT_H - 300 - fc - t.D); }
+  else { lo = Math.max(t.D, t.D + 300 - fc); hi = CONTENT_H - viewH; }
+  const S0 = Math.round(lo + Math.random() * Math.max(0, hi - lo));
+  const T = S0 + fc + (t.dir === 'down' ? t.D : -t.D);
+  run.trial = { ...t, uid: `${run.st.type[0]}${S.stepIdx}-${run.i}`, S0, T, shownAt: performance.now(), startT:null, firstMoveT:null,
+    dwellStart:null, endT:null, success:0, switchbacks:0, lastDir:0, minRem: t.D, prevTop: S0, sgn: t.dir === 'down' ? 1 : -1 };
+  track.scrollTop = S0;
+  target.style.top = T + 'px';
+  frameEl.style.height = t.W + 'px'; frameEl.style.top = (fc - t.W/2) + 'px';
+  frameEl.classList.remove('in'); dwellBar.style.width = '0';
+  run.phase = (st.tech === 'gs' && E.state !== 'ACTIVE') ? 'waitActive' : 'pre';
+  taskMsg.textContent = run.phase === 'waitActive' ? 'GripSpread를 켜줘 (편한 V로 잠깐 멈추기)' : '';
+  if(run.phase === 'pre') run.trial.preAt = performance.now();
+}
+
+function practiceCriterion(){
+  const done = stepTrials.length;
+  if(done < S.cfg.pracMin) return false;
+  if(done >= S.cfg.pracMax || run.pracDone) return true;
+  if(done < 20) return false;
+  const mt = stepTrials.map(r=>r.success ? r.mt_ms : S.cfg.timeout);
+  const last = mt.slice(-10).reduce((a,b)=>a+b,0)/10, prev = mt.slice(-20,-10).reduce((a,b)=>a+b,0)/10;
+  return last >= prev * 0.9; // no longer improving by 10%
+}
+
+let wheelAcc = 0;
+track.addEventListener('wheel', e => {
+  if(!run || run.st.tech !== 'trackpad' || run.phase !== 'running'){ e.preventDefault(); return; }
+  wheelAcc += e.deltaY;
+}, {passive:false});
+document.addEventListener('keydown', e => {
+  if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End'].includes(e.key) && $('sTask').classList.contains('on')) e.preventDefault();
+  if(e.key === ' ' || e.code === 'Space'){
+    if($('sBrief').classList.contains('on')){ e.preventDefault(); startStep(); }
+    else if(run && run.phase === 'paused'){ e.preventDefault(); taskMsg.textContent = ''; nextTrial(); }
+  }
+  if((e.key === 'p' || e.key === 'P') && run){ pauseRequested = true; taskMsg.textContent = '이번 시행 끝나면 일시정지'; }
+  if(e.key === 'n' || e.key === 'N'){
+    if(run && run.trial && ['waitActive','pre','running'].includes(run.phase)){ run.trial.skipped = 1; finishTrial(performance.now(), 0); }
+  }
+  if(e.key === 'k' || e.key === 'K'){
+    if(run){ if(run.trial) run.trial = null; endStep(); }
+    else if(['sBrief','sTlx','sRest'].some(id => $(id).classList.contains('on'))) gotoStep(S.stepIdx + 1);
+  }
+  if((e.key === 's' || e.key === 'S') && run && run.st.type === 'practice'){ run.pracDone = true; taskMsg.textContent = '연습을 이번 시행에서 끝낼게'; }
+});
+
+function tickTask(now){
+  if(!run || !run.trial) return;
+  const tr = run.trial, st = run.st, fc = frameCenter();
+  if(run.phase === 'waitActive'){
+    track.scrollTop = tr.S0;
+    if(E.state === 'ACTIVE'){ run.phase = 'pre'; tr.preAt = now; taskMsg.textContent = ''; }
+  } else if(run.phase === 'pre'){
+    track.scrollTop = tr.S0;  // locked until the start cue
+    if(now - tr.preAt >= S.cfg.preMs){ run.phase = 'running'; tr.startT = now; beep(1046, 0.05, 0.08); }
+  } else if(run.phase === 'running'){
+    if(st.tech === 'gs'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); track.scrollTop += E.velocity * dt; }
+  }
+  tr.lastTick = now;
+  const top = track.scrollTop;
+  const d = (tr.T - top) - fc;             // >0: target below frame centre
+  const rem = d * tr.sgn;                  // remaining distance along the travel direction
+  const inFrame = Math.abs(d) <= tr.W / 2;
+  frameEl.classList.toggle('in', inFrame && run.phase === 'running');
+  updateCues(top, run.phase !== 'idle');
+
+  if(run.phase === 'running'){
+    const delta = top - tr.prevTop;
+    if(tr.firstMoveT == null && Math.abs(top - tr.S0) > 2) tr.firstMoveT = now;
+    if(Math.abs(delta) > 0.5){ const dir = Math.sign(delta); if(tr.lastDir && dir !== tr.lastDir) tr.switchbacks++; tr.lastDir = dir; }
+    tr.minRem = Math.min(tr.minRem, rem);
+    if(inFrame){ if(tr.dwellStart == null) tr.dwellStart = now; }
+    else tr.dwellStart = null;
+    dwellBar.style.width = tr.dwellStart != null ? Math.min(100, (now - tr.dwellStart) / S.cfg.dwell * 100) + '%' : '0';
+    if(tr.dwellStart != null && now - tr.dwellStart >= S.cfg.dwell) finishTrial(now, 1);
+    else if(now - tr.startT > S.cfg.timeout) finishTrial(now, 0);
+  }
+  tr.prevTop = top;
+
+  if(S.cfg.frames && run.phase !== 'idle'){
+    const row = [Math.round(now), st.tech, st.cup, st.type, tr.uid, run.phase, Math.round(top), Math.round(d), inFrame?1:0, wheelAcc.toFixed(1),
+      E.state, E.theta == null ? '' : E.theta.toFixed(2), E.velocity.toFixed(1), E.command.toFixed(1), E.boost.toFixed(2), E.reliable?1:0, E.reason || ''];
+    if(S.cfg.frames === 2){ const w = E.world; for(let i=0;i<21;i++) row.push(w ? w[i].x.toFixed(5) : '', w ? w[i].y.toFixed(5) : '', w ? w[i].z.toFixed(5) : ''); }
+    frames.push(row);
+  }
+  wheelAcc = 0;
+}
+
+// Known-target cues: an edge arrow while the target is off screen, and a minimap of the whole document.
+const cueUp = $('cueUp'), cueDown = $('cueDown'), mmView = $('mmView'), mmTarget = $('mmTarget'), minimap = $('minimap');
+function updateCues(top, visible){
+  const tr = run && run.trial;
+  if(!tr || !visible){ cueUp.classList.remove('on'); cueDown.classList.remove('on'); minimap.style.display = 'none'; return; }
+  const viewH = track.clientHeight, rel = tr.T - top;            // target position inside the viewport
+  cueUp.classList.toggle('on', rel < 0);
+  cueDown.classList.toggle('on', rel > viewH);
+  minimap.style.display = 'block';
+  const H = minimap.clientHeight;
+  mmView.style.top = (top / CONTENT_H * H) + 'px'; mmView.style.height = Math.max(6, viewH / CONTENT_H * H) + 'px';
+  mmTarget.style.top = (tr.T / CONTENT_H * H) + 'px';
+}
+
+function finishTrial(now, success){
+  const tr = run.trial, st = run.st;
+  if(tr.startT == null) tr.startT = now;
+  tr.endT = now; tr.success = success; run.phase = 'iti';
+  beep(success ? 880 : 220, success ? 0.06 : 0.2, 0.08);
+  const r = {
+    pid:S.pid, technique:st.tech, cup:st.cup, step:st.type, cond_index:st.condIndex || 0, trial_index:run.i, trial_uid:tr.uid,
+    warmup:tr.warm, D:tr.D, W:tr.W, ID:+Math.log2(tr.D/tr.W + 1).toFixed(4), direction:tr.dir,
+    start_ms:Math.round(tr.startT), first_move_ms: tr.firstMoveT ? Math.round(tr.firstMoveT) : '', end_ms:Math.round(now),
+    rt_ms: tr.firstMoveT ? Math.round(tr.firstMoveT - tr.startT) : '',
+    mt_ms: success ? Math.round(tr.dwellStart - tr.startT) : '',      // start cue -> entered frame for the last time
+    move_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '',
+    success, skipped: tr.skipped || 0, switchbacks: tr.switchbacks, overshoot_px: Math.max(0, Math.round(-tr.minRem - tr.W/2)),
+    gs_r0: E.r0 == null ? '' : E.r0.toFixed(2), gs_range_min: E.range ? E.range.min.toFixed(1) : '', gs_range_max: E.range ? E.range.max.toFixed(1) : '',
+    gs_dead:E.P.dead, gs_gain:E.P.gain, gs_gamma:E.P.gamma, gs_boost_max:E.P.boostMax, gs_boost_ms:E.P.boostMs, gs_acc_ms:E.P.accMs, gs_brake_ms:E.P.brakeMs, gs_dir:E.dirSign, tech_order:S.techOrder.join('>'), latin_row:S.latinRow,
+  };
+  stepTrials.push(r); allTrials.push(r);
+  $('hProg').textContent = `P${String(S.pid).padStart(2,'0')} · ${st.type === 'practice' ? '연습' : '시행'} ${run.i+1}/${run.trials.length}`;
+  setTimeout(() => { if(run && run.trial === tr) nextTrial(); }, S.cfg.itiMs);
+}
+
+function endStep(){
+  const st = run.st; run.phase = 'idle'; run.trial = null;
+  saveStepFiles();
+  beep(660, 0.1); beep(990, 0.12);
+  run = null; nextStep();
+}
+
+// ---------- files ----------
+// Data stays in memory, is backed up to IndexedDB after every step, and leaves the browser as ONE zip per participant.
+function toCSV(head, rows){ return [head.join(',')].concat(rows.map(r => (Array.isArray(r) ? r : head.map(h=>r[h])).map(v => v == null ? '' : String(v).includes(',') ? `"${v}"` : v).join(','))).join('\n'); }
+const TRIAL_HEAD = ['pid','technique','cup','step','cond_index','trial_index','trial_uid','warmup','D','W','ID','direction','start_ms','first_move_ms','end_ms','rt_ms','mt_ms','move_ms','success','skipped','switchbacks','overshoot_px','gs_r0','gs_range_min','gs_range_max','gs_dead','gs_gain','gs_gamma','gs_boost_max','gs_boost_ms','gs_acc_ms','gs_brake_ms','gs_dir','tech_order','latin_row'];
+function frameHead(cfgFrames){ const h = ['t_ms','technique','cup','step','trial_uid','phase','scroll_top','target_offset_px','in_frame','wheel_dy','gs_state','gs_theta','gs_velocity','gs_command','gs_boost','gs_reliable','gs_reason'];
+  if(cfgFrames === 2) for(let i=0;i<21;i++) h.push(`w${i}_x`,`w${i}_y`,`w${i}_z`); return h; }
+const IMU_HEAD = ['t_ms','technique','cup','step','trial_uid','phase','ax','ay','az','gx','gy','gz','raw'];
+const TLX_HEAD = ['pid','technique','mental','physical','temporal','performance','effort','frustration','raw_tlx'];
+const allFrames = [], allImu = [];
+const pTag = pid => `P${String(pid).padStart(2,'0')}`;
+
+// IndexedDB backup
+const DB = 'gripspread_experiment', STORE = 'sessions';
+function idb(){ return new Promise((res, rej) => { const r = indexedDB.open(DB, 1); r.onupgradeneeded = () => r.result.createObjectStore(STORE); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+async function idbPut(key, val){ const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(val, key); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+async function idbAll(){ const db = await idb(); return new Promise((res, rej) => { const out = []; const tx = db.transaction(STORE); const c = tx.objectStore(STORE).openCursor();
+  c.onsuccess = () => { const cur = c.result; if(cur){ out.push([cur.key, cur.value]); cur.continue(); } else res(out); }; c.onerror = () => rej(c.error); }); }
+function snapshot(){ return { session:sessionObj(), trials:allTrials, frames:allFrames, imu:allImu, tlx:tlxRows }; }
+async function backup(){
+  if(!S.cfg || !S.cfg.save) return;
+  try{ await idbPut(`${pTag(S.pid)}_${S.startedAt}`, snapshot()); $('hSaved').textContent = '브라우저에 백업됨 · ' + new Date().toLocaleTimeString(); }
+  catch(e){ $('hSaved').textContent = '백업 실패: ' + e.message; }
+}
+function saveStepFiles(){
+  allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = [];
+  backup();
+}
+async function downloadZip(snap){
+  if(!window.JSZip){ $('hSaved').textContent = 'zip 라이브러리를 못 불러왔어 (인터넷 확인)'; return; }
+  const z = new JSZip(), ss = snap.session, tag = pTag(ss.pid);
+  z.file(`${tag}_trials.csv`, toCSV(TRIAL_HEAD, snap.trials));
+  if(snap.frames.length) z.file(`${tag}_frames.csv`, toCSV(frameHead(ss.config && ss.config.frames), snap.frames));
+  if(snap.imu.length) z.file(`${tag}_imu.csv`, toCSV(IMU_HEAD, snap.imu));
+  if(snap.tlx.length) z.file(`${tag}_tlx.csv`, toCSV(TLX_HEAD, snap.tlx));
+  z.file(`${tag}_session.json`, JSON.stringify(ss, null, 2));
+  const blob = await z.generateAsync({ type:'blob', compression:'DEFLATE' });
+  const name = `${tag}_gripspread_${(ss.started_at || '').slice(0,16).replace(/[:T]/g,'-')}.zip`;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 5000); $('hSaved').textContent = '저장: ' + name;
+}
+function sessionObj(){
+  return { pid:S.pid, hand:S.hand, hand_length_mm:S.handLen, span_mm:S.span, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
+    latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
+    hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
+    tlx:S.tlx, user_agent:navigator.userAgent };
+}
+$('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
+// recovery list on the setup screen
+idbAll().then(list => {
+  if(!list.length) return;
+  $('recoverBox').style.display = '';
+  list.sort((a,b) => (b[1].session.saved_at || '').localeCompare(a[1].session.saved_at || ''));
+  $('recoverList').innerHTML = list.slice(0, 12).map(([k,v],i) => `${pTag(v.session.pid)} · 시작 ${String(v.session.started_at).slice(0,16).replace('T',' ')} · 시행 ${v.trials.length}개${v.session.completed ? ' · 완료' : ' · 중단됨'} <button data-rec="${i}" style="margin-left:8px">zip 받기</button>`).join('<br>');
+  $('recoverList').querySelectorAll('[data-rec]').forEach(b => b.onclick = () => downloadZip(list[+b.dataset.rec][1]));
+}).catch(()=>{});
+
+// ---------- NASA-TLX ----------
+const TLX = [
+  ['mental','정신적 요구','얼마나 생각하고 집중해야 했어?','낮음','높음'],
+  ['physical','신체적 요구','손과 팔이 얼마나 힘들었어?','낮음','높음'],
+  ['temporal','시간 압박','얼마나 쫓기는 느낌이었어?','낮음','높음'],
+  ['performance','수행 만족도','목표를 얼마나 잘 해냈다고 느껴?','잘함','못함'],
+  ['effort','노력','그 정도로 하려고 얼마나 애써야 했어?','낮음','높음'],
+  ['frustration','좌절감','짜증 나거나 불안했던 정도는?','낮음','높음'],
+];
+function showTlx(st){
+  $('tlxTitle').textContent = `방금 쓴 ${TECH[st.tech]}는 어땠어?`;
+  $('tlxItems').innerHTML = TLX.map(([k,q,d,lo,hi]) => `<div class="tlx-item"><div class="q">${q}</div><div class="d">${d}</div>
+    <input type="range" min="0" max="100" step="5" value="50" data-k="${k}" aria-label="${q}"><div class="ends"><span>${lo}</span><span>${hi}</span></div></div>`).join('');
+  show('sTlx');
+}
+$('btnTlx').onclick = () => {
+  const st = S.steps[S.stepIdx], row = { pid:S.pid, technique:st.tech };
+  document.querySelectorAll('#tlxItems input').forEach(i => row[i.dataset.k] = +i.value);
+  row.raw_tlx = +(TLX.reduce((a,[k]) => a + row[k], 0) / TLX.length).toFixed(1);
+  S.tlx.push(row); tlxRows.push(row);
+  backup();
+  nextStep();
+};
+
+// ---------- rest / done ----------
+let restTimer = null;
+function showRest(){
+  show('sRest'); const end = Date.now() + 180000;
+  restTimer = setInterval(() => { const s = Math.max(0, Math.round((end - Date.now())/1000)); $('restClock').textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; if(!s) clearInterval(restTimer); }, 250);
+}
+$('btnRestDone').onclick = () => { clearInterval(restTimer); nextStep(); };
+function showDone(){
+  const m = allTrials.filter(r=>r.step==='measure' && !r.warmup && !r.skipped);
+  const by = (tech, cup) => m.filter(r=>r.technique===tech && r.cup===cup);
+  const lines = ['trackpad','gs'].map(t => `${TECH[t]}: ` + ['none','60','75','90'].map(c => {
+    const rs = by(t,c), ok = rs.filter(r=>r.success);
+    const mt = ok.length ? Math.round(ok.reduce((a,r)=>a+r.mt_ms,0)/ok.length) : '–';
+    return `${CUPS[c]} ${mt}ms (${ok.length}/${rs.length})`; }).join(', '));
+  $('doneSummary').innerHTML = '평균 이동 시간 (성공/전체)<br>' + lines.join('<br>');
+  show('sDone');
+  backup().then(() => { if(S.cfg.save) downloadZip(snapshot()); });
+}
+$('btnSaveAll').onclick = () => downloadZip(snapshot());
+
+// ---------- cup IMU over Web Bluetooth (Nordic UART: one "ax,ay,az,gx,gy,gz" line per sample) ----------
+const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e', NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+let imuBuf = '', imuCount = 0, imuT = 0;
+$('btnImu').onclick = async () => {
+  if(!navigator.bluetooth){ $('kImu').textContent = '이 브라우저는 블루투스 미지원 (크롬 필요)'; return; }
+  try{
+    const dev = await navigator.bluetooth.requestDevice({ filters:[{ services:[NUS] }] });
+    const srv = await (await dev.gatt.connect()).getPrimaryService(NUS);
+    const ch = await srv.getCharacteristic(NUS_TX);
+    ch.addEventListener('characteristicvaluechanged', ev => {
+      imuBuf += new TextDecoder().decode(ev.target.value);
+      let k; while((k = imuBuf.indexOf('\n')) >= 0){ const line = imuBuf.slice(0,k).trim(); imuBuf = imuBuf.slice(k+1); onImuLine(line); }
+    });
+    await ch.startNotifications();
+    dev.addEventListener('gattserverdisconnected', () => $('kImu').textContent = '끊김');
+    $('kImu').textContent = '연결됨 (' + (dev.name || 'IMU') + ')';
+  }catch(e){ $('kImu').textContent = '연결 실패'; }
+};
+function onImuLine(line){
+  imuCount++;
+  if(!run || run.phase === 'idle') return;
+  const v = line.split(','), t = performance.now();
+  imuRows.push([Math.round(t), run.st.tech, run.st.cup, run.st.type, run.trial ? run.trial.uid : '', run.phase, ...[0,1,2,3,4,5].map(i => v[i] ?? ''), v.length !== 6 ? line : '']);
+}
+
+// ---------- main loop ----------
+function loop(now){
+  if(E.update(now)) drawOverlay();
+  tickTask(now);
+  $('kTheta').textContent = E.theta == null ? '–' : E.theta.toFixed(1) + '°';
+  $('kR0').textContent = E.r0 == null ? '–' : E.r0.toFixed(1) + '°';
+  $('kRange').textContent = E.range ? `${E.range.min.toFixed(0)}–${E.range.max.toFixed(0)}°` : '안 잼';
+  if(now - imuT > 1000){ $('kFps').textContent = E.fps + ' fps'; if(imuCount) $('kImu').textContent = `연결됨 · ${imuCount} Hz`; imuCount = 0; imuT = now; }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+E.init(HandLandmarker, FilesetResolver, video).catch(e => E.onStatus('카메라나 손 인식 모델을 열지 못했어: ' + e.message, 'warn', 0));
+</script>
+</body>
+</html>
