@@ -70,16 +70,15 @@
   #frame{position:absolute;left:50%;transform:translateX(-50%);width:min(820px, calc(100% - 24px));border:2px solid var(--ink);border-radius:2px;pointer-events:none}
   #frame.in{background:var(--mark-soft)}
   #frame .dw{position:absolute;left:0;bottom:-2px;height:4px;width:0;background:var(--ink)}
-  #taskMsg{position:absolute;left:50%;top:24px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:999px;padding:6px 14px;font-size:13px;pointer-events:none}
+  #taskMsg{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:999px;padding:6px 14px;font-size:13px;pointer-events:none}
   #taskMsg:empty{display:none}
 
-  .cue{position:absolute;left:50%;transform:translateX(-50%);background:var(--mark);color:var(--ink);font-weight:600;
-    border-radius:999px;padding:6px 16px;font-size:14px;pointer-events:none;display:none;box-shadow:0 0 0 1px var(--ink)}
-  .cue.up{top:16px} .cue.down{bottom:16px}
-  .cue.on{display:block}
-  #minimap{position:absolute;right:20px;top:24px;bottom:24px;width:14px;background:rgba(31,35,40,.10);border-radius:7px;pointer-events:none}
-  #mmView{position:absolute;left:0;right:0;background:rgba(31,35,40,.35);border-radius:7px}
-  #mmTarget{position:absolute;left:-5px;right:-5px;height:4px;margin-top:-2px;background:var(--mark);box-shadow:0 0 0 1px var(--ink)}
+  /* known-target cue: line numbers in the gutter + the target line number (Hinckley et al. 2002, ScrollTest) */
+  .ln{position:absolute;left:4px;width:44px;height:14px;margin-top:-7px;text-align:right;font:12px/14px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8A9099;pointer-events:none}
+  .ln.tgt{color:var(--ink);font-weight:700;background:var(--mark);border-radius:3px;padding-right:3px}
+  #lineCue{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:var(--ink);color:#fff;font-weight:600;
+    border-radius:999px;padding:7px 18px;font-size:15px;pointer-events:none;display:none}
+  #lineCue.on{display:block}
 
   /* tlx */
   .tlx-item{margin:0 0 18px}
@@ -191,9 +190,7 @@
       <div id="track"><div id="content"><div id="target"></div></div></div>
       <div id="frame"><span class="dw" id="dwellBar"></span></div>
       <div id="taskMsg"></div>
-      <div id="cueUp" class="cue up" aria-hidden="true">▲ 위로</div>
-      <div id="cueDown" class="cue down" aria-hidden="true">▼ 아래로</div>
-      <div id="minimap" aria-hidden="true"><span id="mmView"></span><span id="mmTarget"></span></div>
+      <div id="lineCue" aria-live="polite"></div>
     </section>
 
     <!-- 4. NASA-TLX -->
@@ -351,8 +348,8 @@ function showBrief(st){
   $('bKind').textContent = st.type === 'practice' ? '연습' : `본 측정 · 조건 ${st.condIndex}/4`;
   $('bTitle').textContent = `${TECH[st.tech]} · ${CUPS[st.cup]}`;
   const how = st.tech === 'gs'
-    ? '컵을 쥔 손을 카메라 앞에 올리고 편한 V로 멈춰 켜. 오므리면 아래로, 벌리면 위로 움직여. 노란 줄을 가운데 네모 안에 넣고 잠깐 멈추면 다음으로 넘어가.'
-    : '컵을 쥔 손 그대로, 편한 손가락으로 트랙패드를 써. 노란 줄을 가운데 네모 안에 넣고 잠깐 멈추면 다음으로 넘어가.';
+    ? '컵을 쥔 손을 카메라 앞에 올리고 편한 V로 멈춰 켜. 오므리면 아래로, 벌리면 위로 움직여. 위에 나온 번호의 줄(노란 줄)을 가운데 네모 안에 넣고 잠깐 멈추면 다음으로 넘어가. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있어.'
+    : '컵을 쥔 손 그대로, 편한 손가락으로 트랙패드를 써. 위에 나온 번호의 줄(노란 줄)을 가운데 네모 안에 넣고 잠깐 멈추면 다음으로 넘어가. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있어.';
   $('bText').textContent = how + (st.type === 'practice' ? ' 연습은 익숙해질 때까지 계속돼.' : ' 최대한 빠르고 정확하게 해줘.');
   const checks = [];
   if(st.cup !== 'none') checks.push(`${CUPS[st.cup]} 준비, 비즈가 입구 1cm 아래까지 차 있는지 확인`);
@@ -385,6 +382,14 @@ function buildTrials(st){
 const track = $('track'), content = $('content'), target = $('target'), frameEl = $('frame'), dwellBar = $('dwellBar'), taskMsg = $('taskMsg');
 const CONTENT_H = 12000;
 content.style.height = CONTENT_H + 'px';
+// numbered lines: line k (1-based) sits at y = (k-1)*PITCH + LINE_Y (centre of the grey bar in #content's background)
+const PITCH = 36, LINE_Y = 26, N_LINES = Math.floor((CONTENT_H - LINE_Y) / PITCH) + 1;
+const lineY = k => (k - 1) * PITCH + LINE_Y;
+const lnEls = [null];
+{ const frag = document.createDocumentFragment();
+  for(let k = 1; k <= N_LINES; k++){ const s = document.createElement('span'); s.className = 'ln'; s.style.top = lineY(k) + 'px'; s.textContent = k; frag.appendChild(s); lnEls.push(s); }
+  content.appendChild(frag); }
+let tgtLn = null;
 let run = null; // current step runtime
 let pauseRequested = false;
 
@@ -408,9 +413,14 @@ function nextTrial(){
   let lo, hi;
   if(t.dir === 'down'){ lo = 0; hi = Math.min(CONTENT_H - viewH - t.D, CONTENT_H - 300 - fc - t.D); }
   else { lo = Math.max(t.D, t.D + 300 - fc); hi = CONTENT_H - viewH; }
-  const S0 = Math.round(lo + Math.random() * Math.max(0, hi - lo));
-  const T = S0 + fc + (t.dir === 'down' ? t.D : -t.D);
-  run.trial = { ...t, uid: `${run.st.type[0]}${S.stepIdx}-${run.i}`, S0, T, shownAt: performance.now(), startT:null, firstMoveT:null,
+  // pick a target line inside the reachable range, then place the start so the travel distance is exactly D
+  const off = fc + (t.dir === 'down' ? t.D : -t.D);
+  const kMin = Math.ceil((lo + off - LINE_Y) / PITCH) + 1, kMax = Math.max(kMin, Math.floor((hi + off - LINE_Y) / PITCH) + 1);
+  const line = kMin + Math.floor(Math.random() * (kMax - kMin + 1));
+  const T = lineY(line), S0 = T - off;
+  if(tgtLn) tgtLn.classList.remove('tgt');
+  tgtLn = lnEls[line]; if(tgtLn) tgtLn.classList.add('tgt');
+  run.trial = { ...t, uid: `${run.st.type[0]}${S.stepIdx}-${run.i}`, S0, T, line, shownAt: performance.now(), startT:null, firstMoveT:null,
     dwellStart:null, endT:null, success:0, switchbacks:0, lastDir:0, minRem: t.D, prevTop: S0, sgn: t.dir === 'down' ? 1 : -1 };
   track.scrollTop = S0;
   target.style.top = T + 'px';
@@ -495,18 +505,15 @@ function tickTask(now){
   wheelAcc = 0;
 }
 
-// Known-target cues: an edge arrow while the target is off screen, and a minimap of the whole document.
-const cueUp = $('cueUp'), cueDown = $('cueDown'), mmView = $('mmView'), mmTarget = $('mmTarget'), minimap = $('minimap');
+// Known-target cue: the target line number (as in Hinckley et al. 2002 and ScrollTest's known condition).
+// Comparing it with the line numbers on screen tells direction and rough distance; no arrow or minimap.
+const lineCue = $('lineCue');
 function updateCues(top, visible){
   const tr = run && run.trial;
-  if(!tr || !visible){ cueUp.classList.remove('on'); cueDown.classList.remove('on'); minimap.style.display = 'none'; return; }
-  const viewH = track.clientHeight, rel = tr.T - top;            // target position inside the viewport
-  cueUp.classList.toggle('on', rel < 0);
-  cueDown.classList.toggle('on', rel > viewH);
-  minimap.style.display = 'block';
-  const H = minimap.clientHeight;
-  mmView.style.top = (top / CONTENT_H * H) + 'px'; mmView.style.height = Math.max(6, viewH / CONTENT_H * H) + 'px';
-  mmTarget.style.top = (tr.T / CONTENT_H * H) + 'px';
+  if(!tr || !visible){ lineCue.classList.remove('on'); return; }
+  const txt = `${tr.line}번 줄을 네모 안에`;
+  if(lineCue.textContent !== txt) lineCue.textContent = txt;
+  lineCue.classList.add('on');
 }
 
 function finishTrial(now, success){
@@ -516,7 +523,7 @@ function finishTrial(now, success){
   beep(success ? 880 : 220, success ? 0.06 : 0.2, 0.08);
   const r = {
     pid:S.pid, technique:st.tech, cup:st.cup, step:st.type, cond_index:st.condIndex || 0, trial_index:run.i, trial_uid:tr.uid,
-    warmup:tr.warm, D:tr.D, W:tr.W, ID:+Math.log2(tr.D/tr.W + 1).toFixed(4), direction:tr.dir,
+    warmup:tr.warm, D:tr.D, W:tr.W, ID:+Math.log2(tr.D/tr.W + 1).toFixed(4), direction:tr.dir, target_line:tr.line,
     start_ms:Math.round(tr.startT), first_move_ms: tr.firstMoveT ? Math.round(tr.firstMoveT) : '', end_ms:Math.round(now),
     rt_ms: tr.firstMoveT ? Math.round(tr.firstMoveT - tr.startT) : '',
     mt_ms: success ? Math.round(tr.dwellStart - tr.startT) : '',      // start cue -> entered frame for the last time
@@ -540,7 +547,7 @@ function endStep(){
 // ---------- files ----------
 // Data stays in memory, is backed up to IndexedDB after every step, and leaves the browser as ONE zip per participant.
 function toCSV(head, rows){ return [head.join(',')].concat(rows.map(r => (Array.isArray(r) ? r : head.map(h=>r[h])).map(v => v == null ? '' : String(v).includes(',') ? `"${v}"` : v).join(','))).join('\n'); }
-const TRIAL_HEAD = ['pid','technique','cup','step','cond_index','trial_index','trial_uid','warmup','D','W','ID','direction','start_ms','first_move_ms','end_ms','rt_ms','mt_ms','move_ms','success','skipped','switchbacks','overshoot_px','gs_r0','gs_range_min','gs_range_max','gs_dead','gs_gain','gs_gamma','gs_boost_max','gs_boost_ms','gs_acc_ms','gs_brake_ms','gs_dir','tech_order','latin_row'];
+const TRIAL_HEAD = ['pid','technique','cup','step','cond_index','trial_index','trial_uid','warmup','D','W','ID','direction','target_line','start_ms','first_move_ms','end_ms','rt_ms','mt_ms','move_ms','success','skipped','switchbacks','overshoot_px','gs_r0','gs_range_min','gs_range_max','gs_dead','gs_gain','gs_gamma','gs_boost_max','gs_boost_ms','gs_acc_ms','gs_brake_ms','gs_dir','tech_order','latin_row'];
 function frameHead(cfgFrames){ const h = ['t_ms','technique','cup','step','trial_uid','phase','scroll_top','target_offset_px','in_frame','wheel_dy','gs_state','gs_theta','gs_velocity','gs_command','gs_boost','gs_reliable','gs_reason'];
   if(cfgFrames === 2) for(let i=0;i<21;i++) h.push(`w${i}_x`,`w${i}_y`,`w${i}_z`); return h; }
 const IMU_HEAD = ['t_ms','technique','cup','step','trial_uid','phase','ax','ay','az','gx','gy','gz','raw'];
