@@ -154,7 +154,7 @@
           <label for="fW">허용 폭 W (px)</label><input id="fW" value="40, 120">
           <label for="fReps">조합당 반복</label><input id="fReps" type="number" min="2" max="20" step="2" value="6">
           <label for="fWarm">조건마다 적응 시행</label><input id="fWarm" type="number" min="0" max="6" value="2">
-          <label for="fDwell">유지 시간 (ms)</label><input id="fDwell" type="number" min="200" max="1500" step="50" value="500">
+          <label for="fDwell">멈춤 판정 (ms)</label><input id="fDwell" type="number" min="30" max="1500" step="1" value="66" title="표적이 네모 안에 완전히 들어온 채 이 시간 동안 스크롤이 안 움직이면 선택 (ScrollTest 2022: 66ms)">
           <label for="fTimeout">시간 초과 (초)</label><input id="fTimeout" type="number" min="5" max="60" value="15">
           <label for="fPrac">연습 시행 (최소, 최대)</label><input id="fPrac" value="10, 30">
           <label for="fSave">파일 저장</label><select id="fSave"><option value="1">끝날 때 zip 하나로 저장 (본 실험)</option><option value="0">저장 안 함 (검토 모드)</option></select>
@@ -511,7 +511,7 @@ $('btnStart').onclick = () => {
   const o = orderFor(pid); Object.assign(S, { seq:o.seq, techOrder:o.techOrder, latinRow:LATIN_NAME[o.latinRow] });
   const [pMin, pMax] = parseList($('fPrac').value);
   S.cfg = { D:parseList($('fD').value), W:parseList($('fW').value), reps:+$('fReps').value, warmup:+$('fWarm').value,
-    dwell:+$('fDwell').value, timeout:+$('fTimeout').value*1000, pracMin:pMin||10, pracMax:pMax||30, frames:+$('fFrames').value, save:+$('fSave').value,
+    stopMs:+$('fDwell').value, timeout:+$('fTimeout').value*1000, pracMin:pMin||10, pracMax:pMax||30, frames:+$('fFrames').value, save:+$('fSave').value,
     preMs:1000, itiMs:500 };
   Object.assign(E.P, { dead:+$('gDead').value, gain:+$('gGain').value, gamma:+$('gGamma').value, curlMax:+$('gCurl').value, holdMs:+$('gHold').value,
     boostMax:+$('gBoost').value, boostMs:+$('gBoostMs').value, boostOn:+$('gBoostOn').value, minSide:+$('gMinSide').value, accMs:+$('gAcc').value, brakeMs:+$('gBrake').value });
@@ -588,6 +588,7 @@ function buildTrials(st){
 // ---------- task runtime ----------
 const track = $('track'), content = $('content'), target = $('target'), frameEl = $('frame'), dwellBar = $('dwellBar'), taskMsg = $('taskMsg');
 const CONTENT_H = 12000;
+const TARGET_HALF = 4;   // #target is 8px tall
 content.style.height = CONTENT_H + 'px';
 // numbered lines: line k (1-based) sits at y = (k-1)*PITCH + LINE_Y (centre of the grey bar in #content's background)
 const PITCH = 36, LINE_Y = 26, N_LINES = Math.floor((CONTENT_H - LINE_Y) / PITCH) + 1;
@@ -686,7 +687,7 @@ function tickTask(now){
   const top = track.scrollTop;
   const d = (tr.T - top) - fc;             // >0: target below frame centre
   const rem = d * tr.sgn;                  // remaining distance along the travel direction
-  const inFrame = Math.abs(d) <= tr.W / 2;
+  const inFrame = Math.abs(d) <= tr.W / 2 - TARGET_HALF;   // target bar entirely inside the frame (ScrollTest)
   frameEl.classList.toggle('in', inFrame && run.phase === 'running');
   updateCues(top, run.phase !== 'idle');
 
@@ -695,10 +696,13 @@ function tickTask(now){
     if(tr.firstMoveT == null && Math.abs(top - tr.S0) > 2) tr.firstMoveT = now;
     if(Math.abs(delta) > 0.5){ const dir = Math.sign(delta); if(tr.lastDir && dir !== tr.lastDir) tr.switchbacks++; tr.lastDir = dir; }
     tr.minRem = Math.min(tr.minRem, rem);
-    if(inFrame){ if(tr.dwellStart == null) tr.dwellStart = now; }
+    // Selection as in ScrollTest (Chen et al. 2022): target fully inside the frame and no scrolling for stopMs.
+    // dwellStart = the moment scrolling last stopped inside the frame; MT is measured to that moment.
+    const moving = Math.abs(delta) > 0.5 || (st.tech === 'gs' && Math.abs(E.velocity) > 5);  // GS: sub-pixel drift still counts as moving
+    if(inFrame && !moving){ if(tr.dwellStart == null) tr.dwellStart = now; }
     else tr.dwellStart = null;
-    dwellBar.style.width = tr.dwellStart != null ? Math.min(100, (now - tr.dwellStart) / S.cfg.dwell * 100) + '%' : '0';
-    if(tr.dwellStart != null && now - tr.dwellStart >= S.cfg.dwell) finishTrial(now, 1);
+    dwellBar.style.width = tr.dwellStart != null ? Math.min(100, (now - tr.dwellStart) / S.cfg.stopMs * 100) + '%' : '0';
+    if(tr.dwellStart != null && now - tr.dwellStart >= S.cfg.stopMs) finishTrial(now, 1);
     else if(now - tr.startT > S.cfg.timeout) finishTrial(now, 0);
   }
   tr.prevTop = top;
@@ -733,7 +737,7 @@ function finishTrial(now, success){
     warmup:tr.warm, D:tr.D, W:tr.W, ID:+Math.log2(tr.D/tr.W + 1).toFixed(4), direction:tr.dir, target_line:tr.line,
     start_ms:Math.round(tr.startT), first_move_ms: tr.firstMoveT ? Math.round(tr.firstMoveT) : '', end_ms:Math.round(now),
     rt_ms: tr.firstMoveT ? Math.round(tr.firstMoveT - tr.startT) : '',
-    mt_ms: success ? Math.round(tr.dwellStart - tr.startT) : '',      // start cue -> entered frame for the last time
+    mt_ms: success ? Math.round(tr.dwellStart - tr.startT) : '',      // start cue -> scrolling stopped inside the frame
     move_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '',
     success, skipped: tr.skipped || 0, switchbacks: tr.switchbacks, overshoot_px: Math.max(0, Math.round(-tr.minRem - tr.W/2)),
     gs_r0: E.r0 == null ? '' : E.r0.toFixed(2), gs_range_min: E.range ? E.range.min.toFixed(1) : '', gs_range_max: E.range ? E.range.max.toFixed(1) : '',
