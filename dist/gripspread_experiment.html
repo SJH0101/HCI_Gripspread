@@ -84,8 +84,17 @@
   .tlx-item{margin:0 0 18px}
   .tlx-item .q{font-weight:500;margin-bottom:2px}
   .tlx-item .d{color:var(--muted);font-size:12px;margin-bottom:6px}
-  .tlx-item input{width:100%;accent-color:var(--ink);padding:0;border:0}
+  .tlx-item .q{display:flex;justify-content:space-between;align-items:baseline}
+  .tlx-item .val{font-variant-numeric:tabular-nums;font-weight:700;min-width:3ch;text-align:right}
+  .tlx-item .val.none{color:#B00020;font-weight:500;font-size:12px}
+  .tlx-item .scale{position:relative;padding-top:6px}
+  .tlx-item .scale::before{content:"";position:absolute;left:8px;right:8px;top:0;height:10px;
+    background:repeating-linear-gradient(to right,#9AA0A6 0 1px,transparent 1px calc((100% - 1px)/20));}
+  .tlx-item input{width:100%;accent-color:var(--ink);padding:0;border:0;margin:0}
+  .tlx-item input.untouched{opacity:.45}
   .tlx-item .ends{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
+  .tlx-item .nums{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;padding:0 4px}
+  #tlxWarn{color:#B00020;font-size:13px;margin-left:8px;align-self:center}
 </style>
 </head>
 <body>
@@ -197,9 +206,9 @@
     <section id="sTlx" class="screen">
       <div class="sheet">
         <h1 id="tlxTitle">방금 쓴 방법은 어땠어?</h1>
-        <p>막대를 움직여서 표시해줘. 정답은 없어.</p>
+        <p>각 항목 막대를 움직여서 0–100 사이로 표시해줘 (5점 단위). 정답은 없어. 모든 항목을 한 번씩 움직여야 제출돼.</p>
         <div id="tlxItems"></div>
-        <div class="actions"><button id="btnTlx" class="primary">제출</button></div>
+        <div class="actions"><button id="btnTlx" class="primary">제출</button><span id="tlxWarn"></span></div>
       </div>
     </section>
 
@@ -809,11 +818,18 @@ const TLX = [
 ];
 function showTlx(st){
   $('tlxTitle').textContent = `방금 쓴 ${TECH[st.tech]}는 어땠어?`;
-  $('tlxItems').innerHTML = TLX.map(([k,q,d,lo,hi]) => `<div class="tlx-item"><div class="q">${q}</div><div class="d">${d}</div>
-    <input type="range" min="0" max="100" step="5" value="50" data-k="${k}" aria-label="${q}"><div class="ends"><span>${lo}</span><span>${hi}</span></div></div>`).join('');
+  $('tlxItems').innerHTML = TLX.map(([k,q,d,lo,hi]) => `<div class="tlx-item"><div class="q"><span>${q}</span><span class="val none" id="v_${k}">아직 안 함</span></div><div class="d">${d}</div>
+    <div class="scale"><input type="range" class="untouched" min="0" max="100" step="5" value="50" data-k="${k}" aria-label="${q}"></div>
+    <div class="nums"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+    <div class="ends"><span>${lo}</span><span>${hi}</span></div></div>`).join('');
+  $('tlxWarn').textContent = '';
+  document.querySelectorAll('#tlxItems input').forEach(i => i.addEventListener('input', () => {
+    i.classList.remove('untouched'); const v = $('v_' + i.dataset.k); v.textContent = i.value; v.classList.remove('none'); }));
   show('sTlx');
 }
 $('btnTlx').onclick = () => {
+  const left = [...document.querySelectorAll('#tlxItems input.untouched')];
+  if(left.length){ $('tlxWarn').textContent = `아직 안 움직인 항목이 ${left.length}개 있어`; left[0].focus(); return; }
   const st = S.steps[S.stepIdx], row = { pid:S.pid, technique:st.tech };
   document.querySelectorAll('#tlxItems input').forEach(i => row[i.dataset.k] = +i.value);
   row.raw_tlx = +(TLX.reduce((a,[k]) => a + row[k], 0) / TLX.length).toFixed(1);
