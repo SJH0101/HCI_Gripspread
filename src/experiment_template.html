@@ -140,7 +140,7 @@
         <h1>참가자 설정</h1>
         <p>참가자 번호로 기법 순서와 컵 순서가 정해져. 손 길이는 손목 주름에서 중지 끝까지, span은 엄지 끝에서 소지 끝까지 최대로 벌린 길이야.</p>
         <div class="form">
-          <label for="fPid">참가자 번호 (1–16)</label><input id="fPid" type="number" min="1" max="99" value="1">
+          <label for="fPid">참가자 번호 (1–12)</label><input id="fPid" type="number" min="1" max="99" value="1">
           <label for="fHandLen">손 길이 (mm)</label><input id="fHandLen" type="number" min="100" max="250" placeholder="예: 185">
           <label for="fSpan">손 span (mm)</label><input id="fSpan" type="number" min="100" max="300" placeholder="예: 210">
           <label for="fHand">주손 (컵을 드는 손)</label><select id="fHand"><option value="R">오른손</option><option value="L">왼손</option></select>
@@ -280,15 +280,19 @@ const allTrials = [], tlxRows = [];
 let frames = [], imuRows = [], stepTrials = [];
 
 function parseList(v){ return v.split(',').map(x=>parseFloat(x.trim())).filter(x=>!isNaN(x)); }
+// 12 participants: each Latin-square row gets 3 people; technique order alternates within and across rows,
+// so cup order is balanced (3 per row) and technique order splits 6/6.
+//   row A: TP, GS, TP   row B: GS, TP, GS   row C: TP, GS, TP   row D: GS, TP, GS
+const N_PART = 12;
 function orderFor(pid){
-  const seq = (pid - 1) % 8;
-  const techOrder = seq < 4 ? ['trackpad','gs'] : ['gs','trackpad'];
-  const latinRow = seq % 4;
+  const seq = (pid - 1) % N_PART;
+  const latinRow = seq % 4, round = Math.floor(seq / 4);
+  const techOrder = (latinRow + round) % 2 === 0 ? ['trackpad','gs'] : ['gs','trackpad'];
   return { seq, techOrder, latinRow, cups: LATIN[latinRow] };
 }
 function showOrder(){
   const pid = parseInt($('fPid').value) || 1, o = orderFor(pid);
-  $('orderBox').innerHTML = `순서 ${o.seq+1}/8 · 라틴 방격 ${LATIN_NAME[o.latinRow]}<br>` +
+  $('orderBox').innerHTML = `순서 ${o.seq+1}/${N_PART} · 라틴 방격 ${LATIN_NAME[o.latinRow]}<br>` +
     o.techOrder.map((t,i)=>`${i+1}. ${TECH[t]}: 연습 → ${o.cups.map(c=>CUPS[c]).join(' → ')} → 설문`).join('<br>');
 }
 $('fPid').addEventListener('input', showOrder); showOrder();
