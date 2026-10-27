@@ -344,8 +344,8 @@ const GripEngine = (() => {
     return [E.r0 - P.dead*Math.max(P.minSide, E.r0 - E.range.min), E.r0 + P.dead*Math.max(P.minSide, E.range.max - E.r0)];
   };
   // Velocity with acceleration, not a direct angle->speed map:
-  //  1. command speed = gain * mag^gamma, multiplied by a hold-time boost (1 -> boostMax over boostMs,
-  //     smoothstep) that grows while the same direction is held and resets on reversal or in the dead zone.
+  //  1. command speed = gain * mag^gamma, multiplied by a hold-time boost (1 -> boostMax, linear over boostMs,
+  //     ) that grows while the same direction is held and resets on reversal or in the dead zone.
   //  2. the actual velocity follows the command with a slow time constant when speeding up (accMs)
   //     and a fast one when slowing down or reversing (brakeMs), so stopping is crisp.
   // Boost B only builds while the finger is pushed hard (mag >= boostOn): +((boostMax-1)/boostMs) per ms.
