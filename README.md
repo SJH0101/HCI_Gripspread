@@ -162,9 +162,22 @@ a  = proj(p₈ − M),  b = proj(p₁₂ − M)    M에서 두 손가락 끝을 
 ```
 
 - 2.2제곱이라서 살짝 벌리면 아주 느리고, 끝까지 가면 확 빨라진다. 표적 근처에서 조금씩 맞추기 쉽다.
+- 자동차 페달이랑 같다. 살짝 밟으면 슬금슬금 가고, 꾹 밟으면 쭉 나간다.
+- 이건 지수함수(`a^x`)가 아니라 거듭제곱(`x^2.2`)이다. 벌림 정도가 밑에 있고 2.2가 지수다.
 - 방향: 벌리면 위로, 오므리면 아래로.
 
 **② 버티면 붙는 가속 (가속 배수)**
+
+> **가속 배수가 뭔가요?**
+> 스크롤 속도 = 기본 속도 × 가속 배수. 기본 속도는 *얼마나 벌렸나*로 정해지고, 가속 배수는 *얼마나 오래 세게 버텼나*로 정해진다. 처음엔 1배고, 끝까지 벌린 채 버티면 최대 2.5배까지 오른다.
+> 방향키를 꾹 누르고 있으면 점점 빨라지는 것과 같다. 끝까지 벌려도 800 px/s면 긴 문서를 넘기기엔 느리고, 그렇다고 기본 속도를 올리면 표적 근처에서 지나쳐버린다. 그래서 "세게, 오래 = 멀리 가고 싶다"로 보고 그때만 더 빠르게 해준다.
+>
+> | 끝까지 벌리고 버틴 시간 | 처음 | 0.4초 | 0.8초 | 1.2초 이후 |
+> |---|---|---|---|---|
+> | 가속 배수 | 1배 | 1.5배 | 2.0배 | 2.5배 |
+> | 스크롤 속도 | 800 | 1,200 | 1,600 | 2,000 px/s |
+>
+> **올라갈 땐 직선, 내려갈 땐 지수함수.** 올라갈 땐 매 순간 같은 만큼 더해서 그래프가 직선이다. 손을 풀면 뜨거운 커피가 식듯이 처음엔 확 빠지고 갈수록 천천히 1배에 붙는다(남은 가속이 0.2초마다 37%로 줄어든다).
 
 - 벌림 정도가 **0.6 이상**인 채로 버티면 배수가 1.2초에 걸쳐 **1배에서 2.5배까지** 선형으로 오른다. 같은 시간마다 같은 만큼(0.4초마다 0.5배씩) 올라서 0.4초 뒤 1.5배, 0.8초 뒤 2.0배, 1.2초 뒤 2.5배가 된다. 긴 문서를 빨리 넘길 때 쓴다.
 - 0.6 아래로 풀면 배수가 0.2초 시간상수로 1배로 내려온다(0.2초 뒤엔 붙었던 가속의 37%, 0.6초 뒤엔 5%만 남는다). 표적에 가까워지면서 손을 풀면 저절로 느려진다.
@@ -173,6 +186,20 @@ a  = proj(p₈ − M),  b = proj(p₁₂ − M)    M에서 두 손가락 끝을 
 **③ 실제 속도는 목표를 천천히 또는 빠르게 따라간다**
 
 ![한 번 스크롤하는 동안 속도 변화](docs/speed_timeline.svg)
+
+> **시간상수가 뭔가요? 0.25초 딜레이인가요?**
+> 딜레이가 아니다. 딜레이라면 0.25초 동안 가만있다가 갑자기 목표 속도로 바뀐다. 시간상수는 목표가 바뀌는 순간 **바로 따라가기 시작하되, 한 번에 다 가지 않고 부드럽게 다가가는** 빠르기를 말한다.
+> 정의는 이렇다: **시간상수만큼 지날 때마다 목표와의 남은 차이가 37%로 줄어든다** (거꾸로 말하면 남은 차이의 63%를 메운다). 63%는 1 − 1/e ≈ 0.63에서 나온 숫자다.
+>
+> 예: 목표 800 px/s, 지금 0, 시간상수 0.25초
+>
+> | 시간 | 0초 | 0.25초 | 0.5초 | 0.75초 | 1초 |
+> |---|---|---|---|---|---|
+> | 남은 차이 | 800 | 약 294 | 약 108 | 약 40 | 약 15 |
+> | 실제 속도 | 0 | 약 506 | 약 692 | 약 760 | 약 785 |
+>
+> 더 쉬운 감각: 출발할 때의 기세 그대로 쭉 갔다면 딱 시간상수(0.25초)에 목표에 닿았을 것이다. 실제로는 다가갈수록 느려져서 그때 63%까지만 와 있다. 숫자가 작을수록 빠릿하게, 클수록 굼뜨게 따라간다.
+> 우리는 빨라질 때 0.25초(출발은 부드럽게), 느려질 때 0.06초(멈춤은 칼같이)를 쓴다. 차로 치면 출발은 살살, 브레이크는 확 밟는 셈이다.
 
 - 스크롤 속도는 목표 속도로 바로 뛰지 않고 따라가는 방식이다.
 - 빨라질 때는 시간상수 **0.25초**: 0.25초면 목표의 63%까지 올라간다.
@@ -322,6 +349,8 @@ target velocity = 800 px/s × deflection^2.2 × boost
 
 - The 2.2 exponent makes small deflections very slow and full deflection fast, which helps fine positioning near the target. Opening scrolls up, closing scrolls down.
 - *Boost:* while deflection ≥ 0.6 is held, the boost rises linearly from 1× to 2.5× over 1.2 s. Below 0.6 it decays back to 1× with a 0.2 s time constant. A direction change or the dead zone resets it to 1× at once.
+- *What the boost is:* scroll speed = base speed × boost. The base speed comes from *how far* you spread; the boost comes from *how long you keep pushing hard*. It works like holding an arrow key: the longer you hold, the faster it goes (1× → 1.5× at 0.4 s → 2.0× at 0.8 s → 2.5× at 1.2 s). It rises in a straight line and, once released, fades like cooling coffee: fast at first, then slowly back to 1×.
+- *What the time constant means:* it is not a delay. A delay would wait 0.25 s and then jump. With a time constant, the velocity starts moving toward the target at once, and every time constant the remaining gap shrinks to 37% (it closes 63% of it; 1 − 1/e ≈ 0.63). From 0 toward 800 px/s with τ = 0.25 s: ~506 at 0.25 s, ~692 at 0.5 s, ~760 at 0.75 s. Smaller τ follows more crisply.
 - *Following:* the actual velocity follows the target with a 0.25 s time constant when speeding up and 0.06 s when slowing down or reversing, and snaps to 0 below 5 px/s when the target is 0. Speeding up feels smooth and releasing stops right away.
 
 Exact update per frame (Δt = time since the last frame):
