@@ -69,6 +69,16 @@ CSE333 HCI개론 (UNIST, 2026 가을) Team 10 프로젝트.
 - 떨림은 지수 평활로 줄인다: `θ ← θ + 0.35 × (새 값 − θ)`
 - 한 프레임 만에 20° 넘게 튀면 버린다. 다만 3프레임 연속으로 그러면 실제로 움직인 걸로 보고 받아들인다.
 
+**정확한 식** (p₀, p₅ … 는 MediaPipe world 좌표의 관절 위치)
+
+```
+n  = 정규화( (p₅ − p₀) × (p₁₇ − p₀) )     손바닥 법선: 손바닥 위 두 벡터의 외적
+M  = (p₅ + p₉) ÷ 2                       꼭짓점: 검지·중지 뿌리의 중간점
+proj(v) = v − (v·n) n                    v에서 법선 방향 성분을 빼서 손바닥 평면에 투영
+a  = proj(p₈ − M),  b = proj(p₁₂ − M)    M에서 두 손가락 끝을 향한 벡터 (투영 후)
+θ  = arccos( a·b ÷ (|a| |b|) )           두 벡터 사이 각도
+```
+
 ### 3. 못 믿을 값이면 입력 끊기
 
 ![입력을 끊는 세 가지 경우](docs/input_gates.svg)
@@ -90,6 +100,14 @@ CSE333 HCI개론 (UNIST, 2026 가을) Team 10 프로젝트.
 **③ 손이 안 보일 때**
 - 손이 화면에서 **0.5초 넘게** 안 보이면 처음 상태로 돌아간다.
 - 다시 손을 올리고 편한 V로 0.7초 멈춰야 켜진다. 그래서 손을 내렸다 올릴 때 갑자기 스크롤되는 일이 없다.
+
+**정확한 식**
+
+```
+손 방향        = |n_z|                         n의 카메라 축(z) 성분 = 법선과 카메라 축 사이 cos의 크기
+펴짐 비율(검지) = |a| ÷ |p₉ − p₀|               투영된 M→검지 끝 길이 ÷ 손바닥 길이 (중지는 |b|)
+마디 굽힘 합    = ∠(p₆−p₅, p₇−p₆) + ∠(p₇−p₆, p₈−p₇)   가운데 마디(PIP)와 끝 마디(DIP)에서 뼈 방향이 꺾인 각도 (중지는 9~12번)
+```
 
 ### 4. 손 범위 재기 (처음 한 번)와 5. 편한 V 잡기 (쓸 때마다)
 
@@ -162,6 +180,20 @@ CSE333 HCI개론 (UNIST, 2026 가을) Team 10 프로젝트.
 - 목표가 0인데 실제 속도가 5 px/s 아래로 내려가면 그냥 0으로 끊는다.
 - 그래서 세게 벌리면 부드럽게 빨라지고, 풀면 바로 선다.
 - 위 그래프는 엔진 계산식을 그대로 돌려서 그린 것이다. 0.5초에 끝까지 벌리고, 2.5초에 35°로 풀고, 3.5초에 편한 V로 돌아온 경우다.
+
+**정확한 식** (Δt = 직전 프레임과의 시간 간격)
+
+```
+가속 배수 B
+  같은 방향으로 벌림 정도 ≥ 0.6 유지:  B ← min(2.5, B + (2.5 − 1) × Δt ÷ 1.2초)    직선으로 증가
+  그 밖 (0.6 미만으로 풂):             B ← 1 + (B − 1) × e^(−Δt ÷ 0.2초)           지수적으로 1배로 복귀
+  방향이 바뀌거나 데드존:               B ← 1
+
+목표 속도   u = 방향 × 800 × 벌림 정도^2.2 × B
+실제 속도   v ← v + (u − v) × (1 − e^(−Δt ÷ τ))      1차 저역통과 필터
+            τ = 0.25초 (|u| > |v|로 빨라질 때) / 0.06초 (느려지거나 방향을 바꿀 때)
+            u = 0이고 |v| < 5 px/s 이면 v = 0
+```
 
 ### 예시 계산 (편한 V 25°, 최대 벌림 45°, 최대 오므림 5°)
 
@@ -250,10 +282,22 @@ Example user: **comfortable V = 25°, fully open = 45°, fully closed = 5°**
 - Rotating the hand barely changes θ. Our earlier ratio (fingertip distance ÷ palm width) changed with rotation alone.
 - Smoothing: `θ ← θ + 0.35 × (new − θ)`. A jump over 20° in one frame is dropped, unless it lasts 3 frames.
 
+Exact formulas (p₀, p₅ … are MediaPipe world-landmark positions):
+
+```
+n  = normalize( (p₅ − p₀) × (p₁₇ − p₀) )   palm normal (cross product of two in-palm vectors)
+M  = (p₅ + p₉) / 2                          vertex: midpoint of the index and middle knuckles
+proj(v) = v − (v·n) n                       projection onto the palm plane
+a  = proj(p₈ − M),  b = proj(p₁₂ − M)
+θ  = arccos( a·b / (|a| |b|) )
+```
+
 **3. Freeze input when the reading can't be trusted.** In these cases MediaPipe guesses hidden finger positions, so we stop scrolling. Most regrips of the cup fall into one of them.
 - *Palm turned sideways:* |cos| between the palm normal and the camera axis < 0.35 (roughly more than 70° of rotation).
 - *Fingers folded:* extension ratio (projected base→tip length ÷ palm length, wrist→middle base) < 0.55, or the summed bend of the middle and end joints > 80°, for 6 consecutive frames (~0.1 s). Shorter blips keep the last angle.
 - *Hand lost:* more than 0.5 s → back to the start state; the user must hold a comfortable V again.
+
+Exact formulas: facing = |n_z| (the camera-axis component of the palm normal); extension (index) = |a| / |p₉ − p₀| (middle uses |b|); joint bend = ∠(p₆−p₅, p₇−p₆) + ∠(p₇−p₆, p₈−p₇), i.e. the bend at the PIP and DIP joints (middle uses 9–12).
 
 **4. Hand range (once).** "Open fully": 3 s countdown, 1.5 s capture, the 90th percentile becomes *max open*. "Close fully": same, the 10th percentile becomes *max closed*. Percentiles instead of the extremes keep one noisy frame from setting the range. A range under 8° is rejected. The result is stored in the browser, and it widens on its own if the user later goes past it.
 
@@ -279,6 +323,18 @@ target velocity = 800 px/s × deflection^2.2 × boost
 - The 2.2 exponent makes small deflections very slow and full deflection fast, which helps fine positioning near the target. Opening scrolls up, closing scrolls down.
 - *Boost:* while deflection ≥ 0.6 is held, the boost rises linearly from 1× to 2.5× over 1.2 s. Below 0.6 it decays back to 1× with a 0.2 s time constant. A direction change or the dead zone resets it to 1× at once.
 - *Following:* the actual velocity follows the target with a 0.25 s time constant when speeding up and 0.06 s when slowing down or reversing, and snaps to 0 below 5 px/s when the target is 0. Speeding up feels smooth and releasing stops right away.
+
+Exact update per frame (Δt = time since the last frame):
+
+```
+boost B:   held, same direction, deflection ≥ 0.6:  B ← min(2.5, B + 1.5 · Δt / 1.2 s)   (linear)
+           otherwise:                               B ← 1 + (B − 1) · exp(−Δt / 0.2 s)
+           direction change or dead zone:           B ← 1
+target     u = direction · 800 · deflection^2.2 · B
+velocity   v ← v + (u − v) · (1 − exp(−Δt / τ))     first-order low-pass
+           τ = 0.25 s when speeding up (|u| > |v|), 0.06 s when slowing or reversing
+           v = 0 when u = 0 and |v| < 5 px/s
+```
 
 **Worked example (comfortable V 25°, max open 45°, max closed 5°)**
 
