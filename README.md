@@ -157,6 +157,8 @@ a  = proj(p₈ − M),  b = proj(p₁₂ − M)    M에서 두 손가락 끝을 
 
 ![벌림 정도에 따른 목표 속도](docs/speed_curve.svg)
 
+> 그래프 읽는 법: **파란 실선**은 가속 없이(1배) 벌림 정도만으로 정해지는 속도. **주황 점선**은 0.6 이상으로 1.2초 버텨서 가속이 꽉 찼을 때(2.5배) 속도. 주황 점선이 0.6부터 시작하는 건 그 아래에선 가속이 안 붙기 때문이다.
+
 ```
 목표 속도 = 800 px/s × 벌림 정도^2.2 × 가속 배수
 ```
@@ -186,6 +188,11 @@ a  = proj(p₈ − M),  b = proj(p₁₂ − M)    M에서 두 손가락 끝을 
 **③ 실제 속도는 목표를 천천히 또는 빠르게 따라간다**
 
 ![한 번 스크롤하는 동안 속도 변화](docs/speed_timeline.svg)
+
+> 그래프 읽는 법: 위 검은 선은 손 각도, 아래가 속도다.
+> - **주황 점선(목표 속도)**: 손 모양이 바뀌는 순간 값이 바로 바뀐다. 중간값을 거쳐 올라가는 게 아니라 이전 값에서 끊기고 새 값에서 바로 시작한다. 0.5초, 2.5초, 3.5초에 끊겨 있는 게 그거다(빈 동그라미 = 끊기기 직전 값, 찬 동그라미 = 새로 시작하는 값).
+> - **파란 실선(실제 속도)**: 문서가 실제로 움직이는 속도. 주황 점선을 바로 못 따라가고 쫓아간다. 빨라질 땐 천천히(시간상수 0.25초), 멈출 땐 빠르게(0.06초) 따라간다.
+> - 그래서 출발은 부드럽고, 손을 풀면 거의 바로 선다.
 
 > **시간상수가 뭔가요? 0.25초 딜레이인가요?**
 > 딜레이가 아니다. 딜레이라면 0.25초 동안 가만있다가 갑자기 목표 속도로 바뀐다. 시간상수는 목표가 바뀌는 순간 **바로 따라가기 시작하되, 한 번에 다 가지 않고 부드럽게 다가가는** 빠르기를 말한다.
@@ -352,6 +359,7 @@ target velocity = 800 px/s × deflection^2.2 × boost
 - *What the boost is:* scroll speed = base speed × boost. The base speed comes from *how far* you spread; the boost comes from *how long you keep pushing hard*. It works like holding an arrow key: the longer you hold, the faster it goes (1× → 1.5× at 0.4 s → 2.0× at 0.8 s → 2.5× at 1.2 s). It rises in a straight line and, once released, fades like cooling coffee: fast at first, then slowly back to 1×.
 - *What the time constant means:* it is not a delay. A delay would wait 0.25 s and then jump. With a time constant, the velocity starts moving toward the target at once, and every time constant the remaining gap shrinks to 37% (it closes 63% of it; 1 − 1/e ≈ 0.63). From 0 toward 800 px/s with τ = 0.25 s: ~506 at 0.25 s, ~692 at 0.5 s, ~760 at 0.75 s. Smaller τ follows more crisply.
 - *Following:* the actual velocity follows the target with a 0.25 s time constant when speeding up and 0.06 s when slowing down or reversing, and snaps to 0 below 5 px/s when the target is 0. Speeding up feels smooth and releasing stops right away.
+- *Reading the figures:* in the speed curve, the blue solid line is the speed with no boost (1×) and the orange dashed line is the speed with a full boost (2.5×). In the timeline, the orange dashed line is the target velocity. It changes value the moment the hand changes, so it breaks and restarts at the new value (hollow dot = last value before the break, filled dot = new value). The blue solid line is the actual velocity, which chases the target: slowly when speeding up, quickly when stopping.
 
 Exact update per frame (Δt = time since the last frame):
 
