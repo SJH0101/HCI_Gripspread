@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="380" viewBox="0 0 900 380" font-family="Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif">
+  <rect width="900" height="380" fill="#ffffff"/>
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#3B6FE0"/></marker>
+  </defs>
+  <!-- panel titles -->
+  <text x="150" y="36" text-anchor="middle" font-size="20" font-weight="700" fill="#1F2328">예전: 뿌리 두 개에서 각각</text>
+  <text x="150" y="60" text-anchor="middle" font-size="15" fill="#5B6270">손끝을 붙였는데도</text>
+  <text x="450" y="36" text-anchor="middle" font-size="20" font-weight="700" fill="#1F2328">지금: 중간점 M 하나에서</text>
+  <text x="450" y="60" text-anchor="middle" font-size="15" fill="#5B6270">손끝을 붙이면</text>
+  <text x="750" y="36" text-anchor="middle" font-size="20" font-weight="700" fill="#1F2328">지금: 벌렸을 때</text>
+  <text x="750" y="60" text-anchor="middle" font-size="15" fill="#5B6270">V 각도가 그대로 θ</text>
+  <line x1="300" y1="80" x2="300" y2="350" stroke="#E3E5E8" stroke-width="2"/>
+  <line x1="600" y1="80" x2="600" y2="350" stroke="#E3E5E8" stroke-width="2"/>
+
+  <!-- ===== panel 1: old ===== -->
+  <g>
+    <rect x="80" y="250" width="140" height="80" rx="24" fill="#F3F4F6" stroke="#C9CDD2" stroke-width="2"/>
+    <line x1="125" y1="250" x2="150" y2="110" stroke="#1F2328" stroke-width="14" stroke-linecap="round" opacity="0.12"/>
+    <line x1="175" y1="250" x2="150" y2="110" stroke="#1F2328" stroke-width="14" stroke-linecap="round" opacity="0.12"/>
+    <line x1="125" y1="250" x2="150" y2="110" stroke="#3B6FE0" stroke-width="3"/>
+    <line x1="175" y1="250" x2="150" y2="110" stroke="#E5534B" stroke-width="3"/>
+    <path d="M139.5,169.1 A60,60 0 0 0 160.5,169.1" fill="none" stroke="#1F2328" stroke-width="2"/>
+    <text x="176" y="186" font-size="18" font-weight="700" fill="#E5534B">≈14°</text>
+    <circle cx="125" cy="250" r="7" fill="#1F2328"/><circle cx="175" cy="250" r="7" fill="#1F2328"/>
+    <circle cx="150" cy="110" r="7" fill="#1F2328"/>
+    <text x="104" y="276" font-size="15" fill="#1F2328">5</text><text x="186" y="276" font-size="15" fill="#1F2328">9</text>
+    <text x="96" y="118" font-size="15" fill="#1F2328">8·12</text>
+    <text x="150" y="355" text-anchor="middle" font-size="15" fill="#5B6270">검지 방향과 중지 방향 사이 각도</text>
+  </g>
+
+  <!-- ===== panel 2: midpoint, closed ===== -->
+  <g>
+    <rect x="380" y="250" width="140" height="80" rx="24" fill="#F3F4F6" stroke="#C9CDD2" stroke-width="2"/>
+    <line x1="425" y1="250" x2="450" y2="110" stroke="#1F2328" stroke-width="14" stroke-linecap="round" opacity="0.12"/>
+    <line x1="475" y1="250" x2="450" y2="110" stroke="#1F2328" stroke-width="14" stroke-linecap="round" opacity="0.12"/>
+    <line x1="450" y1="250" x2="450" y2="110" stroke="#3B6FE0" stroke-width="3"/>
+    <circle cx="425" cy="250" r="6" fill="#9AA0A6"/><circle cx="475" cy="250" r="6" fill="#9AA0A6"/>
+    <circle cx="450" cy="250" r="8" fill="#3B6FE0"/>
+    <circle cx="450" cy="110" r="7" fill="#1F2328"/>
+    <text x="404" y="276" font-size="15" fill="#5B6270">5</text><text x="486" y="276" font-size="15" fill="#5B6270">9</text>
+    <text x="462" y="244" font-size="16" font-weight="700" fill="#3B6FE0">M</text>
+    <text x="396" y="118" font-size="15" fill="#1F2328">8·12</text>
+    <text x="472" y="180" font-size="22" font-weight="700" fill="#3B6FE0">0°</text>
+    <text x="450" y="355" text-anchor="middle" font-size="15" fill="#5B6270">두 끝이 같은 점 → 선이 하나</text>
+  </g>
+
+  <!-- ===== panel 3: midpoint, spread ===== -->
+  <g>
+    <rect x="680" y="250" width="140" height="80" rx="24" fill="#F3F4F6" stroke="#C9CDD2" stroke-width="2"/>
+    <line x1="725" y1="250" x2="690" y2="110" stroke="#1F2328" stroke-width="14" stroke-linecap="round" opacity="0.12"/>
+    <line x1="775" y1="250" x2="810" y2="110" stroke="#1F2328" stroke-width="14" stroke-linecap="round" opacity="0.12"/>
+    <line x1="750" y1="250" x2="690" y2="110" stroke="#3B6FE0" stroke-width="3"/>
+    <line x1="750" y1="250" x2="810" y2="110" stroke="#3B6FE0" stroke-width="3"/>
+    <path d="M730.3,204 A50,50 0 0 1 769.7,204" fill="none" stroke="#3B6FE0" stroke-width="2.5"/>
+    <text x="750" y="190" text-anchor="middle" font-size="22" font-weight="700" fill="#3B6FE0">θ</text>
+    <circle cx="725" cy="250" r="6" fill="#9AA0A6"/><circle cx="775" cy="250" r="6" fill="#9AA0A6"/>
+    <circle cx="750" cy="250" r="8" fill="#3B6FE0"/>
+    <circle cx="690" cy="110" r="7" fill="#1F2328"/><circle cx="810" cy="110" r="7" fill="#1F2328"/>
+    <text x="704" y="276" font-size="15" fill="#5B6270">5</text><text x="786" y="276" font-size="15" fill="#5B6270">9</text>
+    <text x="762" y="244" font-size="16" font-weight="700" fill="#3B6FE0">M</text>
+    <text x="668" y="100" font-size="15" fill="#1F2328">8</text><text x="820" y="100" font-size="15" fill="#1F2328">12</text>
+    <text x="750" y="355" text-anchor="middle" font-size="15" fill="#5B6270">손바닥 평면에 투영해서 잼</text>
+  </g>
+</svg>
