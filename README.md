@@ -25,6 +25,22 @@ CSE333 HCI개론 (UNIST, 2026 가을) Team 10 프로젝트.
 `dist/`의 두 파일은 파일 하나만 있으면 돌아간다. 크롬에서 열고 카메라를 허용하면 된다. 손 인식 모델은 처음 열 때 인터넷에서 받아온다.
 컵 IMU를 블루투스로 연결하려면 크롬이나 엣지를 써야 한다. 사파리랑 파이어폭스는 Web Bluetooth를 지원하지 않는다.
 
+## 클라우드 자동 저장 (Supabase, 선택)
+
+켜 두면 조건이 끝날 때마다, 그리고 실험이 끝날 때 그때까지의 데이터 zip이 Supabase Storage에 새 파일로 올라간다 (`P01/<시작시각>/P01_003_after-step-7.zip`, 마지막은 `…_final.zip`). 로컬 zip과 브라우저 백업은 그대로라서, 인터넷이 끊겨도 데이터는 남는다. 업로드 기록은 `session.json`의 `cloud_uploads`에 남는다.
+
+**설정 (한 번)**
+1. Supabase 대시보드 › Storage › New bucket: 이름 `gripspread`, **Private**.
+2. SQL Editor에서 실행 (익명 키로 올리기만 허용, 읽기·덮어쓰기·삭제는 안 됨):
+   ```sql
+   create policy "gripspread: anon can upload"
+   on storage.objects for insert to anon
+   with check ( bucket_id = 'gripspread' );
+   ```
+3. 실험 프로그램 시작 화면 **클라우드 자동 저장**에 프로젝트 URL과 **anon(public) 키**를 넣고 **연결 테스트** → **자동 업로드 켜기**. 값은 그 브라우저에만 저장되고 레포에는 안 들어간다. service_role 키는 넣으면 거부한다.
+
+받은 파일은 대시보드 Storage에서 내려받는다. 무료 프로젝트는 일주일 넘게 안 쓰면 일시정지되니까 실험 기간 전에 대시보드에서 깨워 둔다.
+
 ## 파일럿 (값 정하기)
 
 본 실험 값은 연구자끼리 먼저 맞춘 다음, 팀 밖 파일럿 참가자 3~4명과 `dist/gripspread_pilot.html`로 정하고 고정한다. IMU 보정은 참가자 없이 실험자가 `dist/gripspread_imu_calib.html`로 따로 한다. 절차는 Fashimpaur et al. (CHI 2023)의 두 번째 파일럿을 따른다.

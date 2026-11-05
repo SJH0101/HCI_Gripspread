@@ -123,6 +123,7 @@
       <span>카메라</span><b id="kFps">–</b>
       <span>컵 IMU</span><b id="kImu">연결 안 됨</b>
       <span>컵 기울기</span><b id="kTilt">–</b>
+      <span>클라우드</span><b id="kCloud">꺼짐</b>
     </div>
     <div class="rail-actions">
       <button id="btnRange">손 범위 재기</button>
@@ -186,6 +187,15 @@
         <div class="form">
           <label for="fImuCal">① 센서 보정 파일</label><span><input id="fImuCal" type="file" accept=".json"> <span id="imuCalMsg" class="check"></span></span>
           <label>② 정지 확인 (10초)</label><span><button id="btnImuCheck" type="button">정지 확인 시작</button> <span id="imuChkMsg" class="check"></span></span>
+        </div>
+
+        <h2>클라우드 자동 저장 (Supabase, 선택)</h2>
+        <p class="muted" style="color:var(--muted)">켜 두면 조건이 끝날 때마다, 그리고 실험이 끝날 때 지금까지의 데이터 zip이 Supabase Storage에 자동으로 올라갑니다. 로컬 zip 저장과 브라우저 백업은 그대로 됩니다. 값은 이 브라우저에만 저장되고 코드(깃허브)에는 들어가지 않습니다. <b>anon(public) 키만</b> 넣어 주세요.</p>
+        <div class="form">
+          <label for="cUrl">프로젝트 URL</label><input id="cUrl" placeholder="https://xxxx.supabase.co">
+          <label for="cKey">anon 키</label><input id="cKey" type="password" placeholder="eyJ... (Project Settings › API › anon public)" autocomplete="off">
+          <label for="cBucket">버킷</label><input id="cBucket" value="gripspread">
+          <label>사용</label><span><label style="color:var(--ink)"><input id="cOn" type="checkbox"> 자동 업로드 켜기</label> <button id="cTest" type="button" style="margin-left:8px">연결 테스트</button> <span id="cMsg" class="check"></span></span>
         </div>
 
         <h2>배경 설문 (참가자에게 물어서 입력)</h2>
@@ -1006,13 +1016,63 @@ async function backup(){
   if(!S.cfg || !S.cfg.save) return;
   try{ await idbPut(`${pTag(S.pid)}_${S.startedAt}`, snapshot()); $('hSaved').textContent = '브라우저에 백업됨 · ' + new Date().toLocaleTimeString(); }
   catch(e){ $('hSaved').textContent = '백업 실패: ' + e.message; }
+  cloudSync();
+}
+
+// ---------- cloud copy (Supabase Storage, insert-only) ----------
+// Each checkpoint uploads the whole session so far as a new object (no overwrite, so an insert-only policy is enough):
+//   <bucket>/P01/<started>/P01_003_after-step-7.zip ... P01_009_final.zip
+const CLOUD_KEY = 'gripspread_cloud_v1';
+const CLOUD = { url:'', key:'', bucket:'gripspread', on:false, n:0, busy:false, again:false, log:[] };
+try{ Object.assign(CLOUD, JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}); }catch(e){}
+CLOUD.n = 0; CLOUD.busy = false; CLOUD.again = false; CLOUD.log = [];
+$('cUrl').value = CLOUD.url; $('cKey').value = CLOUD.key; $('cBucket').value = CLOUD.bucket || 'gripspread'; $('cOn').checked = !!CLOUD.on;
+function jwtRole(k){ try{ return JSON.parse(atob(k.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).role; }catch(e){ return null; } }
+function readCloudForm(){
+  CLOUD.url = $('cUrl').value.trim().replace(/\/+$/,''); CLOUD.key = $('cKey').value.trim(); CLOUD.bucket = $('cBucket').value.trim() || 'gripspread'; CLOUD.on = $('cOn').checked;
+  if(jwtRole(CLOUD.key) === 'service_role'){ CLOUD.on = false; $('cOn').checked = false; CLOUD.key = ''; $('cKey').value = '';
+    $('cMsg').className = 'check bad'; $('cMsg').textContent = 'service_role 키입니다. 절대 쓰면 안 됩니다. anon(public) 키를 넣어 주세요'; }
+  try{ localStorage.setItem(CLOUD_KEY, JSON.stringify({ url:CLOUD.url, key:CLOUD.key, bucket:CLOUD.bucket, on:CLOUD.on })); }catch(e){}
+  $('kCloud').textContent = CLOUD.on ? '켜짐' : '꺼짐';
+}
+['cUrl','cKey','cBucket','cOn'].forEach(id => $(id).addEventListener('change', readCloudForm));
+$('kCloud').textContent = CLOUD.on ? '켜짐' : '꺼짐';
+async function cloudPut(path, blob, type){
+  const r = await fetch(`${CLOUD.url}/storage/v1/object/${encodeURIComponent(CLOUD.bucket)}/${path}`, {
+    method:'POST', headers:{ Authorization:`Bearer ${CLOUD.key}`, apikey:CLOUD.key, 'Content-Type':type, 'x-upsert':'false' }, body:blob });
+  if(!r.ok){ let m = ''; try{ m = (await r.json()).message || ''; }catch(e){} throw new Error(`${r.status} ${m}`.trim()); }
+}
+$('cTest').onclick = async () => {
+  readCloudForm();
+  if(!CLOUD.url || !CLOUD.key){ $('cMsg').className = 'check bad'; $('cMsg').textContent = 'URL과 anon 키를 넣어 주세요'; return; }
+  $('cMsg').className = 'check'; $('cMsg').textContent = '테스트 중…';
+  try{ await cloudPut(`_test/${new Date().toISOString().replace(/[:.]/g,'-')}.txt`, new Blob(['gripspread upload test']), 'text/plain');
+    $('cMsg').textContent = '연결됨 · _test 폴더에 테스트 파일이 올라갔습니다'; }
+  catch(e){ $('cMsg').className = 'check bad'; $('cMsg').textContent = '실패: ' + e.message + ' (버킷 이름, 업로드 권한 SQL, URL을 확인해 주세요)'; }
+};
+window.GS_DEBUG.cloudSync = () => cloudSync();
+async function cloudSync(){
+  if(!CLOUD.on || !CLOUD.url || !CLOUD.key || !S.cfg || !window.JSZip) return;
+  if(CLOUD.busy){ CLOUD.again = true; return; }          // a newer checkpoint will be sent right after
+  CLOUD.busy = true;
+  try{
+    do{
+      CLOUD.again = false;
+      const snap = snapshot(), { blob, tag } = await makeZip(snap), st = S.steps[S.stepIdx];
+      const label = st && st.type === 'done' ? 'final' : `after-step-${S.stepIdx}`;
+      const path = `${tag}/${(S.startedAt || '').replace(/[:.]/g,'-')}/${tag}_${String(++CLOUD.n).padStart(3,'0')}_${label}.zip`;
+      try{ await cloudPut(path, blob, 'application/zip'); CLOUD.log.push({ path, at:new Date().toISOString(), ok:true });
+        $('kCloud').textContent = `올림 ${new Date().toLocaleTimeString().slice(0,-3)}`; $('kCloud').style.color = ''; }
+      catch(e){ CLOUD.log.push({ path, at:new Date().toISOString(), ok:false, error:e.message }); CLOUD.n--;
+        $('kCloud').textContent = '실패 · 로컬엔 저장됨'; $('kCloud').style.color = 'var(--alert)'; $('kCloud').title = e.message; }
+    } while(CLOUD.again);
+  } finally { CLOUD.busy = false; }
 }
 function saveStepFiles(){
   allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = [];
   backup();
 }
-async function downloadZip(snap){
-  if(!window.JSZip){ $('hSaved').textContent = 'zip 라이브러리를 불러오지 못했습니다 (인터넷 확인)'; return; }
+async function makeZip(snap){
   const z = new JSZip(), ss = snap.session, tag = pTag(ss.pid);
   z.file(`${tag}_trials.csv`, toCSV(TRIAL_HEAD, snap.trials));
   if(snap.frames.length) z.file(`${tag}_frames.csv`, toCSV(frameHead(ss.config && ss.config.frames), snap.frames));
@@ -1021,6 +1081,11 @@ async function downloadZip(snap){
   z.file(`${tag}_session.json`, JSON.stringify(ss, null, 2));
   const blob = await z.generateAsync({ type:'blob', compression:'DEFLATE' });
   const name = `${tag}_gripspread_${(ss.started_at || '').slice(0,16).replace(/[:T]/g,'-')}.zip`;
+  return { blob, name, tag };
+}
+async function downloadZip(snap){
+  if(!window.JSZip){ $('hSaved').textContent = 'zip 라이브러리를 불러오지 못했습니다 (인터넷 확인)'; return; }
+  const { blob, name } = await makeZip(snap);
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href), 5000); $('hSaved').textContent = '저장: ' + name;
 }
@@ -1028,7 +1093,7 @@ function sessionObj(){
   return { pid:S.pid, hand:S.hand, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
-    tlx:S.tlx, calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, imu:S.imu || null, user_agent:navigator.userAgent };
+    tlx:S.tlx, calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
 }
 $('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
 // recovery list on the setup screen
