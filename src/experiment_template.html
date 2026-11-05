@@ -215,7 +215,8 @@
             <label><input type="checkbox" value="chrome_zoom_100"> 크롬 확대/축소 100%, 창 최대화</label>
             <label><input type="checkbox" value="power_plugged"> 전원 연결 (저전력 모드 꺼짐)</label>
             <label><input type="checkbox" value="auto_update_off"> 실험 기간 동안 자동 업데이트 꺼짐 (일반 › 소프트웨어 업데이트 › 자동 업데이트)</label>
-            <label><input type="checkbox" value="laptop_on_mark"> 노트북이 책상 위 테이프 표시 자리에 있음 (매번 같은 위치·각도)</label>
+            <label><input type="checkbox" value="laptop_on_mark"> 노트북이 책상 위 테이프 표시 자리에 있음</label>
+            <label><input type="checkbox" value="screen_angle_mark"> 화면 각도가 표시해 둔 각도 그대로 (약 110°)</label>
             <label><input type="checkbox" value="stand_on_mark"> 참여자가 설 자리 바닥 테이프 표시 그대로</label>
             <label><input type="checkbox" value="lighting_same"> 외부광 없는 실내 (창 없음 또는 블라인드 닫음), 천장 조명 켬</label>
           </span>
@@ -299,6 +300,7 @@
           <div class="form">
             <label for="fPid">참여자 번호 (1–20)</label><input id="fPid" type="number" min="1" max="99" value="1">
             <label for="fHand">주손 (컵을 드는 손)</label><select id="fHand"><option value="R">오른손</option><option value="L">왼손</option></select>
+            <label for="fStature">키 (cm)</label><input id="fStature" type="number" min="120" max="220" placeholder="본인에게 물어봄">
           </div>
           <div id="orderBox" class="order num"></div>
         </div>
@@ -522,7 +524,7 @@ const WZ_CHECK = [
   () => paramsSource ? '' : '파일럿 결과 값을 아직 안 불러왔습니다 (기본값으로 진행)',
   () => !imuConn ? '컵 IMU가 연결되지 않았습니다' : !IMU_CAL ? '센서 보정이 없습니다' : !IMU_CHECK ? '정지 확인 10초를 아직 안 했습니다' : '',
   () => '',
-  () => parseInt($('fPid').value) ? '' : '참여자 번호를 넣어 주세요',
+  () => !parseInt($('fPid').value) ? '참여자 번호를 넣어 주세요' : !$('fStature').value ? '키를 적어 주세요' : '',
   () => { const m = handMeas(); return !(m.len.a && m.len.b && m.span.a && m.span.b) ? '손 길이와 span을 두 번씩 적어 주세요' : [...m.len.notes, ...m.span.notes].join(' · '); },
   () => ['fAge','fGender','fPointer','fTpFreq','fMacTp'].some(id => !$(id).value) ? '나이, 성별, 트랙패드 관련 세 문항을 모두 적어 주세요' : '',
   () => '',
@@ -717,7 +719,7 @@ $('btnStart').onclick = () => {
   try{ localStorage.setItem(ENV_KEY, JSON.stringify({ device:env.device, os:env.macos, scroll:env.trackpad_scroll_speed })); }catch(e){}
   S.env = env;
   const hm = handMeas();
-  Object.assign(S, { pid, hand:$('fHand').value, handLen:hm.len.mean, span:hm.span.mean,
+  Object.assign(S, { pid, hand:$('fHand').value, stature_cm:+$('fStature').value || null, handLen:hm.len.mean, span:hm.span.mean,
     handRaw:{ length_mm:[hm.len.a, hm.len.b], span_mm:[hm.span.a, hm.span.b] },
     demo:{ age:+$('fAge').value || null, gender:$('fGender').value || null, pointer_main:$('fPointer').value || null, trackpad_days_per_week:$('fTpFreq').value || null, macbook_trackpad:$('fMacTp').value || null,
       gesture_exp:[...document.querySelectorAll('#fGesture input:checked')].map(i => i.value),
@@ -1104,7 +1106,7 @@ async function downloadZip(snap){
   setTimeout(()=>URL.revokeObjectURL(a.href), 5000); $('hSaved').textContent = '저장: ' + name;
 }
 function sessionObj(){
-  return { pid:S.pid, hand:S.hand, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
+  return { pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
     tlx:S.tlx, calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
