@@ -805,8 +805,10 @@ async function backup(){
 }
 
 // ---------- cloud copy (Supabase Storage, insert-only) ----------
-// Each checkpoint uploads the whole session so far as a new object (no overwrite, so an insert-only policy is enough):
-//   <bucket>/P01/<started>/P01_003_after-step-7.zip ... P01_009_final.zip
+// Checkpoints upload a light zip (trials, TLX, session; a few KB) and the end of the session uploads the full zip
+// with frames and IMU. Every upload is a new object (no overwrite), so an insert-only policy is enough. This keeps
+// one participant at about one full zip (~10 MB) and 20+ people well inside the free plan's 1 GB.
+//   <bucket>/P01/<started>/P01_003_after-step-7.zip ... P01_015_final.zip
 const CLOUD_KEY = 'gripspread_cloud_v1';
 const CLOUD = { url:'', key:'', bucket:'gripspread', on:false, n:0, busy:false, again:false, log:[] };
 try{ Object.assign(CLOUD, JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}); }catch(e){}
@@ -843,8 +845,11 @@ async function cloudSync(){
   try{
     do{
       CLOUD.again = false;
-      const snap = snapshot(), { blob, tag } = await makeZip(snap), st = S.steps[S.stepIdx];
-      const label = st && st.type === 'done' ? 'final' : `after-step-${S.stepIdx}`;
+      const st = S.steps[S.stepIdx], final = !!(st && st.type === 'done');
+      const snap = snapshot(), { blob, tag } = await makeZip(snap, !final);
+      const label = final ? 'final' : `after-step-${S.stepIdx}`;
+      if(blob.size > 45e6){ CLOUD.log.push({ label, at:new Date().toISOString(), ok:false, error:'file over 45 MB, kept local only' });
+        $('kCloud').textContent = '파일이 커서 로컬에만 저장'; $('kCloud').style.color = 'var(--alert)'; continue; }
       const path = `${tag}/${(S.startedAt || '').replace(/[:.]/g,'-')}/${tag}_${String(++CLOUD.n).padStart(3,'0')}_${label}.zip`;
       try{ await cloudPut(path, blob, 'application/zip'); CLOUD.log.push({ path, at:new Date().toISOString(), ok:true });
         $('kCloud').textContent = `올림 ${new Date().toLocaleTimeString().slice(0,-3)}`; $('kCloud').style.color = ''; }
@@ -857,11 +862,11 @@ function saveStepFiles(){
   allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = [];
   backup();
 }
-async function makeZip(snap){
+async function makeZip(snap, light){
   const z = new JSZip(), ss = snap.session, tag = pTag(ss.pid);
   z.file(`${tag}_trials.csv`, toCSV(TRIAL_HEAD, snap.trials));
-  if(snap.frames.length) z.file(`${tag}_frames.csv`, toCSV(frameHead(ss.config && ss.config.frames), snap.frames));
-  if(snap.imu.length) z.file(`${tag}_imu.csv`, toCSV(IMU_HEAD, snap.imu));
+  if(!light && snap.frames.length) z.file(`${tag}_frames.csv`, toCSV(frameHead(ss.config && ss.config.frames), snap.frames));
+  if(!light && snap.imu.length) z.file(`${tag}_imu.csv`, toCSV(IMU_HEAD, snap.imu));
   if(snap.tlx.length) z.file(`${tag}_tlx.csv`, toCSV(TLX_HEAD, snap.tlx));
   z.file(`${tag}_session.json`, JSON.stringify(ss, null, 2));
   const blob = await z.generateAsync({ type:'blob', compression:'DEFLATE' });

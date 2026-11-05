@@ -27,7 +27,7 @@ CSE333 HCI개론 (UNIST, 2026 가을) Team 10 프로젝트.
 
 ## 클라우드 자동 저장 (Supabase, 선택)
 
-켜 두면 조건이 끝날 때마다, 그리고 실험이 끝날 때 그때까지의 데이터 zip이 Supabase Storage에 새 파일로 올라간다 (`P01/<시작시각>/P01_003_after-step-7.zip`, 마지막은 `…_final.zip`). 로컬 zip과 브라우저 백업은 그대로라서, 인터넷이 끊겨도 데이터는 남는다. 업로드 기록은 `session.json`의 `cloud_uploads`에 남는다.
+켜 두면 조건이 끝날 때마다 가벼운 zip(시행 결과, TLX, 세션 정보, 수 KB)이, 실험이 끝날 때 프레임·IMU까지 들어간 전체 zip이 Supabase Storage에 새 파일로 올라간다 (`P01/<시작시각>/P01_003_after-step-7.zip` … `P01_015_final.zip`). 참가자 한 명에 전체 zip 하나(약 10 MB 안팎)라서 무료 플랜 1 GB 안에 20명 이상 충분히 들어간다. 45 MB가 넘는 파일은 올리지 않고 로컬에만 둔다. 로컬 zip과 브라우저 백업은 그대로라서, 인터넷이 끊겨도 데이터는 남는다. 업로드 기록은 `session.json`의 `cloud_uploads`에 남는다.
 
 **설정 (한 번)**
 1. Supabase 대시보드 › Storage › New bucket: 이름 `gripspread`, **Private**.
