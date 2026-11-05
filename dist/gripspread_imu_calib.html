@@ -120,7 +120,7 @@
 
         <div class="step" id="st2">
           <h3>2. 여러 자세로 멈추기 (8자세 이상)</h3>
-          <p class="muted">컵을 들고 방향을 바꿔 가며 자세마다 2초씩 멈춥니다. 똑바로, 거꾸로, 옆으로 눕혀 굴려 가며 4방향, 비스듬히 몇 번. 멈춘 자세가 자동으로 잡힙니다. 서로 25° 이상 다른 자세만 셉니다.</p>
+          <p class="muted">컵을 들고 방향을 바꿔 가며 자세마다 1~2초씩 멈춥니다. 손으로 들고 있기 어려우면 책상이나 책에 기대어 받쳐도 됩니다. 똑바로, 거꾸로, 옆으로 눕혀 굴려 가며 4방향, 비스듬히 몇 번. 멈춘 자세가 자동으로 잡힙니다. 서로 25° 이상 다른 자세만 셉니다.</p>
           <div class="actions"><button id="b2">시작</button><button id="b2fit" disabled>계산</button><span id="r2" class="num"></span></div>
         </div>
 
@@ -239,12 +239,17 @@ $('b2').onclick = () => {
   if(poseOn){ poseOn = false; imuSink = null; $('b2').textContent = '시작'; return; }
   poseOn = true; CAL.poses = []; CAL.fit = null; $('b2').textContent = '그만'; const win = [];
   imuSink = r => {
-    win.push(r); while(win.length && ((r.t - win[0].t) >>> 0) / 1e6 > 1.2) win.shift();
-    if(win.length < 30) return;
-    const a = win.map(x=>x.a), am = mean3(a), aSd = vnorm(sd3(a, am)), gMag = vnorm(mean3(win.map(x=>x.g.map(Math.abs))));
-    const still = aSd / vnorm(am) < 0.012 && gMag / NOMINAL_DPS < 3;
+    win.push(r); while(win.length && ((r.t - win[0].t) >>> 0) / 1e6 > 1.0) win.shift();
+    if(win.length < 25) return;
+    // stillness from the spread of the signals (bias-free): gyro SD and accel SD over the last second
+    const a = win.map(x=>x.a), am = mean3(a), aRel = vnorm(sd3(a, am)) / vnorm(am);
+    const gSdDps = vnorm(sd3(win.map(x=>x.g), mean3(win.map(x=>x.g)))) / NOMINAL_DPS;
+    const still = aRel < 0.02 && gSdDps < 4;
     if(still && CAL.poses.every(p => angDeg(p, am) > 25)){ CAL.poses.push(am); beep(990, 0.08); win.length = 0; }
-    $('r2').textContent = `잡은 자세 ${CAL.poses.length}개` + (still ? ' · 멈춤' : ' · 움직이는 중');
+    const near = CAL.poses.length && !CAL.poses.every(p => angDeg(p, am) > 25);
+    $('r2').innerHTML = `잡은 자세 <b>${CAL.poses.length}</b>개 · ` +
+      (still ? (near ? '<span class="bad">이미 잡은 자세와 비슷함, 다른 방향으로</span>' : '<span class="good">멈춤</span>') : '움직이는 중') +
+      ` <span class="muted">(흔들림 가속 ${(aRel*100).toFixed(1)}% / 기준 2% · 자이로 ${gSdDps.toFixed(1)}°/s / 기준 4)</span>`;
     $('b2fit').disabled = CAL.poses.length < 6;
   };
 };
