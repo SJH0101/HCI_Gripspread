@@ -208,6 +208,7 @@
           <label for="eDevice">노트북 모델 (칩은 자동)</label><input id="eDevice" placeholder="실험에 쓰는 맥북 한 대 (예: MacBook Pro 14 M3, 2023)">
           <label for="eOS">macOS 버전 (자동)</label><span><input id="eOS" placeholder="크롬에서 자동으로 읽습니다" style="width:100%"> <span id="osMsg" class="check"></span></span>
           <label for="eScroll">트랙패드 설정 (슬라이더 눈금 위치)</label><input id="eScroll" placeholder="스크롤 속도 5/8 (0.3125) · 이동 속도 4/10">
+          <label for="eAngle">화면 각도 (키보드 면 기준, °)</label><span><input id="eAngle" type="number" min="90" max="140" value="110" style="width:90px"> <span class="check">아이폰 측정 앱 › 수평계를 화면 뒷면에 대고 <b id="eAngleTilt">20</b>°가 나오게 맞춥니다 (수직에서 뒤로 젖힌 각도 = 화면 각도 − 90)</span></span>
           <label>확인</label><span class="checks" id="eChecks">
             <label><input type="checkbox" value="natural_scroll_on"> 자연스러운 스크롤 켜짐 (트랙패드 › 스크롤 및 확대/축소)</label>
             <label><input type="checkbox" value="inertia_on"> 스크롤할 때 관성 사용 켜짐 (트랙패드 옵션)</label>
@@ -216,7 +217,7 @@
             <label><input type="checkbox" value="power_plugged"> 전원 연결 (저전력 모드 꺼짐)</label>
             <label><input type="checkbox" value="auto_update_off"> 실험 기간 동안 자동 업데이트 꺼짐 (일반 › 소프트웨어 업데이트 › 자동 업데이트)</label>
             <label><input type="checkbox" value="laptop_on_mark"> 노트북이 책상 위 테이프 표시 자리에 있음</label>
-            <label><input type="checkbox" value="screen_angle_mark"> 화면 각도가 표시해 둔 각도 그대로 (약 110°)</label>
+            <label><input type="checkbox" value="screen_angle_mark"> 화면 각도를 위 값으로 맞춤 (수평계로 확인)</label>
             <label><input type="checkbox" value="stand_on_mark"> 참여자가 설 자리 바닥 테이프 표시 그대로</label>
             <label><input type="checkbox" value="lighting_same"> 외부광 없는 실내 (창 없음 또는 블라인드 닫음), 천장 조명 켬</label>
           </span>
@@ -681,7 +682,9 @@ $('btnImuCalApply').onclick = () => {
 // apparatus: device fields are remembered in this browser; checks are per session
 const ENV_KEY = 'gripspread_env_v1';
 let ENV_PREV = null;
-try{ ENV_PREV = JSON.parse(localStorage.getItem(ENV_KEY)); if(ENV_PREV){ $('eDevice').value = ENV_PREV.device || ''; $('eOS').value = ENV_PREV.os || ''; $('eScroll').value = ENV_PREV.scroll || ''; } }catch(e){}
+try{ ENV_PREV = JSON.parse(localStorage.getItem(ENV_KEY)); if(ENV_PREV){ $('eDevice').value = ENV_PREV.device || ''; $('eOS').value = ENV_PREV.os || ''; $('eScroll').value = ENV_PREV.scroll || ''; if(ENV_PREV.angle) $('eAngle').value = ENV_PREV.angle; } }catch(e){}
+const syncAngle = () => { $('eAngleTilt').textContent = Math.max(0, (+$('eAngle').value || 110) - 90); };
+$('eAngle').addEventListener('input', syncAngle); syncAngle();
 // macOS version: Chrome reports the real version through User-Agent Client Hints (the UA string is frozen at 10.15.7).
 // Compared with the last session so an OS update in the middle of the study gets noticed and logged.
 let OS_CHANGED = null, CHIP = null;
@@ -705,7 +708,7 @@ try{ const gl = document.createElement('canvas').getContext('webgl'), ext = gl &
 })();
 function envInfo(){
   const checks = [...document.querySelectorAll('#eChecks input')];
-  return { device:$('eDevice').value.trim() || null, macos:$('eOS').value.trim() || null, macos_changed:OS_CHANGED, gpu_chip:CHIP, trackpad_scroll_speed:$('eScroll').value.trim() || null,
+  return { device:$('eDevice').value.trim() || null, macos:$('eOS').value.trim() || null, macos_changed:OS_CHANGED, gpu_chip:CHIP, trackpad_scroll_speed:$('eScroll').value.trim() || null, screen_angle_deg:+$('eAngle').value || null,
     checked:checks.filter(i => i.checked).map(i => i.value), unchecked:checks.filter(i => !i.checked).map(i => i.value),
     screen:{ w:screen.width, h:screen.height, dpr:window.devicePixelRatio }, window:{ w:window.innerWidth, h:window.innerHeight },
     camera:E.camera || null, user_agent:navigator.userAgent };
@@ -716,7 +719,7 @@ $('btnStart').onclick = () => {
   if(!pid){ $('fPid').focus(); return; }
   const env = envInfo();
   S.imu = { calib:IMU_CAL, session_check:IMU_CHECK, counts_per_dps_used:IMU_CPD };
-  try{ localStorage.setItem(ENV_KEY, JSON.stringify({ device:env.device, os:env.macos, scroll:env.trackpad_scroll_speed })); }catch(e){}
+  try{ localStorage.setItem(ENV_KEY, JSON.stringify({ device:env.device, os:env.macos, scroll:env.trackpad_scroll_speed, angle:env.screen_angle_deg })); }catch(e){}
   S.env = env;
   const hm = handMeas();
   Object.assign(S, { pid, hand:$('fHand').value, stature_cm:+$('fStature').value || null, handLen:hm.len.mean, span:hm.span.mean,
