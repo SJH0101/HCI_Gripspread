@@ -39,6 +39,14 @@ GripSpread 기획, 실험 설계, 파일럿 절차에서 근거로 쓴 자료. �
 - **Martin, D. W. (2004).** *Doing psychology experiments* (6th ed.). Wadsworth.
   - 쓴 곳: "비슷한 연구가 쓴 인원수를 따른다" (수업 자료 Quantitative Evaluation 1에서 인용).
 
+## 손 크기 측정
+
+- **ISO 7250-1:2017.** Basic human body measurements for technological design — Part 1: Body measurement definitions and landmarks. 4.3.1 Hand length (손목 붓돌기 점을 잇는 선에서 중지 끝까지).
+- **AIST 일본인 손 치수 데이터 (産総研 デジタルヒューマン研究チーム).** 항목 L01 "손 길이: 붓돌기점에서"(ISO 7250-1 4.3.1)와 L02 "손 길이: 손목 주름에서"를 따로 둔다. https://www.airc.aist.go.jp/dhrt/hand/data/list.html
+  - 쓴 곳: 우리 손 길이는 L02처럼 손목 주름 기준. 뼈 위치를 손으로 짚는 것보다 실험자 간 오차가 적어서 고름.
+- **Ruiz-Ruiz, J., Mesa, J. L. M., Gutiérrez, A., & Castillo, M. J. (2002).** Hand size influences optimal grip span in women but not in men. *Journal of Hand Surgery*, 27(5), 897–901. https://doi.org/10.1053/jhsu.2002.34315
+  - 쓴 곳: 손 span(최대로 벌린 엄지 끝–소지 끝 거리)이 편한 쥐기 폭과 관련된다는 근거. 컵 지름 효과를 볼 때 span을 공변량으로 쓰는 이유.
+
 ## IMU
 
 - **Pedley, M. (2013).** Tilt sensing using a three-axis accelerometer. NXP (Freescale) Application Note AN3461. https://www.nxp.com/docs/en/application-note/AN3461.pdf

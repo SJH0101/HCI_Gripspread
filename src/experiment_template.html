@@ -100,6 +100,24 @@
   .tlx-item .ends{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
   .tlx-item .nums{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;padding:0 4px}
   #tlxWarn{color:#B00020;font-size:13px;margin-left:8px;align-self:center}
+  .wizard{max-width:820px;margin:24px auto 40px;padding:0 16px}
+  .wizard .sheet{margin:12px 0 0;max-width:none}
+  .stepper{list-style:none;display:flex;gap:4px;padding:0;margin:0;flex-wrap:wrap;align-items:center}
+  .stepper li{display:flex;align-items:center;gap:6px;padding:6px 10px 6px 6px;border-radius:999px;background:#fff;border:1px solid var(--hair);font-size:13px;color:var(--muted);cursor:pointer}
+  .stepper li span{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--rail);font-size:12px;font-weight:600}
+  .stepper li.on{border-color:var(--ink);color:var(--ink);font-weight:600} .stepper li.on span{background:var(--ink);color:#fff}
+  .stepper li.done span{background:var(--ok);color:#fff}
+  .stepper li.warn span{background:var(--alert);color:#fff}
+  .stepper li.sep{flex:0 0 14px;padding:0;border:0;background:none;cursor:default}
+  .wz{display:none} .wz.on{display:block}
+  .wz h1{margin-top:0}
+  .wz-nav{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:24px;padding-top:16px;border-top:1px solid var(--hair)}
+  .wz-nav .muted{color:var(--muted);font-size:13px}
+  .wz-note{color:var(--muted);font-size:13px;margin-top:16px}
+  .howto{margin:8px 0 16px 18px;padding:0;line-height:1.8} .howto.small{font-size:14px;color:#3A3F45}
+  .hands{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin:8px 0} .hands svg{width:min(300px,100%);height:auto;border:1px solid var(--hair);border-radius:8px}
+  .script{background:#FFF7D1;border-radius:6px;padding:12px 14px;line-height:1.7;margin-top:12px;font-size:14px}
+  .stepwarn{color:var(--alert);font-size:13px;margin-top:10px}
   .calwrap{display:flex;gap:20px;justify-content:center;align-items:flex-start;padding:0 16px 80px}
   .calwrap .sheet{margin:24px 0;flex:1 1 640px;max-width:760px}
   .calwrap .screen{position:static;display:block}
@@ -149,29 +167,18 @@
   <main>
     <!-- 1. setup -->
     <section id="sSetup" class="screen on">
-      <div class="sheet">
-        <h1>참가자 설정</h1>
-        <p>참가자 번호로 기법 순서와 컵 순서가 정해집니다.</p>
-        <div class="form">
-          <label for="fPid">참가자 번호 (1–20)</label><input id="fPid" type="number" min="1" max="99" value="1">
-          <label for="fHand">주손 (컵을 드는 손)</label><select id="fHand"><option value="R">오른손</option><option value="L">왼손</option></select>
-        </div>
+      <div class="wizard">
+        <ol class="stepper" id="stepper">
+          <li data-go="0"><span>1</span>장비</li><li data-go="1"><span>2</span>실험 값</li><li data-go="2"><span>3</span>컵 IMU</li><li data-go="3"><span>4</span>클라우드</li>
+          <li class="sep" aria-hidden="true"></li>
+          <li data-go="4"><span>5</span>참여자</li><li data-go="5"><span>6</span>손 크기</li><li data-go="6"><span>7</span>설문</li><li data-go="7"><span>8</span>시작</li>
+        </ol>
+        <div class="sheet">
 
-        <h2>손 크기 (주손, 실험자가 측정)</h2>
-        <details class="guide"><summary>측정 방법 보기</summary>
-          <p><b>준비:</b> 30cm 자(캘리퍼면 더 좋음), A4 용지, 펜. 모든 참가자를 같은 실험자가 잽니다.</p>
-          <p><b>손 길이:</b> 손바닥이 위로 오게 책상에 펴고 손가락을 붙입니다. 손바닥에 가장 가까운 손목 주름에 자의 0을 맞추고, 중지 방향으로 일직선이 되게 대서 중지 끝(손톱 말고 살 끝)까지 읽습니다.</p>
-          <p><b>손 span:</b> 손바닥이 아래로 오게 A4 위에 올리고 다섯 손가락을 최대한 벌립니다. 엄지 끝과 소지 끝에 펜으로 점을 찍고, 손을 뗀 뒤 두 점 사이 직선거리를 잽니다.</p>
-          <p><b>규칙:</b> 각각 두 번 재서 mm 단위로 적습니다. 평균은 자동으로 계산됩니다. 두 번이 5mm 넘게 차이 나면 한 번 더 재서 가까운 두 값을 적습니다.</p>
-        </details>
-        <div class="form">
-          <label>손 길이 (mm) 1차 / 2차</label><span class="pair"><input id="fHandLen1" type="number" min="100" max="250" placeholder="예: 185" aria-label="손 길이 1차"><input id="fHandLen2" type="number" min="100" max="250" placeholder="예: 186" aria-label="손 길이 2차"></span>
-          <label>손 span (mm) 1차 / 2차</label><span class="pair"><input id="fSpan1" type="number" min="100" max="300" placeholder="예: 210" aria-label="손 span 1차"><input id="fSpan2" type="number" min="100" max="300" placeholder="예: 212" aria-label="손 span 2차"></span>
-          <span></span><span id="handCheck" class="check"></span>
-        </div>
-
-        <h2>장비 확인 (실험자, 매 세션 시작 전)</h2>
-        <p class="muted" style="color:var(--muted)">모든 참가자가 같은 기기와 같은 설정으로 해야 합니다. 기기 정보는 이 브라우저에 기억됩니다. 아래 항목을 확인하고 모두 체크해 주세요.</p>
+        <!-- researcher setup -->
+        <div class="wz" data-who="실험자 세팅">
+          <h1>장비 확인</h1>
+          <p>모든 참여자가 같은 기기, 같은 설정으로 해야 합니다. 기기 정보는 이 브라우저에 기억되고, 체크는 매 세션 새로 합니다.</p>
         <div class="form">
           <label for="eDevice">노트북 모델</label><input id="eDevice" placeholder="예: MacBook Air 13 M2 (2022)">
           <label for="eOS">macOS 버전</label><input id="eOS" placeholder="예: macOS 26.1">
@@ -187,15 +194,66 @@
           <span></span><span id="envCheck" class="check"></span>
         </div>
 
-        <h2>컵 IMU 보정 (실험자, 매 세션 시작 전)</h2>
-        <p class="muted" style="color:var(--muted)">먼저 왼쪽 <b>컵 IMU 연결</b>. ① 센서 보정은 센서를 받침에 새로 끼웠을 때만 합니다(<b>IMU 보정 하기</b>, 6면 + 한 바퀴, 10분). 결과는 이 브라우저가 기억합니다. ② 정지 확인은 매 세션 합니다: 컵을 책상에 세워 두고 손을 뗀 채 10초. 그날의 자이로 영점과 잡음, 센서가 받침 안에서 움직였는지를 봅니다.</p>
+          <div class="wz-note">브라우저에 백업된 지난 세션이 있으면 아래에 나옵니다.</div>
+        <div id="recoverBox" style="display:none">
+          <h2>브라우저에 백업된 세션</h2>
+          <p>실험 도중 창이 닫혔다면 여기서 그때까지의 데이터를 zip으로 받을 수 있습니다.</p>
+          <div id="recoverList" class="order num"></div>
+        </div>
+        </div>
+
+        <div class="wz" data-who="실험자 세팅">
+          <h1>실험 값</h1>
+          <p>GripSpread 값은 파일럿 도구(gripspread_pilot.html)에서 정한 <b>gripspread_params.json</b>을 불러옵니다. 한 번 불러오면 본 실험 동안 바꾸지 않습니다.</p>
+        <div class="actions" style="margin:0 0 10px"><label for="fParams" class="muted" style="color:var(--muted)">파일럿 결과 값 불러오기</label><input id="fParams" type="file" accept=".json"><span id="paramsMsg" class="check"></span></div>
+          <div id="paramSummary" class="order num"></div>
+          <details class="guide"><summary>고급 설정 (개발용, 바꾸지 마세요)</summary>
+            <h2>GripSpread 값</h2>
+        <div class="form num">
+          <label for="gDead">멈춤 구간 (범위 대비, 0–0.5)</label><input id="gDead" type="number" step="0.01" min="0" max="0.5" value="0.15">
+          <label for="gGain">기본 속도 (px/s)</label><input id="gGain" type="number" step="50" min="200" max="5000" value="800">
+          <label for="gGamma">속도 곡선 지수 (클수록 미세 조정 쉬움)</label><input id="gGamma" type="number" step="0.1" min="1" max="4" value="2.2">
+          <label for="gBoost">유지 가속 최대 배수</label><input id="gBoost" type="number" step="0.1" min="1" max="5" value="2.5">
+          <label for="gBoostMs">유지 가속 도달 시간 (ms)</label><input id="gBoostMs" type="number" step="50" min="200" max="3000" value="1200">
+          <label for="gBoostOn">가속 시작 굽힘 (0–1)</label><input id="gBoostOn" type="number" step="0.05" min="0" max="1" value="0.6">
+          <label for="gMinSide">한쪽 최소 여유 (°)</label><input id="gMinSide" type="number" step="1" min="3" max="30" value="10">
+          <label for="gAcc">가속 반응 (ms)</label><input id="gAcc" type="number" step="10" min="20" max="800" value="250">
+          <label for="gBrake">감속 반응 (ms)</label><input id="gBrake" type="number" step="10" min="10" max="400" value="60">
+          <label for="gCurl">굽힘 허용 한계 (°)</label><input id="gCurl" type="number" step="5" min="20" max="150" value="80">
+          <label for="gHold">활성화 대기 (ms)</label><input id="gHold" type="number" step="50" min="300" max="1500" value="700">
+        </div>
+            <h2>과제 설정</h2>
+        <div class="form num">
+          <label for="fD">스크롤 거리 D (px)</label><input id="fD" value="400, 1200, 3600">
+          <label for="fW">허용 폭 W (px)</label><input id="fW" value="40, 120">
+          <label for="fReps">조합당 반복</label><input id="fReps" type="number" min="2" max="20" step="2" value="6">
+          <label for="fWarm">조건마다 적응 시행</label><input id="fWarm" type="number" min="0" max="6" value="2">
+          <label for="fDwell">멈춤 판정 (ms)</label><input id="fDwell" type="number" min="30" max="1500" step="1" value="66" title="표적이 네모 안에 완전히 들어온 채 이 시간 동안 스크롤이 안 움직이면 선택 (ScrollTest 2022: 66ms)">
+          <label for="fTimeout">시간 초과 (초)</label><input id="fTimeout" type="number" min="5" max="60" value="15">
+          <label for="fPrac">연습 시행 (최소, 최대)</label><input id="fPrac" value="10, 30">
+          <label for="fSave">파일 저장</label><select id="fSave"><option value="1">끝날 때 zip 하나로 저장 (본 실험)</option><option value="0">저장 안 함 (검토 모드)</option></select>
+          <label for="fFrames">프레임 기록</label><select id="fFrames"><option value="1">켜기</option><option value="2">켜기 + 손 랜드마크</option><option value="0">끄기</option></select>
+        </div>
+          </details>
+        </div>
+
+        <div class="wz" data-who="실험자 세팅">
+          <h1>컵 IMU</h1>
+          <ol class="howto">
+            <li>컵 센서 스위치를 켜고 <button id="btnImuConnect2" type="button">컵 IMU 연결</button> 을 누른 뒤 <b>GripSpread-C3-MPU</b>를 고릅니다.</li>
+            <li><b>센서를 받침에 새로 끼운 날만</b>: <b>IMU 보정 하기</b> (가만히 10초 → 6면 → 한 바퀴 두 번, 약 10분). 이전 보정이 있으면 자동으로 불러옵니다.</li>
+            <li><b>매 세션</b>: 컵을 책상에 세워 두고 손을 뗀 채 <b>정지 확인</b> 10초.</li>
+          </ol>
         <div class="form">
           <label>① 센서 보정</label><span><button id="btnImuCalOpen" type="button">IMU 보정 하기</button> <span class="muted" style="color:var(--muted);font-size:13px">또는 파일 불러오기</span> <input id="fImuCal" type="file" accept=".json"> <span id="imuCalMsg" class="check"></span></span>
           <label>② 정지 확인 (10초)</label><span><button id="btnImuCheck" type="button">정지 확인 시작</button> <span id="imuChkMsg" class="check"></span></span>
         </div>
 
-        <h2>클라우드 자동 저장 (Supabase, 선택)</h2>
-        <p class="muted" style="color:var(--muted)">켜 두면 조건이 끝날 때마다, 그리고 실험이 끝날 때 지금까지의 데이터 zip이 Supabase Storage에 자동으로 올라갑니다. 로컬 zip 저장과 브라우저 백업은 그대로 됩니다. 값은 이 브라우저에만 저장되고 코드(깃허브)에는 들어가지 않습니다. <b>publishable 키(예전 이름 anon)만</b> 넣어 주세요. secret 키는 넣으면 거부합니다.</p>
+        </div>
+
+        <div class="wz" data-who="실험자 세팅 · 선택">
+          <h1>클라우드 자동 저장</h1>
+          <p>켜 두면 조건이 끝날 때마다 가벼운 기록이, 실험이 끝나면 전체 데이터 zip이 Supabase에 올라갑니다. 로컬 zip 저장은 그대로 됩니다. 값은 이 브라우저에만 저장됩니다. <b>publishable 키만</b> 넣어 주세요(secret 키는 거부합니다). 쓰지 않으면 그냥 <b>다음</b>을 누르세요.</p>
         <div class="form">
           <label for="cUrl">프로젝트 URL</label><input id="cUrl" placeholder="https://xxxx.supabase.co">
           <label for="cKey">publishable 키</label><input id="cKey" type="password" placeholder="sb_publishable_… (또는 예전 anon 키 eyJ…)" autocomplete="off">
@@ -203,7 +261,38 @@
           <label>사용</label><span><label style="color:var(--ink)"><input id="cOn" type="checkbox"> 자동 업로드 켜기</label> <button id="cTest" type="button" style="margin-left:8px">연결 테스트</button> <span id="cMsg" class="check"></span></span>
         </div>
 
-        <h2>배경 설문 (참가자에게 물어서 입력)</h2>
+        </div>
+
+        <!-- participant -->
+        <div class="wz" data-who="참여자">
+          <h1>참여자 정보</h1>
+          <p>참여자가 오면 시작합니다. 참여자 번호로 기법 순서와 컵 순서가 자동으로 정해집니다. <b>번호는 1번부터 순서대로</b> 씁니다.</p>
+          <div class="form">
+            <label for="fPid">참여자 번호 (1–20)</label><input id="fPid" type="number" min="1" max="99" value="1">
+            <label for="fHand">주손 (컵을 드는 손)</label><select id="fHand"><option value="R">오른손</option><option value="L">왼손</option></select>
+          </div>
+          <div id="orderBox" class="order num"></div>
+        </div>
+
+        <div class="wz" data-who="참여자">
+          <h1>손 크기</h1>
+          <p>주손을 실험자가 잽니다. 각각 <b>두 번</b> 재서 적으면 평균이 자동으로 계산됩니다. 두 값이 5mm 넘게 차이 나면 한 번 더 재서 가까운 두 값을 적습니다.</p>
+          <div class="hands"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 360" width="300" height="360" role="img" aria-label="손 길이 재는 법"><rect width="300" height="360" fill="#FFFFFF"/><rect x="113" y="252" width="76" height="60" fill="#F1E3D3" stroke="#8A6F57" stroke-width="1.5"/><line x1="104.0" y1="238.0" x2="52.0" y2="191.2" stroke="#8A6F57" stroke-width="25" stroke-linecap="round"/><line x1="104.0" y1="238.0" x2="52.0" y2="191.2" stroke="#F1E3D3" stroke-width="22" stroke-linecap="round"/><line x1="110.0" y1="164.0" x2="105.2" y2="72.1" stroke="#8A6F57" stroke-width="23" stroke-linecap="round"/><line x1="110.0" y1="164.0" x2="105.2" y2="72.1" stroke="#F1E3D3" stroke-width="20" stroke-linecap="round"/><line x1="133.0" y1="164.0" x2="133.0" y2="60.0" stroke="#8A6F57" stroke-width="23" stroke-linecap="round"/><line x1="133.0" y1="164.0" x2="133.0" y2="60.0" stroke="#F1E3D3" stroke-width="20" stroke-linecap="round"/><line x1="156.0" y1="164.0" x2="161.0" y2="68.1" stroke="#8A6F57" stroke-width="23" stroke-linecap="round"/><line x1="156.0" y1="164.0" x2="161.0" y2="68.1" stroke="#F1E3D3" stroke-width="20" stroke-linecap="round"/><line x1="178.0" y1="164.0" x2="187.3" y2="88.6" stroke="#8A6F57" stroke-width="23" stroke-linecap="round"/><line x1="178.0" y1="164.0" x2="187.3" y2="88.6" stroke="#F1E3D3" stroke-width="20" stroke-linecap="round"/><rect x="95" y="150" width="112" height="112" rx="34" fill="#F1E3D3" stroke="#8A6F57" stroke-width="1.5"/><line x1="115" y1="270" x2="187" y2="270" stroke="#C8372D" stroke-width="2.5" stroke-dasharray="5 4"/><circle cx="133" cy="52.0" r="4.5" fill="#C8372D"/><rect x="218" y="44.0" width="20" height="232.0" fill="#FFF7D1" stroke="#1F2328" stroke-width="1.2"/><line x1="218" y1="270" x2="226" y2="270" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="260" x2="222" y2="260" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="250" x2="222" y2="250" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="240" x2="222" y2="240" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="230" x2="222" y2="230" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="220" x2="226" y2="220" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="210" x2="222" y2="210" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="200" x2="222" y2="200" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="190" x2="222" y2="190" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="180" x2="222" y2="180" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="170" x2="226" y2="170" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="160" x2="222" y2="160" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="150" x2="222" y2="150" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="140" x2="222" y2="140" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="130" x2="222" y2="130" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="120" x2="226" y2="120" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="110" x2="222" y2="110" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="100" x2="222" y2="100" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="90" x2="222" y2="90" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="80" x2="222" y2="80" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="70" x2="226" y2="70" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="60" x2="222" y2="60" stroke="#1F2328" stroke-width="1"/><line x1="218" y1="50" x2="222" y2="50" stroke="#1F2328" stroke-width="1"/><line x1="133" y1="270" x2="218" y2="270" stroke="#C8372D" stroke-width="1" stroke-dasharray="2 3"/><line x1="133" y1="52.0" x2="218" y2="52.0" stroke="#C8372D" stroke-width="1" stroke-dasharray="2 3"/><path d="M250 270 L250 52.0" stroke="#C8372D" stroke-width="2.5" marker-start="url(#a)" marker-end="url(#a)"/><defs><marker id="a" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#C8372D"/></marker></defs><text x="258" y="164.0" font-size="13" font-weight="700" fill="#C8372D" text-anchor="start" font-family="IBM Plex Sans KR, Apple SD Gothic Neo, sans-serif">손 길이</text><text x="123" y="54.0" font-size="12" font-weight="500" fill="#C8372D" text-anchor="end" font-family="IBM Plex Sans KR, Apple SD Gothic Neo, sans-serif">중지 끝</text><text x="150" y="340" font-size="12" font-weight="500" fill="#C8372D" text-anchor="middle" font-family="IBM Plex Sans KR, Apple SD Gothic Neo, sans-serif">손바닥 쪽 첫 손목 주름</text><text x="150" y="22" font-size="14" font-weight="700" fill="#1F2328" text-anchor="middle" font-family="IBM Plex Sans KR, Apple SD Gothic Neo, sans-serif">① 손 길이 · 손바닥 위, 손가락 붙임</text></svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 360" width="300" height="360" role="img" aria-label="손 span 재는 법"><rect width="300" height="360" fill="#FFFFFF"/><rect x="8" y="34" width="284" height="318" fill="#FAFAF7" stroke="#6B7178" stroke-width="1" stroke-dasharray="4 3"/><text x="282" y="348" font-size="11" font-weight="500" fill="#6B7178" text-anchor="end" font-family="IBM Plex Sans KR, Apple SD Gothic Neo, sans-serif">A4</text><rect x="126" y="275" width="76" height="60" fill="#F1E3D3" stroke="#8A6F57" stroke-width="1.5"/><line x1="112.0" y1="262.0" x2="31.8" y2="245.0" stroke="#8A6F57" stroke-width="25" stroke-linecap="round"/><line x1="112.0" y1="262.0" x2="31.8" y2="245.0" stroke="#F1E3D3" stroke-width="22" stroke-linecap="round"/><line x1="120.0" y1="189.0" x2="82.6" y2="105.0" stroke="#8A6F57" stroke-width="23" stroke-linecap="round"/><line x1="120.0" y1="189.0" x2="82.6" y2="105.0" stroke="#F1E3D3" stroke-width="20" stroke-linecap="round"/><line x1="142.0" y1="189.0" x2="134.9" y2="87.2" stroke="#8A6F57" stroke-width="23" stroke-linecap="round"/><line x1="142.0" y1="189.0" x2="134.9" y2="87.2" stroke="#F1E3D3" stroke-width="20" stroke-linecap="round"/><line x1="165.0" y1="189.0" x2="187.7" y2="97.8" stroke="#8A6F57" stroke-width="23" stroke-linecap="round"/><line x1="165.0" y1="189.0" x2="187.7" y2="97.8" stroke="#F1E3D3" stroke-width="20" stroke-linecap="round"/><line x1="188.0" y1="189.0" x2="231.6" y2="124.3" stroke="#8A6F57" stroke-width="23" stroke-linecap="round"/><line x1="188.0" y1="189.0" x2="231.6" y2="124.3" stroke="#F1E3D3" stroke-width="20" stroke-linecap="round"/><rect x="108" y="175" width="112" height="110" rx="34" fill="#F1E3D3" stroke="#8A6F57" stroke-width="1.5"/><line x1="21.0" y1="242.7" x2="237.2" y2="116.0" stroke="#C8372D" stroke-width="2.5" stroke-dasharray="6 4"/><circle cx="21.0" cy="242.7" r="5" fill="#C8372D"/><circle cx="237.2" cy="116.0" r="5" fill="#C8372D"/><text x="17.032273131756085" y="278.6642127539484" font-size="12" font-weight="500" fill="#C8372D" text-anchor="start" font-family="IBM Plex Sans KR, Apple SD Gothic Neo, sans-serif">엄지 끝 점</text><text x="235.20897550542574" y="102.04469361515633" font-size="12" font-weight="500" fill="#C8372D" text-anchor="middle" font-family="IBM Plex Sans KR, Apple SD Gothic Neo, sans-serif">소지 끝 점</text><text x="89.1206243185909" y="149.35445318455234" font-size="14" font-weight="700" fill="#C8372D" text-anchor="middle" font-family="IBM Plex Sans KR, Apple SD Gothic Neo, sans-serif">span</text><text x="150" y="22" font-size="14" font-weight="700" fill="#1F2328" text-anchor="middle" font-family="IBM Plex Sans KR, Apple SD Gothic Neo, sans-serif">② span · 손바닥 아래, 최대로 벌림</text></svg></div>
+          <ul class="howto small">
+            <li><b>손 길이</b>: 손바닥이 위로, 손가락을 붙이고 펴서 책상에 놓습니다. 손바닥 쪽 첫 손목 주름에 자의 0을 맞추고 중지 끝(손톱 말고 살 끝)까지.</li>
+            <li><b>span</b>: 손바닥이 아래로, A4 위에서 다섯 손가락을 최대한 벌립니다. 엄지 끝과 소지 끝에 펜으로 점을 찍고, 손을 뗀 뒤 두 점 사이를 잽니다.</li>
+          </ul>
+        <div class="form">
+          <label>손 길이 (mm) 1차 / 2차</label><span class="pair"><input id="fHandLen1" type="number" min="100" max="250" placeholder="예: 185" aria-label="손 길이 1차"><input id="fHandLen2" type="number" min="100" max="250" placeholder="예: 186" aria-label="손 길이 2차"></span>
+          <label>손 span (mm) 1차 / 2차</label><span class="pair"><input id="fSpan1" type="number" min="100" max="300" placeholder="예: 210" aria-label="손 span 1차"><input id="fSpan2" type="number" min="100" max="300" placeholder="예: 212" aria-label="손 span 2차"></span>
+          <span></span><span id="handCheck" class="check"></span>
+        </div>
+
+        </div>
+
+        <div class="wz" data-who="참여자">
+          <h1>배경 설문</h1>
+          <p>참여자에게 물어보고 실험자가 입력합니다.</p>
         <div class="form">
           <label for="fAge">나이</label><input id="fAge" type="number" min="15" max="90">
           <label for="fGender">성별</label><select id="fGender"><option value="">선택</option><option value="F">여성</option><option value="M">남성</option><option value="O">기타</option><option value="NA">응답 안 함</option></select>
@@ -218,40 +307,16 @@
           </span>
           <label for="fNote">메모</label><input id="fNote" placeholder="선택">
         </div>
-        <div id="orderBox" class="order num"></div>
+        </div>
 
-        <h2>과제 설정 (파일럿에서 조정)</h2>
-        <div class="form num">
-          <label for="fD">스크롤 거리 D (px)</label><input id="fD" value="400, 1200, 3600">
-          <label for="fW">허용 폭 W (px)</label><input id="fW" value="40, 120">
-          <label for="fReps">조합당 반복</label><input id="fReps" type="number" min="2" max="20" step="2" value="6">
-          <label for="fWarm">조건마다 적응 시행</label><input id="fWarm" type="number" min="0" max="6" value="2">
-          <label for="fDwell">멈춤 판정 (ms)</label><input id="fDwell" type="number" min="30" max="1500" step="1" value="66" title="표적이 네모 안에 완전히 들어온 채 이 시간 동안 스크롤이 안 움직이면 선택 (ScrollTest 2022: 66ms)">
-          <label for="fTimeout">시간 초과 (초)</label><input id="fTimeout" type="number" min="5" max="60" value="15">
-          <label for="fPrac">연습 시행 (최소, 최대)</label><input id="fPrac" value="10, 30">
-          <label for="fSave">파일 저장</label><select id="fSave"><option value="1">끝날 때 zip 하나로 저장 (본 실험)</option><option value="0">저장 안 함 (검토 모드)</option></select>
-          <label for="fFrames">프레임 기록</label><select id="fFrames"><option value="1">켜기</option><option value="2">켜기 + 손 랜드마크</option><option value="0">끄기</option></select>
+        <div class="wz" data-who="시작">
+          <h1>시작 전 확인</h1>
+          <div id="startSummary" class="order num"></div>
+          <div class="script"><b>참여자에게 이렇게 안내하세요</b><br>"두 가지 방법으로 화면을 스크롤하는 실험입니다. 위에 나오는 번호의 줄을 가운데 네모 안에 넣으면 됩니다. 컵은 자연스럽게 들고 계시면 되고, 힘들면 언제든 쉬자고 말씀해 주세요. 영상은 저장하지 않고 손 위치 숫자만 기록합니다."</div>
+          <div class="actions"><button id="btnStart" class="primary">실험 시작</button></div>
         </div>
-        <h2>GripSpread 값 (파일럿에서 조정)</h2>
-        <div class="actions" style="margin:0 0 10px"><label for="fParams" class="muted" style="color:var(--muted)">파일럿 결과 값 불러오기</label><input id="fParams" type="file" accept=".json"><span id="paramsMsg" class="check"></span></div>
-        <div class="form num">
-          <label for="gDead">멈춤 구간 (범위 대비, 0–0.5)</label><input id="gDead" type="number" step="0.01" min="0" max="0.5" value="0.15">
-          <label for="gGain">기본 속도 (px/s)</label><input id="gGain" type="number" step="50" min="200" max="5000" value="800">
-          <label for="gGamma">속도 곡선 지수 (클수록 미세 조정 쉬움)</label><input id="gGamma" type="number" step="0.1" min="1" max="4" value="2.2">
-          <label for="gBoost">유지 가속 최대 배수</label><input id="gBoost" type="number" step="0.1" min="1" max="5" value="2.5">
-          <label for="gBoostMs">유지 가속 도달 시간 (ms)</label><input id="gBoostMs" type="number" step="50" min="200" max="3000" value="1200">
-          <label for="gBoostOn">가속 시작 굽힘 (0–1)</label><input id="gBoostOn" type="number" step="0.05" min="0" max="1" value="0.6">
-          <label for="gMinSide">한쪽 최소 여유 (°)</label><input id="gMinSide" type="number" step="1" min="3" max="30" value="10">
-          <label for="gAcc">가속 반응 (ms)</label><input id="gAcc" type="number" step="10" min="20" max="800" value="250">
-          <label for="gBrake">감속 반응 (ms)</label><input id="gBrake" type="number" step="10" min="10" max="400" value="60">
-          <label for="gCurl">굽힘 허용 한계 (°)</label><input id="gCurl" type="number" step="5" min="20" max="150" value="80">
-          <label for="gHold">활성화 대기 (ms)</label><input id="gHold" type="number" step="50" min="300" max="1500" value="700">
-        </div>
-        <div class="actions"><button id="btnStart" class="primary">실험 시작</button></div>
-        <div id="recoverBox" style="display:none">
-          <h2>브라우저에 백업된 세션</h2>
-          <p>실험 도중 창이 닫혔다면 여기서 그때까지의 데이터를 zip으로 받을 수 있습니다.</p>
-          <div id="recoverList" class="order num"></div>
+
+        <div class="wz-nav"><button id="wzPrev" type="button">← 이전</button><span id="wzWho" class="muted"></span><button id="wzNext" class="primary" type="button">다음 →</button></div>
         </div>
       </div>
     </section>
@@ -406,6 +471,68 @@ function buildSteps(){
   return steps;
 }
 
+// ---------- setup wizard: researcher steps (1–4), then participant steps (5–7), then start ----------
+const WZ = [...document.querySelectorAll('.wz')], STEPS = [...document.querySelectorAll('#stepper li[data-go]')];
+let wzCur = 0, wzWarned = -1;
+const wzState = WZ.map(() => '');            // '', 'done', 'warn'
+const G_FIELDS = [['gDead','멈춤 구간'],['gGain','기본 속도','px/s'],['gGamma','곡선 지수'],['gBoost','유지 가속 배수','×'],['gAcc','가속 반응','ms'],['gBrake','감속 반응','ms']];
+function paramSummary(){
+  $('paramSummary').innerHTML = (paramsSource ? `불러온 파일: <b>${paramsSource.file}</b>` : '<span style="color:var(--alert)">아직 안 불러옴 · 기본값으로 진행됩니다</span>') + '<br>' +
+    G_FIELDS.map(([id,n,u]) => `${n} ${$(id).value}${u || ''}`).join(' · ');
+}
+// a soft check per step: returns a warning (shown once; the next click goes on anyway) or ''
+const WZ_CHECK = [
+  () => { const n = [...document.querySelectorAll('#eChecks input')].filter(i => !i.checked).length; return !$('eDevice').value.trim() ? '노트북 모델을 적어 주세요' : n ? `체크 안 된 장비 항목이 ${n}개 있습니다` : ''; },
+  () => paramsSource ? '' : '파일럿 결과 값을 아직 안 불러왔습니다 (기본값으로 진행)',
+  () => !imuConn ? '컵 IMU가 연결되지 않았습니다' : !IMU_CAL ? '센서 보정이 없습니다' : !IMU_CHECK ? '정지 확인 10초를 아직 안 했습니다' : '',
+  () => '',
+  () => parseInt($('fPid').value) ? '' : '참여자 번호를 넣어 주세요',
+  () => { const m = handMeas(); return !(m.len.a && m.len.b && m.span.a && m.span.b) ? '손 길이와 span을 두 번씩 적어 주세요' : [...m.len.notes, ...m.span.notes].join(' · '); },
+  () => !$('fAge').value || !$('fGender').value || !$('fTpFreq').value ? '나이, 성별, 트랙패드 사용 빈도를 적어 주세요' : '',
+  () => '',
+];
+function startSummary(){
+  const m = handMeas(), o = orderFor(parseInt($('fPid').value) || 1);
+  const row = (k, v, ok) => `<span style="color:${ok ? 'var(--ok)' : 'var(--alert)'}">${ok ? '✓' : '!'}</span> ${k}: ${v}`;
+  $('startSummary').innerHTML = [
+    row('장비', $('eDevice').value || '미입력', !WZ_CHECK[0]()),
+    row('실험 값', paramsSource ? paramsSource.file : '기본값', !!paramsSource),
+    row('컵 IMU', !imuConn ? '연결 안 됨' : (IMU_CAL ? '보정 있음' : '보정 없음') + (IMU_CHECK ? ' · 정지 확인 완료' : ' · 정지 확인 안 함'), !WZ_CHECK[2]()),
+    row('클라우드', CLOUD.on ? '자동 업로드 켜짐' : '꺼짐 (로컬 저장만)', true),
+    row('참여자', `P${String(parseInt($('fPid').value) || '?').padStart(2,'0')} · ${$('fHand').value === 'R' ? '오른손' : '왼손'} · ${o.techOrder.map(t => TECH[t]).join(' → ')}`, !WZ_CHECK[4]()),
+    row('손 크기', `길이 ${m.len.mean ?? '–'}mm · span ${m.span.mean ?? '–'}mm`, !WZ_CHECK[5]()),
+    row('설문', $('fAge').value ? `${$('fAge').value}세` : '미입력', !WZ_CHECK[6]()),
+  ].join('<br>');
+}
+function wzShow(i){
+  wzCur = Math.max(0, Math.min(WZ.length - 1, i)); wzWarned = -1;
+  WZ.forEach((w, k) => w.classList.toggle('on', k === wzCur));
+  STEPS.forEach((li, k) => { li.className = (k === wzCur ? 'on ' : '') + wzState[k]; });
+  $('wzPrev').style.visibility = wzCur ? 'visible' : 'hidden';
+  $('wzNext').style.display = wzCur === WZ.length - 1 ? 'none' : '';
+  $('wzNext').textContent = '다음 →';
+  $('wzWho').textContent = WZ[wzCur].dataset.who;
+  document.querySelectorAll('.stepwarn').forEach(e => e.remove());
+  if(wzCur === 1) paramSummary();
+  if(wzCur === WZ.length - 1) startSummary();
+  $('sSetup').scrollTop = 0;
+}
+$('wzNext').onclick = () => {
+  const w = WZ_CHECK[wzCur]();
+  if(w && wzWarned !== wzCur){
+    wzWarned = wzCur; document.querySelectorAll('.stepwarn').forEach(e => e.remove());
+    const d = document.createElement('div'); d.className = 'stepwarn'; d.textContent = '⚠ ' + w + ' · 이대로 넘어가려면 한 번 더 누르세요';
+    WZ[wzCur].appendChild(d); $('wzNext').textContent = '그래도 다음 →'; return;
+  }
+  wzState[wzCur] = w ? 'warn' : 'done';
+  wzShow(wzCur + 1);
+};
+$('wzPrev').onclick = () => wzShow(wzCur - 1);
+STEPS.forEach((li, k) => li.onclick = () => wzShow(k));
+$('btnImuConnect2').onclick = () => $('btnImu').click();
+['gDead','gGain','gGamma','gBoost','gAcc','gBrake'].forEach(id => $(id).addEventListener('input', paramSummary));
+setTimeout(() => wzShow(0), 0);
+
 // hand size: two readings each, mean is stored; flag >5 mm disagreement or values outside the usual adult range
 const HAND_OK = { len:[160,210], span:[170,240] };
 function handMeas(){
@@ -434,7 +561,7 @@ $('fParams').onchange = async e => {
     const j = JSON.parse(await e.target.files[0].text()), v = j.values || j.final_values;
     const set = Object.entries(v).filter(([k]) => PARAM_FIELD[k]).map(([k,x]) => { $(PARAM_FIELD[k]).value = x; return `${k}=${x}`; });
     paramsSource = { file:e.target.files[0].name, from:j.from || j.pilot_id || null, values:v };
-    $('paramsMsg').className = 'check'; $('paramsMsg').textContent = '불러옴: ' + set.join(', ');
+    $('paramsMsg').className = 'check'; $('paramsMsg').textContent = '불러옴: ' + set.join(', '); paramSummary();
   }catch(err){ $('paramsMsg').className = 'check bad'; $('paramsMsg').textContent = '파일을 읽지 못했습니다'; }
 };
 
@@ -528,10 +655,7 @@ $('btnStart').onclick = () => {
   const pid = parseInt($('fPid').value);
   if(!pid){ $('fPid').focus(); return; }
   const env = envInfo();
-  const imuMissing = [!IMU_CAL && '센서 보정 파일', !IMU_CHECK && '정지 확인'].filter(Boolean);
-  if(imuMissing.length && !confirm(`컵 IMU 보정 중 ${imuMissing.join(', ')}이(가) 안 됐습니다. 그래도 시작할까요?`)) return;
   S.imu = { calib:IMU_CAL, session_check:IMU_CHECK, counts_per_dps_used:IMU_CPD };
-  if(env.unchecked.length && !confirm(`장비 확인이 ${env.unchecked.length}개 안 됐습니다. 그래도 시작할까요?`)){ $('envCheck').className = 'check bad'; $('envCheck').textContent = '체크 안 된 항목을 확인해 주세요'; return; }
   try{ localStorage.setItem(ENV_KEY, JSON.stringify({ device:env.device, os:env.macos, scroll:env.trackpad_scroll_speed })); }catch(e){}
   S.env = env;
   const hm = handMeas();
