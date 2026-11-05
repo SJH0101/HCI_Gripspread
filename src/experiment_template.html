@@ -50,6 +50,7 @@
   .grp{border-top:1px solid var(--hair);margin-top:10px;padding-top:8px}
   .grp h3{margin:0;padding:0 16px;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em}
   .grp .kv{padding:6px 16px 8px}
+  .lidlive{display:inline-block;margin-left:8px;padding:2px 10px;border-radius:999px;background:var(--rail);font-weight:600;font-variant-numeric:tabular-nums} .lidlive.ok{background:#E3F2E8;color:var(--ok)} .lidlive.off{background:#FDECEA;color:var(--alert)}
   .testtoggle{display:block;margin:14px 0;padding:10px 12px;border:1px dashed var(--hair);border-radius:6px;font-size:14px;line-height:1.7} body.test .testtoggle{border-color:var(--alert);background:#FDECEA}
   .testonly{display:none} body.test .testonly{display:inline}
   #testBadge{display:none;background:var(--alert);color:#fff;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600} body.test #testBadge{display:inline-block}
@@ -174,6 +175,7 @@
     <div class="grp">
       <h3>데이터</h3>
       <div class="kv num">
+        <span>화면 각도</span><b id="kLid">–</b>
         <span>클라우드</span><b id="kCloud">꺼짐</b>
       </div>
       <div class="rail-actions">
@@ -208,12 +210,16 @@
           <label for="eDevice">노트북 모델 (칩은 자동)</label><input id="eDevice" placeholder="실험에 쓰는 맥북 한 대 (예: MacBook Pro 14 M3, 2023)">
           <label for="eOS">macOS 버전 (자동)</label><span><input id="eOS" placeholder="크롬에서 자동으로 읽습니다" style="width:100%"> <span id="osMsg" class="check"></span></span>
           <label for="eScroll">트랙패드 설정 (슬라이더 눈금 위치)</label><input id="eScroll" placeholder="스크롤 속도 5/8 (0.3125) · 이동 속도 4/10">
-          <label for="eAngle">화면 각도 (키보드 면 기준, °)</label><span><input id="eAngle" type="number" min="90" max="140" value="110" style="width:90px"> <span class="check">아이폰 측정 앱 › 수평계를 화면 뒷면에 대고 <b id="eAngleTilt">20</b>°가 나오게 맞춥니다 (수직에서 뒤로 젖힌 각도 = 화면 각도 − 90)</span></span>
+          <label for="eAngle">화면 각도 목표 (°)</label><span><input id="eAngle" type="number" min="90" max="140" value="110" style="width:90px"> <button id="btnLid" type="button">맥북 각도 센서 연결</button>
+            <span id="lidLive" class="lidlive">센서 없음</span>
+            <span class="check" style="display:block;margin-top:4px">맥북 힌지의 각도 센서를 크롬으로 바로 읽습니다(창에서 <b>Apple 기기</b>를 고르면 됨). 목표 ±2° 안이면 초록. 센서가 없는 모델이면 아이폰 측정 앱 수평계를 화면 뒷면에 대고 <b id="eAngleTilt">20</b>°가 나오게 맞춥니다.</span></span>
+          <label>카메라 (자동)</label><span id="camInfo" class="check">카메라 준비 중…</span>
           <label>확인</label><span class="checks" id="eChecks">
             <label><input type="checkbox" value="natural_scroll_on"> 자연스러운 스크롤 켜짐 (트랙패드 › 스크롤 및 확대/축소)</label>
             <label><input type="checkbox" value="inertia_on"> 스크롤할 때 관성 사용 켜짐 (트랙패드 옵션)</label>
             <label><input type="checkbox" value="scroll_speed_same"> 스크롤 속도가 위에 적은 값 그대로</label>
             <label><input type="checkbox" value="chrome_zoom_100"> 크롬 확대/축소 100%, 창 최대화</label>
+            <label><input type="checkbox" value="camera_effects_off"> <span>카메라 비디오 효과 모두 끔: 제어 센터 › 비디오 효과에서 인물 사진, 스튜디오 조명, <b>반응(손동작 효과)</b>, 센터 스테이지, 배경 끄기 (카메라가 켜져 있을 때만 메뉴가 보임)</span></label>
             <label><input type="checkbox" value="power_plugged"> 전원 연결 (저전력 모드 꺼짐)</label>
             <label><input type="checkbox" value="auto_update_off"> 실험 기간 동안 자동 업데이트 꺼짐 (일반 › 소프트웨어 업데이트 › 자동 업데이트)</label>
             <label><input type="checkbox" value="laptop_on_mark"> 노트북이 책상 위 테이프 표시 자리에 있음</label>
@@ -521,7 +527,8 @@ function paramSummary(){
 }
 // a soft check per step: returns a warning (shown once; the next click goes on anyway) or ''
 const WZ_CHECK = [
-  () => { const n = [...document.querySelectorAll('#eChecks input')].filter(i => !i.checked).length; return !$('eDevice').value.trim() ? '노트북 모델을 적어 주세요' : n ? `체크 안 된 장비 항목이 ${n}개 있습니다` : ''; },
+  () => { const n = [...document.querySelectorAll('#eChecks input')].filter(i => !i.checked).length, tgt = +$('eAngle').value || 110;
+    return !$('eDevice').value.trim() ? '노트북 모델을 적어 주세요' : (E.camera && !/facetime|macbook|built-?in/i.test(E.camera.label || '')) ? '내장 카메라가 아닌 카메라가 잡혀 있습니다' : (LID.angle != null && Math.abs(LID.angle - tgt) > 2) ? `화면 각도가 ${LID.angle}°입니다 (목표 ${tgt}°)` : n ? `체크 안 된 장비 항목이 ${n}개 있습니다` : ''; },
   () => paramsSource ? '' : '파일럿 결과 값을 아직 안 불러왔습니다 (기본값으로 진행)',
   () => !imuConn ? '컵 IMU가 연결되지 않았습니다' : !IMU_CAL ? '센서 보정이 없습니다' : !IMU_CHECK ? '정지 확인 10초를 아직 안 했습니다' : '',
   () => '',
@@ -683,6 +690,47 @@ $('btnImuCalApply').onclick = () => {
 const ENV_KEY = 'gripspread_env_v1';
 let ENV_PREV = null;
 try{ ENV_PREV = JSON.parse(localStorage.getItem(ENV_KEY)); if(ENV_PREV){ $('eDevice').value = ENV_PREV.device || ''; $('eOS').value = ENV_PREV.os || ''; $('eScroll').value = ENV_PREV.scroll || ''; if(ENV_PREV.angle) $('eAngle').value = ENV_PREV.angle; } }catch(e){}
+// ---------- MacBook lid angle sensor over WebHID (Apple sensor hub 05AC:8104, usage page 0x20, usage 0x8A) ----------
+// Reports the hinge angle in degrees (0 = closed) as a little-endian uint16. Read continuously so a lid bumped
+// during the session is noticed and logged.
+let LID = { dev:null, angle:null, startAngle:null, log:[] };
+function lidShow(){
+  const a = LID.angle, tgt = +$('eAngle').value || 110, ok = a != null && Math.abs(a - tgt) <= 2;
+  $('lidLive').textContent = a == null ? (LID.dev ? '읽는 중…' : '센서 없음') : `${a}° (목표 ${tgt}° ${ok ? '맞음' : (a > tgt ? '−' + (a - tgt) : '+' + (tgt - a)) + '°'})`;
+  $('lidLive').className = 'lidlive' + (a == null ? '' : ok ? ' ok' : ' off');
+  $('kLid').textContent = a == null ? '–' : a + '°'; $('kLid').style.color = a == null || ok ? '' : 'var(--alert)';
+}
+function lidSet(a){
+  if(!(a > 0 && a < 360) || a === LID.angle) return;
+  const prev = LID.angle; LID.angle = a; lidShow();
+  if(S.cfg && prev != null && Math.abs(a - (LID.startAngle ?? a)) > 2) LID.log.push({ at:new Date().toISOString(), angle:a, step:S.stepIdx });
+}
+$('btnLid').onclick = async () => {
+  if(!navigator.hid){ $('lidLive').textContent = '이 브라우저는 지원 안 함 (크롬 필요)'; return; }
+  try{
+    const [d] = await navigator.hid.requestDevice({ filters:[{ vendorId:0x05ac, productId:0x8104, usagePage:0x0020, usage:0x008a }] });
+    if(!d){ $('lidLive').textContent = '선택 안 됨'; return; }
+    if(!d.opened) await d.open(); LID.dev = d; lidShow();
+    d.addEventListener('inputreport', e => lidSet(e.data.getUint16(0, true)));
+    const poll = async () => { try{ const v = await d.receiveFeatureReport(1); lidSet(v.getUint16(v.byteLength >= 3 ? 1 : 0, true)); }catch(err){} };
+    poll(); setInterval(poll, 500);
+  }catch(e){ $('lidLive').textContent = '연결 실패: ' + e.message; }
+};
+// reconnect silently if permission was granted before
+if(navigator.hid) navigator.hid.getDevices().then(ds => { const d = ds.find(x => x.vendorId === 0x05ac && x.productId === 0x8104); if(d){ (async () => {
+  try{ if(!d.opened) await d.open(); LID.dev = d; d.addEventListener('inputreport', e => lidSet(e.data.getUint16(0, true)));
+    const poll = async () => { try{ const v = await d.receiveFeatureReport(1); lidSet(v.getUint16(v.byteLength >= 3 ? 1 : 0, true)); }catch(err){} }; poll(); setInterval(poll, 500); }catch(e){} })(); } }).catch(() => {});
+$('eAngle').addEventListener('input', lidShow);
+
+// camera: which device and what it actually delivers (an iPhone can silently become the webcam via Continuity Camera)
+function camShow(){
+  const c = E.camera; if(!c){ return; }
+  const builtIn = /facetime|macbook|built-?in/i.test(c.label || '');
+  $('camInfo').className = 'check' + (builtIn ? '' : ' bad');
+  $('camInfo').innerHTML = `${c.label || '이름 없음'} · ${c.width}×${c.height} · ${Math.round(c.frameRate || 0)} fps` + (builtIn ? ' · 내장 카메라' : ' · <b>내장 카메라가 아닙니다</b>. 크롬 주소창 왼쪽 › 카메라에서 맥북 카메라를 고르고 새로고침해 주세요');
+}
+const camTimer = setInterval(() => { if(E.camera){ camShow(); clearInterval(camTimer); } }, 500);
+
 const syncAngle = () => { $('eAngleTilt').textContent = Math.max(0, (+$('eAngle').value || 110) - 90); };
 $('eAngle').addEventListener('input', syncAngle); syncAngle();
 // macOS version: Chrome reports the real version through User-Agent Client Hints (the UA string is frozen at 10.15.7).
@@ -708,7 +756,7 @@ try{ const gl = document.createElement('canvas').getContext('webgl'), ext = gl &
 })();
 function envInfo(){
   const checks = [...document.querySelectorAll('#eChecks input')];
-  return { device:$('eDevice').value.trim() || null, macos:$('eOS').value.trim() || null, macos_changed:OS_CHANGED, gpu_chip:CHIP, trackpad_scroll_speed:$('eScroll').value.trim() || null, screen_angle_deg:+$('eAngle').value || null,
+  return { device:$('eDevice').value.trim() || null, macos:$('eOS').value.trim() || null, macos_changed:OS_CHANGED, gpu_chip:CHIP, trackpad_scroll_speed:$('eScroll').value.trim() || null, screen_angle_deg:+$('eAngle').value || null, screen_angle_measured_deg:LID.angle, screen_angle_source:LID.angle != null ? 'lid_sensor' : 'phone_level',
     checked:checks.filter(i => i.checked).map(i => i.value), unchecked:checks.filter(i => !i.checked).map(i => i.value),
     screen:{ w:screen.width, h:screen.height, dpr:window.devicePixelRatio }, window:{ w:window.innerWidth, h:window.innerHeight },
     camera:E.camera || null, user_agent:navigator.userAgent };
@@ -720,7 +768,7 @@ $('btnStart').onclick = () => {
   const env = envInfo();
   S.imu = { calib:IMU_CAL, session_check:IMU_CHECK, counts_per_dps_used:IMU_CPD };
   try{ localStorage.setItem(ENV_KEY, JSON.stringify({ device:env.device, os:env.macos, scroll:env.trackpad_scroll_speed, angle:env.screen_angle_deg })); }catch(e){}
-  S.env = env;
+  S.env = env; LID.startAngle = LID.angle;
   const hm = handMeas();
   Object.assign(S, { pid, hand:$('fHand').value, stature_cm:+$('fStature').value || null, handLen:hm.len.mean, span:hm.span.mean,
     handRaw:{ length_mm:[hm.len.a, hm.len.b], span_mm:[hm.span.a, hm.span.b] },
@@ -1112,7 +1160,7 @@ function sessionObj(){
   return { pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
-    tlx:S.tlx, calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
+    tlx:S.tlx, calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
 }
 $('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
 // recovery list on the setup screen
