@@ -1,0 +1,39 @@
+{
+  "sensor": "GripSpread-C3-MPU",
+  "firmware": "GS-MPU-C3-34-v4",
+  "calibrated_at": "2026-11-05T10:54:08.051Z",
+  "how_to_apply": "accel_g[i] = (raw_a[i] - accel_offset[i]) / accel_counts_per_g[i];  gyro_dps[i] = (raw_g[i] - gyro_bias[i]) / gyro_counts_per_dps",
+  "accel_offset": [
+    399.1,
+    3.3,
+    -54.8
+  ],
+  "accel_counts_per_g": [
+    8187.7,
+    8202,
+    8358
+  ],
+  "accel_method": "six_face",
+  "accel_fit_rms_g": 0.0022,
+  "accel_poses": 6,
+  "gyro_bias": [
+    -395.5,
+    -135.5,
+    34.55
+  ],
+  "gyro_counts_per_dps": 66.23,
+  "gyro_turns": [
+    66.87,
+    65.59
+  ],
+  "gyro_range_dps": 500,
+  "gyro_scale_vs_nominal": 1.011,
+  "still_noise": {
+    "gyro_sd_dps": 0.078,
+    "accel_sd_g": 0.0043,
+    "accel_sd_counts": 35.8,
+    "tilt_sd_deg": 0.22,
+    "seconds": 10
+  },
+  "sample_rate_hz": 99
+}
