@@ -1,0 +1,49 @@
+# 참고 문헌
+
+GripSpread 기획, 실험 설계, 파일럿 절차에서 근거로 쓴 자료. 어디에 썼는지 같이 적어둔다.
+
+## 문제 정의, 선행연구
+
+- **Ng, A., Brewster, S. A., & Williamson, J. H. (2014).** Investigating the effects of encumbrance on one- and two-handed interactions with mobile devices. *Proc. CHI 2014*, 1981–1990. https://doi.org/10.1145/2556288.2557312
+  - 쓴 곳: 물건을 든 채로는 입력 정확도가 떨어진다는 근거 (발표 대본 2번, 선행연구 표 1번 줄).
+- **Ng, A., Brewster, S. A., & Williamson, J. (2013).** The impact of encumbrance on mobile interactions. *INTERACT 2013*, LNCS 8119, 92–109. https://doi.org/10.1007/978-3-642-40477-1_6
+  - 쓴 곳: 같은 저자의 앞선 연구. 물건을 들고 걷는 상황의 입력 저하.
+- **Sharma, A., Salchow-Hömmen, C., Mollyn, V. S., Nittala, A. S., Hedderich, M. A., Koelle, M., Seel, T., & Steimle, J. (2022).** SparseIMU: Computational design of sparse IMU layouts for sensing fine-grained finger microgestures. *ACM TOCHI*. https://doi.org/10.1145/3569894
+  - 쓴 곳: 가장 가까운 선행연구. 물건을 쥔 채 손가락 벌리기가 있지만 IMU를 손에 달고, 한 손가락(약지 기준) 벌림을 이산 분류만 함. 연속 스크롤 아님.
+
+## 스크롤 과제와 측정
+
+- **Hinckley, K., Cutrell, E., Bathiche, S., & Muss, T. (2002).** Quantitative analysis of scrolling techniques. *Proc. CHI 2002*, 65–72. https://www.microsoft.com/en-us/research/publication/quantitative-analysis-of-scrolling-techniques/
+  - 쓴 곳: 스크롤을 Fitts 과제로 평가하는 방식, 줄 번호로 목표를 알려주는 방식.
+- **Chen, C., Myers, B. A., Ergin, C., Porat, E., Li, S., & Wang, C. (2022).** ScrollTest: Evaluating scrolling speed and accuracy. arXiv:2210.00735. https://arxiv.org/abs/2210.00735
+  - 쓴 곳: known 조건(번호 줄로 이동 지시), 멈춤 판정(목표가 네모 안에 완전히 들어온 채 66ms 동안 스크롤 이벤트 없음). 실험 프로그램 `stopMs = 66`.
+
+## 속도 조작 방식 (rate control)
+
+- **Zhai, S. (1998).** User performance in relation to 3D input device design. *Computer Graphics*, 32(4), 50–54. https://www.dgp.toronto.edu/public_user/BillBuxton/SIGGRAPHQ/shumin
+  - 쓴 곳: 속도 조작은 놓으면 제자리로 돌아오는(self-centering) 입력에서 잘 맞는다는 근거와 그 한계. 편한 V를 중립으로 두고 멈춤 구간을 둔 이유.
+- **Teather, R. J., & MacKenzie, I. S. (2014).** Position vs. velocity control for tilt-based interaction. *Proc. Graphics Interface 2014*. https://www.csit.carleton.ca/~rteather/pdfs/GI2014.pdf
+  - 쓴 곳: 게인을 이전 연구와 파일럿 테스트로 정하고 모든 참가자에게 고정한 사례.
+- **Lee, B., Nancel, M., & Oulasvirta, A. (2017).** AutoGain: Gain function adaptation with submovement efficiency optimization. *Proc. CHI 2017*. https://arxiv.org/abs/1611.08154
+  - 쓴 곳: 게인 함수는 보통 연구자의 시행착오로 정해지고, 최적값이 사람마다 다르다는 근거. 연구자끼리만 정하면 안 되는 이유.
+
+## 파일럿으로 값 정하기, 사람별 보정
+
+- **Fashimpaur, J., Karlson, A., Jonker, T. R., Benko, H., & Gupta, A. (2023).** Investigating wrist deflection scrolling techniques for extended reality. *Proc. CHI 2023*. https://research.facebook.com/file/763903402014643/Investigating_Wrist_Deflection_Scrolling_Techniques_for_Extended_Reality.pdf
+  - 쓴 곳: 우리 파일럿 절차의 기준. 연구자 반복 → 파일럿 1(5명, 방향 고르기) → 파일럿 2(4명, 상수를 하나씩 바꿔 나은지 묻고 사람별 최적값을 평균해 고정) → 본 실험 24명 고정값. 사람별로는 편한 가동 범위와 중립 각도만 보정하고, 조건이나 자세가 바뀌면 다시 보정. 속도 0 구간(neutral zone)이 정밀 조작을 돕고, 시작 위치 기준의 중립은 사람들이 잊어버려서 고정 중립을 씀.
+
+## 참가자 수
+
+- **Caine, K. (2016).** Local standards for sample size at CHI. *Proc. CHI 2016*, 981–992. https://doi.org/10.1145/2858036.2858498
+  - 쓴 곳: CHI 2014 논문에서 가장 흔한 표본 크기 12명(10%), 중앙값 18명, 피험자 내 실험 평균 17명. 목표 20명(최소 16명)의 근거.
+- **Martin, D. W. (2004).** *Doing psychology experiments* (6th ed.). Wadsworth.
+  - 쓴 곳: "비슷한 연구가 쓴 인원수를 따른다" (수업 자료 Quantitative Evaluation 1에서 인용).
+
+## IMU
+
+- **Pedley, M. (2013).** Tilt sensing using a three-axis accelerometer. NXP (Freescale) Application Note AN3461. https://www.nxp.com/docs/en/application-note/AN3461.pdf
+  - 쓴 곳: 가속도로 기울기를 구하는 원리 (포터블 모니터, 실험 프로그램의 기울기 추정).
+
+## 수업 자료
+
+- 이재연, CSE333 HCI개론, *Research Methods: Quantitative Evaluation 1* (11주차). 종속변수 정의, 측정 척도, 파일럿 테스트, 안내문, 참가자 수.

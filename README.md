@@ -19,7 +19,7 @@ CSE333 HCI개론 (UNIST, 2026 가을) Team 10 프로젝트.
 | `assets/sample_doc_pages/` | 예시 문서 페이지 이미지 |
 | `dist/gripspread_pilot.html` | 파일럿 도구. ① IMU 보정 ② 파일럿 참가자와 값 하나씩 A/B로 맞추기 ③ 참가자별 결과를 평균 내서 본 실험 값 만들기 |
 | `imu/GripSpread_Portable.html` | 컵 IMU 단독 모니터. 센서 연결, 가상 컵으로 기울기 확인, 원시 데이터 CSV 저장 |
-| `docs/` | 아래 설명에 쓰는 그림 |
+| `docs/` | 아래 설명에 쓰는 그림, 참고 문헌 목록(`docs/references.md`) |
 
 `dist/`의 두 파일은 파일 하나만 있으면 돌아간다. 크롬에서 열고 카메라를 허용하면 된다. 손 인식 모델은 처음 열 때 인터넷에서 받아온다.
 컵 IMU를 블루투스로 연결하려면 크롬이나 엣지를 써야 한다. 사파리랑 파이어폭스는 Web Bluetooth를 지원하지 않는다.
@@ -334,7 +334,7 @@ Team 10 project for CSE333 Introduction to HCI (UNIST, Fall 2026).
 | `src/experiment_template.html` | Study program source. The build inlines `engine.js` |
 | `assets/sample_doc_pages/` | Sample document page images |
 | `imu/GripSpread_Portable.html` | Standalone cup IMU monitor: connect the sensor, see tilt on a virtual cup, save raw CSV |
-| `docs/` | Figures used in this README |
+| `docs/` | Figures used in this README, reference list (`docs/references.md`) |
 
 Each file in `dist/` runs on its own. Open it in Chrome and allow the camera. The hand model is downloaded the first time.
 Connecting the cup IMU over Bluetooth needs Chrome or Edge (Safari and Firefox have no Web Bluetooth). To rebuild after editing `src/`, run `./build.sh`.
