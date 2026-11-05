@@ -92,6 +92,14 @@
   #taskMsg:empty{display:none}
 </style>
 <style>
+  /*CORE-CSS-START*/
+  .calib .step{border:1px solid var(--hair);border-radius:8px;padding:14px 16px;margin-top:12px}
+  .calib .step h3{margin:0 0 6px;font-size:14px}
+  .calib .step.done{border-color:var(--ok)}
+  .calib .step.done h3::after{content:"  ✓";color:var(--ok)}
+  .calib .muted{color:var(--muted)} .calib .bad{color:var(--alert)} .calib .good{color:var(--ok)} .calib .num{font-variant-numeric:tabular-nums}
+  .calib pre{white-space:pre-wrap;font-size:12px;background:var(--rail);border-radius:6px;padding:10px;max-height:240px;overflow:auto}
+  .calib .actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
   .solo{display:grid;grid-template-rows:52px 1fr;height:100vh}
   .solo main{overflow:auto;display:flex;gap:20px;justify-content:center;align-items:flex-start;padding:0 16px} .solo header{grid-column:auto}
   .solo main .sheet{margin:24px 0;flex:1 1 640px;max-width:760px}
@@ -105,10 +113,11 @@
   .meter .lim{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink)}
   #liveState{font-weight:600;font-size:15px;margin:8px 0 0}
   @media(max-width:1100px){.solo main{flex-direction:column;align-items:stretch}.live{position:static;flex:none}}
+  /*CORE-CSS-END*/
 </style>
 </head>
 <body>
-<div class="solo">
+<div class="solo calib">
   <header>
     <span class="brand">GripSpread IMU 보정</span>
     <span class="prog">실험자 전용 · 센서 하나당 한 번 (센서를 다시 붙이면 다시)</span>
@@ -118,10 +127,11 @@
   </header>
   <main>
     <!-- ① IMU calibration (experimenter, once per sensor before the pilot) -->
+    <!--CORE-HTML-START-->
     <section id="sImu" class="screen on" style="position:static;display:block">
       <div class="sheet">
         <h1>IMU 보정</h1>
-        <p><b>파일럿 참가자 없이 실험자가 합니다.</b> 센서 하나당 한 번, 센서를 다시 붙였으면 다시 합니다. 센서를 컵에 붙인 채로 합니다. 원시값(count)을 g와 °/s로 바꾸는 값과, 컵이 가만히 있을 때의 잡음을 잽니다. 결과 파일은 분석할 때 원시 IMU 데이터에 적용합니다. 오른쪽 위 <b>컵 IMU 연결</b>을 먼저 눌러 주세요.</p>
+        <p><b>파일럿 참가자 없이 실험자가 합니다.</b> 센서 하나당 한 번, 센서를 다시 붙였으면 다시 합니다. 센서를 컵에 붙인 채로 합니다. 원시값(count)을 g와 °/s로 바꾸는 값과, 컵이 가만히 있을 때의 잡음을 잽니다. 결과 파일은 분석할 때 원시 IMU 데이터에 적용합니다. <b>컵 IMU 연결</b>을 먼저 눌러 주세요.</p>
 
         <div class="step" id="st1">
           <h3>1. 가만히 두기 (10초)</h3>
@@ -163,6 +173,7 @@
       <div class="meter"><span>자이로 흔들림</span><span class="track"><span class="fill" id="mG"></span><span class="lim" id="lG"></span></span><b id="vG" class="num">–</b></div>
       <p class="cap" style="margin-top:6px">두 막대가 검은 선 왼쪽(초록)이면 멈춘 것으로 칩니다.</p>
     </aside>
+    <!--CORE-HTML-END-->
   </main>
 </div>
 <script>
@@ -183,7 +194,7 @@ function download(name, obj){
 // ======================================================================
 // Firmware GS-MPU-C3-34-v4: service FFE0, notify FFE3, 20-byte packet (magic, flags, u16 seq, u32 t_us, i16 ax ay az gx gy gz).
 const IMU_SVC = '0000ffe0-0000-1000-8000-00805f9b34fb', IMU_DATA = '0000ffe3-0000-1000-8000-00805f9b34fb', IMU_NAME = 'GripSpread-C3-MPU';
-const NOMINAL_DPS = 65.5;   // counts per deg/s at +-500 dps, only used to detect stillness before calibration
+
 function imuDecode(v){
   if(v.byteLength !== 20) return null;
   const magic = v.getUint8(0), flags = v.getUint8(1);
@@ -192,24 +203,14 @@ function imuDecode(v){
   for(let i=0;i<3;i++){ r.a[i] = v.getInt16(8+i*2,true); r.g[i] = v.getInt16(14+i*2,true); }
   return r;
 }
+/*CORE-JS-START*/
+const NOMINAL_DPS = 65.5;   // counts per deg/s at +-500 dps, only used to detect stillness before calibration
 const vnorm = v => Math.hypot(...v), vdot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2], vunit = v => { const n = vnorm(v) || 1; return v.map(x=>x/n); };
 const mean3 = rows => [0,1,2].map(i => rows.reduce((s,r)=>s+r[i],0)/rows.length);
 const sd3 = (rows, m) => [0,1,2].map(i => Math.sqrt(rows.reduce((s,r)=>s+(r[i]-m[i])**2,0)/rows.length));
 const angDeg = (a,b) => Math.acos(Math.max(-1, Math.min(1, vdot(vunit(a), vunit(b))))) * 180/Math.PI;
 
-let imuCount = 0, imuHz = 0, imuT0 = 0, imuSink = null, firmware = null;
-$('btnImu').onclick = async () => {
-  if(!navigator.bluetooth){ $('kImu').textContent = '블루투스 미지원 (크롬/엣지 필요)'; return; }
-  try{
-    const dev = await navigator.bluetooth.requestDevice({ filters:[{ name:IMU_NAME }], optionalServices:[IMU_SVC] });
-    const ch = await (await (await dev.gatt.connect()).getPrimaryService(IMU_SVC)).getCharacteristic(IMU_DATA);
-    ch.addEventListener('characteristicvaluechanged', ev => { const r = imuDecode(ev.target.value); if(!r) return; imuCount++; liveFeed(r); if(imuSink) imuSink(r); });
-    await ch.startNotifications();
-    dev.addEventListener('gattserverdisconnected', () => $('kImu').textContent = '끊김 · 다시 연결해 주세요');
-    firmware = dev.name; $('kImu').textContent = '연결됨';
-  }catch(e){ $('kImu').textContent = '연결 실패: ' + e.message; }
-};
-
+let imuHz = 0, imuSink = null, firmware = null;
 const CAL = { still:null, poses:[], fit:null, turns:[] };
 function renderImu(){
   $('st1').classList.toggle('done', !!CAL.still); $('st2').classList.toggle('done', !!CAL.fit); $('st3').classList.toggle('done', CAL.turns.length >= 2);
@@ -418,6 +419,23 @@ function liveLoop(){
   requestAnimationFrame(liveLoop);
 }
 requestAnimationFrame(liveLoop);
+/*CORE-JS-END*/
+
+// ---------- standalone page: its own Bluetooth connection ----------
+let imuCount = 0;
+$('btnImu').onclick = async () => {
+  if(!navigator.bluetooth){ $('kImu').textContent = '블루투스 미지원 (크롬/엣지 필요)'; return; }
+  try{
+    const dev = await navigator.bluetooth.requestDevice({ filters:[{ name:IMU_NAME }], optionalServices:[IMU_SVC] });
+    const ch = await (await (await dev.gatt.connect()).getPrimaryService(IMU_SVC)).getCharacteristic(IMU_DATA);
+    ch.addEventListener('characteristicvaluechanged', ev => { const r = imuDecode(ev.target.value); if(!r) return; imuCount++; liveFeed(r); if(imuSink) imuSink(r); });
+    await ch.startNotifications();
+    dev.addEventListener('gattserverdisconnected', () => $('kImu').textContent = '끊김 · 다시 연결해 주세요');
+    firmware = dev.name; $('kImu').textContent = '연결됨';
+  }catch(e){ $('kImu').textContent = '연결 실패: ' + e.message; }
+};
+
+
 setInterval(() => { imuHz = imuCount; if(firmware) $('kImu').textContent = `연결됨 · ${imuCount} Hz`; imuCount = 0; }, 1000);
 </script>
 </body>

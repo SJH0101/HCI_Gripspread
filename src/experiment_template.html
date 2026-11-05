@@ -100,6 +100,11 @@
   .tlx-item .ends{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
   .tlx-item .nums{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;padding:0 4px}
   #tlxWarn{color:#B00020;font-size:13px;margin-left:8px;align-self:center}
+  .calwrap{display:flex;gap:20px;justify-content:center;align-items:flex-start;padding:0 16px 80px}
+  .calwrap .sheet{margin:24px 0;flex:1 1 640px;max-width:760px}
+  .calwrap .screen{position:static;display:block}
+  .calback{position:sticky;bottom:0;display:flex;gap:8px;justify-content:center;padding:12px;background:var(--rail);border-top:1px solid var(--hair)}
+{{IMUCAL_CSS}}
 </style>
 </head>
 <body>
@@ -183,9 +188,9 @@
         </div>
 
         <h2>컵 IMU 보정 (실험자, 매 세션 시작 전)</h2>
-        <p class="muted" style="color:var(--muted)">① 센서 보정 파일은 센서를 받침에 새로 끼웠을 때만 <b>IMU 보정 페이지</b>(gripspread_imu_calib.html)에서 새로 만들고, 여기서 한 번 불러오면 브라우저가 기억합니다. ② 정지 확인은 매 세션 합니다: 왼쪽 <b>컵 IMU 연결</b> 후 컵을 책상에 세워 두고 손을 뗀 채 10초. 그날의 자이로 영점과 잡음을 잽니다.</p>
+        <p class="muted" style="color:var(--muted)">먼저 왼쪽 <b>컵 IMU 연결</b>. ① 센서 보정은 센서를 받침에 새로 끼웠을 때만 합니다(<b>IMU 보정 하기</b>, 6면 + 한 바퀴, 10분). 결과는 이 브라우저가 기억합니다. ② 정지 확인은 매 세션 합니다: 컵을 책상에 세워 두고 손을 뗀 채 10초. 그날의 자이로 영점과 잡음, 센서가 받침 안에서 움직였는지를 봅니다.</p>
         <div class="form">
-          <label for="fImuCal">① 센서 보정 파일</label><span><input id="fImuCal" type="file" accept=".json"> <span id="imuCalMsg" class="check"></span></span>
+          <label>① 센서 보정</label><span><button id="btnImuCalOpen" type="button">IMU 보정 하기</button> <span class="muted" style="color:var(--muted);font-size:13px">또는 파일 불러오기</span> <input id="fImuCal" type="file" accept=".json"> <span id="imuCalMsg" class="check"></span></span>
           <label>② 정지 확인 (10초)</label><span><button id="btnImuCheck" type="button">정지 확인 시작</button> <span id="imuChkMsg" class="check"></span></span>
         </div>
 
@@ -260,6 +265,14 @@
         <div class="order" id="bCheck"></div>
         <div class="actions"><button id="btnGo" class="primary">시작 (Space)</button></div>
       </div>
+    </section>
+
+    <!-- 2a. cup IMU calibration (same code as gripspread_imu_calib.html, injected at build) -->
+    <section id="sImuCal" class="screen">
+      <div class="calib calwrap">
+{{IMUCAL_HTML}}
+      </div>
+      <div class="calback"><button id="btnImuCalApply" class="primary" type="button" disabled>이 보정으로 실험하기</button><button id="btnImuCalBack" type="button">취소하고 돌아가기</button></div>
     </section>
 
     <!-- 2b. GripSpread calibration (range + neutral) before each new cup -->
@@ -471,6 +484,33 @@ $('btnImuCheck').onclick = () => {
       (warn ? (shift != null && shift > 3 ? ' · 센서가 받침 안에서 움직였습니다. 테이프를 다시 고정하고, 크게(10° 이상) 틀어졌으면 IMU 보정 페이지에서 다시 보정해 주세요'
                                          : ' · 보정 때보다 많이 다릅니다. 센서가 흔들리거나 받침에서 빠졌는지 확인해 주세요') : ' · 정상');
   };
+};
+
+// ---------- full sensor calibration inside the study program ----------
+// The calibration core is the same code as gripspread_imu_calib.html (injected at build), fed from this program's
+// Bluetooth connection, so the sensor never has to be handed between pages.
+{
+const download = (name, obj) => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); };
+{{IMUCAL_JS}}
+window.GS_CAL = {
+  feed(r){ firmware = firmware || 'GripSpread-C3-MPU'; const x = { seq:r.seq, t:r.t_us, a:[r.ax_raw, r.ay_raw, r.az_raw], g:[r.gx_raw, r.gy_raw, r.gz_raw] }; liveFeed(x); if(imuSink) imuSink(x); },
+  result: () => imuResult(),
+  ready: () => !!(CAL.still && CAL.fit && CAL.turns.length),
+  hz(n){ imuHz = n; },
+};
+}
+$('btnImuCalOpen').onclick = () => {
+  if(!imuConn){ $('imuCalMsg').className = 'check bad'; $('imuCalMsg').textContent = '먼저 왼쪽에서 컵 IMU를 연결해 주세요'; return; }
+  show('sImuCal'); $('sImuCal').scrollTop = 0;
+};
+$('btnImuCalBack').onclick = () => show('sSetup');
+setInterval(() => { if($('sImuCal').classList.contains('on')) $('btnImuCalApply').disabled = !GS_CAL.ready(); }, 300);
+$('btnImuCalApply').onclick = () => {
+  const c = GS_CAL.result(); if(!c) return;
+  useImuCal(c, '방금 보정'); try{ localStorage.setItem(IMUCAL_KEY, JSON.stringify(c)); }catch(e){}
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(c, null, 2)], {type:'application/json'}));
+  a.download = `imu_calib_${new Date().toISOString().slice(0,10)}.json`; a.click();
+  show('sSetup');
 };
 
 // apparatus: device fields are remembered in this browser; checks are per session
@@ -1000,7 +1040,7 @@ $('btnImu').onclick = async () => {
 };
 $('btnImuRef').onclick = () => { imuResetRef(); $('kTilt').textContent = '기준 잡는 중'; };
 function onImu(r){
-  imuCount++; imuFeed(r); if(imuTap) imuTap(r);
+  imuCount++; imuFeed(r); if(imuTap) imuTap(r); if(window.GS_CAL) GS_CAL.feed(r);
   if(!run || run.phase === 'idle') return;
   imuRows.push([Math.round(performance.now()), run.st.tech, run.st.cup, run.st.type, run.trial ? run.trial.uid : '', run.phase,
     r.seq, r.t_us, ...IMU_KEYS.map(k => r[k]), IP.tilt == null ? '' : +IP.tilt.toFixed(2), IP.ref ? 1 : 0, imuConn]);
