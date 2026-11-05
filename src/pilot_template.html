@@ -96,9 +96,8 @@
 <div class="app">
   <header>
     <span class="brand">GripSpread 파일럿</span>
-    <button class="tab on" data-tab="sImu">① IMU 보정 (실험자만)</button>
-    <button class="tab" data-tab="sTune">② 값 맞추기</button>
-    <button class="tab" data-tab="sSum">③ 결과 합치기</button>
+    <button class="tab on" data-tab="sTune">① 값 맞추기</button>
+    <button class="tab" data-tab="sSum">② 결과 합치기</button>
     <span class="spacer"></span>
     <span id="hInfo" class="prog"></span>
   </header>
@@ -110,46 +109,12 @@
       <span>벌림 각도</span><b id="kTheta">–</b>
       <span>편한 V</span><b id="kR0">–</b>
       <span>손 범위</span><b id="kRange">–</b>
-      <span>컵 IMU</span><b id="kImu">연결 안 됨</b>
-    </div>
-    <div class="rail-actions">
-      <button id="btnImu">컵 IMU 연결</button>
     </div>
   </aside>
 
   <main>
-    <!-- ① IMU calibration (experimenter, once per sensor before the pilot) -->
-    <section id="sImu" class="screen on">
-      <div class="sheet">
-        <h1>IMU 보정</h1>
-        <p><b>파일럿 참가자 없이 실험자가 합니다.</b> 센서 하나당 한 번, 센서를 다시 붙였으면 다시 합니다. 센서를 컵에 붙인 채로 합니다. 원시값(count)을 g와 °/s로 바꾸는 값과, 컵이 가만히 있을 때의 잡음을 잽니다. 결과 파일은 분석할 때 원시 IMU 데이터에 적용합니다. 왼쪽에서 <b>컵 IMU 연결</b>을 먼저 눌러 주세요.</p>
-
-        <div class="step" id="st1">
-          <h3>1. 가만히 두기 (10초)</h3>
-          <p class="muted">컵을 책상에 똑바로 세우고 손을 뗍니다. 자이로 영점, 잡음 크기, 기울기 잡음을 잽니다.</p>
-          <div class="actions"><button id="b1">시작</button><span id="r1" class="num"></span></div>
-        </div>
-
-        <div class="step" id="st2">
-          <h3>2. 여러 자세로 멈추기 (8자세 이상)</h3>
-          <p class="muted">컵을 들고 방향을 바꿔 가며 자세마다 2초씩 멈춥니다. 똑바로, 거꾸로, 옆으로 눕혀 굴려 가며 4방향, 비스듬히 몇 번. 멈춘 자세가 자동으로 잡힙니다. 서로 25° 이상 다른 자세만 셉니다.</p>
-          <div class="actions"><button id="b2">시작</button><button id="b2fit" disabled>계산</button><span id="r2" class="num"></span></div>
-        </div>
-
-        <div class="step" id="st3">
-          <h3>3. 책상 위에서 한 바퀴 돌리기 (2번)</h3>
-          <p class="muted">컵을 똑바로 세우고 바닥이 책상에서 떨어지지 않게 정확히 360° 돌립니다. 테이프로 시작 위치를 표시해 두세요. 시작을 누르고 1초 가만히 있다가 돌리고, 다 돌린 뒤 멈추면 자동으로 끝납니다.</p>
-          <div class="actions"><button id="b3">시작</button><span id="r3" class="num"></span></div>
-        </div>
-
-        <h2>결과</h2>
-        <pre id="imuOut">아직 없음</pre>
-        <div class="actions"><button id="bImuSave" class="primary" disabled>imu_calib.json 저장</button></div>
-      </div>
-    </section>
-
-    <!-- ② A/B tuning with one pilot participant -->
-    <section id="sTune" class="screen">
+    <!-- A/B tuning with one pilot participant -->
+    <section id="sTune" class="screen on">
       <div class="sheet" id="tuneSetup">
         <h1>값 맞추기</h1>
         <p>값 하나만 바꾼 두 버전(1, 2)을 각각 짧게 써 보고 어느 쪽이 나았는지 고릅니다. 바꾼 쪽이 나으면 그 방향으로 한 칸 더, 아니면 반대 방향을 시험하고, 더 나아지지 않으면 그 값에서 멈춥니다. 참가자에게는 어느 쪽이 바뀐 값인지 알려주지 않습니다.</p>
@@ -189,7 +154,7 @@
       <div id="taskMsg"></div>
     </section>
 
-    <!-- ③ merge pilot results -->
+    <!-- merge pilot results -->
     <section id="sSum" class="screen">
       <div class="sheet">
         <h1>결과 합치기</h1>
@@ -239,155 +204,7 @@ function drawOverlay(){
 }
 
 // ======================================================================
-// ① IMU calibration
-// ======================================================================
-// Firmware GS-MPU-C3-34-v4: service FFE0, notify FFE3, 20-byte packet (magic, flags, u16 seq, u32 t_us, i16 ax ay az gx gy gz).
-const IMU_SVC = '0000ffe0-0000-1000-8000-00805f9b34fb', IMU_DATA = '0000ffe3-0000-1000-8000-00805f9b34fb', IMU_NAME = 'GripSpread-C3-MPU';
-const NOMINAL_DPS = 65.5;   // counts per deg/s at +-500 dps, only used to detect stillness before calibration
-function imuDecode(v){
-  if(v.byteLength !== 20) return null;
-  const magic = v.getUint8(0), flags = v.getUint8(1);
-  if(![0xa3,0xa4].includes(magic) || !(flags & 1) || (magic === 0xa4 && !(flags & 4))) return null;
-  const r = { seq:v.getUint16(2,true), t:v.getUint32(4,true), a:[0,0,0], g:[0,0,0] };
-  for(let i=0;i<3;i++){ r.a[i] = v.getInt16(8+i*2,true); r.g[i] = v.getInt16(14+i*2,true); }
-  return r;
-}
-const vnorm = v => Math.hypot(...v), vdot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2], vunit = v => { const n = vnorm(v) || 1; return v.map(x=>x/n); };
-const mean3 = rows => [0,1,2].map(i => rows.reduce((s,r)=>s+r[i],0)/rows.length);
-const sd3 = (rows, m) => [0,1,2].map(i => Math.sqrt(rows.reduce((s,r)=>s+(r[i]-m[i])**2,0)/rows.length));
-const angDeg = (a,b) => Math.acos(Math.max(-1, Math.min(1, vdot(vunit(a), vunit(b))))) * 180/Math.PI;
-
-let imuCount = 0, imuHz = 0, imuT0 = 0, imuSink = null, firmware = null;
-$('btnImu').onclick = async () => {
-  if(!navigator.bluetooth){ $('kImu').textContent = '블루투스 미지원 (크롬/엣지 필요)'; return; }
-  try{
-    const dev = await navigator.bluetooth.requestDevice({ filters:[{ name:IMU_NAME }], optionalServices:[IMU_SVC] });
-    const ch = await (await (await dev.gatt.connect()).getPrimaryService(IMU_SVC)).getCharacteristic(IMU_DATA);
-    ch.addEventListener('characteristicvaluechanged', ev => { const r = imuDecode(ev.target.value); if(!r) return; imuCount++; if(imuSink) imuSink(r); });
-    await ch.startNotifications();
-    dev.addEventListener('gattserverdisconnected', () => $('kImu').textContent = '끊김 · 다시 연결해 주세요');
-    firmware = dev.name; $('kImu').textContent = '연결됨';
-  }catch(e){ $('kImu').textContent = '연결 실패: ' + e.message; }
-};
-
-const CAL = { still:null, poses:[], fit:null, turns:[] };
-function renderImu(){
-  $('st1').classList.toggle('done', !!CAL.still); $('st2').classList.toggle('done', !!CAL.fit); $('st3').classList.toggle('done', CAL.turns.length >= 2);
-  const out = imuResult();
-  $('imuOut').textContent = out ? JSON.stringify(out, null, 2) : '아직 없음';
-  $('bImuSave').disabled = !out;
-}
-function imuResult(){
-  if(!CAL.still && !CAL.fit && !CAL.turns.length) return null;
-  const gs = CAL.turns.length ? CAL.turns.reduce((s,t)=>s+t.counts_per_dps,0)/CAL.turns.length : null;
-  return {
-    sensor:firmware || IMU_NAME, firmware:'GS-MPU-C3-34-v4', calibrated_at:new Date().toISOString(),
-    how_to_apply:'accel_g[i] = (raw_a[i] - accel_offset[i]) / accel_counts_per_g[i];  gyro_dps[i] = (raw_g[i] - gyro_bias[i]) / gyro_counts_per_dps',
-    accel_offset: CAL.fit ? CAL.fit.offset.map(x=>+x.toFixed(1)) : null,
-    accel_counts_per_g: CAL.fit ? CAL.fit.scale.map(x=>+x.toFixed(1)) : null,
-    accel_fit_rms_g: CAL.fit ? +CAL.fit.rms.toFixed(4) : null, accel_poses: CAL.poses.length,
-    gyro_bias: CAL.still ? CAL.still.gBias.map(x=>+x.toFixed(2)) : null,
-    gyro_counts_per_dps: gs ? +gs.toFixed(2) : null, gyro_turns: CAL.turns.map(t => +t.counts_per_dps.toFixed(2)),
-    gyro_scale_vs_nominal: gs ? +(gs / NOMINAL_DPS).toFixed(3) : null,
-    still_noise: CAL.still ? {
-      gyro_sd_dps: +(CAL.still.gSdCounts / (gs || NOMINAL_DPS)).toFixed(3),
-      accel_sd_g: CAL.fit ? +(CAL.still.aSdCounts / (CAL.fit.scale.reduce((a,b)=>a+b,0)/3)).toFixed(4) : null,
-      accel_sd_counts: +CAL.still.aSdCounts.toFixed(1),
-      tilt_sd_deg: +CAL.still.tiltSd.toFixed(3), seconds: CAL.still.seconds } : null,
-    sample_rate_hz: imuHz || null,
-  };
-}
-
-// step 1: still 10 s
-$('b1').onclick = () => {
-  if(!firmware){ $('r1').textContent = '먼저 IMU를 연결해 주세요'; return; }
-  const rows = []; let t0 = null; $('r1').textContent = '측정 중… 건드리지 마세요';
-  imuSink = r => {
-    rows.push(r); if(t0 == null) t0 = r.t;
-    const sec = ((r.t - t0) >>> 0) / 1e6;
-    $('r1').textContent = `측정 중… ${sec.toFixed(1)} / 10초`;
-    if(sec < 10) return;
-    imuSink = null;
-    const a = rows.map(x=>x.a), g = rows.map(x=>x.g), am = mean3(a), gm = mean3(g);
-    const aSd = sd3(a, am), gSd = sd3(g, gm);
-    const tilt = a.map(v => angDeg(v, am)), tiltSd = Math.sqrt(tilt.reduce((s,x)=>s+x*x,0)/tilt.length);
-    if(Math.max(...gSd) / NOMINAL_DPS > 1.5){ $('r1').innerHTML = '<span class="bad">움직임이 감지됐습니다. 컵을 가만히 두고 다시 해 주세요</span>'; return; }
-    CAL.still = { gBias:gm, gSdCounts:vnorm(gSd), aSdCounts:vnorm(aSd), tiltSd, up:vunit(am), seconds:10, n:rows.length };
-    $('r1').innerHTML = `<span class="good">완료</span> · 샘플 ${rows.length}개 · 자이로 영점 [${gm.map(x=>x.toFixed(1)).join(', ')}] · 기울기 잡음 ${tiltSd.toFixed(3)}°`;
-    renderImu();
-  };
-};
-
-// step 2: multi-pose accelerometer -> axis-aligned ellipsoid (offset + per-axis scale)
-let poseOn = false;
-$('b2').onclick = () => {
-  if(!firmware){ $('r2').textContent = '먼저 IMU를 연결해 주세요'; return; }
-  if(poseOn){ poseOn = false; imuSink = null; $('b2').textContent = '시작'; return; }
-  poseOn = true; CAL.poses = []; CAL.fit = null; $('b2').textContent = '그만'; const win = [];
-  imuSink = r => {
-    win.push(r); while(win.length && ((r.t - win[0].t) >>> 0) / 1e6 > 1.2) win.shift();
-    if(win.length < 30) return;
-    const a = win.map(x=>x.a), am = mean3(a), aSd = vnorm(sd3(a, am)), gMag = vnorm(mean3(win.map(x=>x.g.map(Math.abs))));
-    const still = aSd / vnorm(am) < 0.012 && gMag / NOMINAL_DPS < 3;
-    if(still && CAL.poses.every(p => angDeg(p, am) > 25)){ CAL.poses.push(am); beep(990, 0.08); win.length = 0; }
-    $('r2').textContent = `잡은 자세 ${CAL.poses.length}개` + (still ? ' · 멈춤' : ' · 움직이는 중');
-    $('b2fit').disabled = CAL.poses.length < 6;
-  };
-};
-function solve6(M, y){   // least squares via normal equations + Gaussian elimination
-  const n = 6, A = Array.from({length:n}, (_,i) => Array.from({length:n+1}, (_,j) => j < n ? M.reduce((s,r)=>s+r[i]*r[j],0) : M.reduce((s,r,k)=>s+r[i]*y[k],0)));
-  for(let c=0;c<n;c++){ let p = c; for(let r=c+1;r<n;r++) if(Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r; [A[c],A[p]] = [A[p],A[c]];
-    if(Math.abs(A[c][c]) < 1e-18) return null;
-    for(let r=0;r<n;r++) if(r !== c){ const f = A[r][c] / A[c][c]; for(let k=c;k<=n;k++) A[r][k] -= f*A[c][k]; } }
-  return A.map((r,i) => r[n] / r[i]);
-}
-$('b2fit').onclick = () => {
-  poseOn = false; imuSink = null; $('b2').textContent = '다시 시작';
-  // A x^2 + B y^2 + C z^2 + D x + E y + F z = 1, coordinates scaled by 1/16384 for conditioning
-  const K = 16384, P = CAL.poses.map(p => p.map(x=>x/K));
-  const sol = solve6(P.map(([x,y,z]) => [x*x, y*y, z*z, x, y, z]), P.map(() => 1));
-  if(!sol || sol.slice(0,3).some(v => v <= 0)){ $('r2').innerHTML = '<span class="bad">계산 실패. 방향이 더 다양한 자세로 다시 해 주세요</span>'; return; }
-  const [A,B,C,D,Ee,F] = sol, o = [-D/(2*A), -Ee/(2*B), -F/(2*C)], G = 1 + A*o[0]**2 + B*o[1]**2 + C*o[2]**2;
-  const rad = [Math.sqrt(G/A), Math.sqrt(G/B), Math.sqrt(G/C)];
-  const offset = o.map(x=>x*K), scale = rad.map(x=>x*K);
-  const res = CAL.poses.map(p => vnorm(p.map((v,i) => (v - offset[i]) / scale[i])) - 1);
-  const rms = Math.sqrt(res.reduce((s,x)=>s+x*x,0)/res.length);
-  CAL.fit = { offset, scale, rms };
-  $('r2').innerHTML = `<span class="${rms < 0.02 ? 'good' : 'bad'}">${rms < 0.02 ? '완료' : '오차가 큽니다. 다시 해 보세요'}</span> · 자세 ${CAL.poses.length}개 · 1g = [${scale.map(x=>x.toFixed(0)).join(', ')}] count · 맞춤 오차 ${(rms*1000).toFixed(1)} mg`;
-  renderImu();
-};
-
-// step 3: 360 deg turn on the table -> gyro counts per deg/s (rotation about the cup's up axis)
-$('b3').onclick = () => {
-  if(!firmware){ $('r3').textContent = '먼저 IMU를 연결해 주세요'; return; }
-  if(!CAL.still){ $('r3').textContent = '1번(가만히 두기)을 먼저 해 주세요'; return; }
-  const rows = []; let phase = 'settle', t0 = null, integ = 0, prevT = null, stillSince = null, moved = false, up = null;
-  $('r3').textContent = '1초 가만히…';
-  imuSink = r => {
-    if(t0 == null) t0 = r.t;
-    const sec = ((r.t - t0) >>> 0) / 1e6;
-    if(phase === 'settle'){ rows.push(r.a); if(sec >= 1){ up = vunit(mean3(rows)); phase = 'turn'; prevT = r.t; beep(1046, 0.06); $('r3').textContent = '돌리세요'; } return; }
-    const dt = ((r.t - prevT) >>> 0) / 1e6; prevT = r.t;
-    const w = vdot(r.g.map((v,i) => v - CAL.still.gBias[i]), up);          // counts, about the up axis
-    if(dt > 0 && dt < 0.2) integ += w * dt;                                 // counts * s
-    const rate = Math.abs(w) / NOMINAL_DPS;
-    if(rate > 20) moved = true;
-    if(moved && rate < 2){ if(stillSince == null) stillSince = sec; } else stillSince = null;
-    $('r3').textContent = `돌리는 중… 대략 ${(Math.abs(integ) / NOMINAL_DPS).toFixed(0)}°`;
-    if(moved && stillSince != null && sec - stillSince > 0.8){
-      imuSink = null;
-      const cpd = Math.abs(integ) / 360;
-      if(cpd / NOMINAL_DPS < 0.7 || cpd / NOMINAL_DPS > 1.3){ $('r3').innerHTML = `<span class="bad">${(Math.abs(integ)/NOMINAL_DPS).toFixed(0)}°로 나왔습니다. 정확히 한 바퀴 돌렸는지 확인하고 다시 해 주세요</span>`; return; }
-      CAL.turns.push({ counts_per_dps:cpd });
-      $('r3').innerHTML = `<span class="good">${CAL.turns.length}번째 완료</span> · ${cpd.toFixed(2)} count/(°/s) (명목값 65.5 대비 ${(cpd/NOMINAL_DPS*100).toFixed(1)}%)` + (CAL.turns.length < 2 ? ' · 한 번 더 해 주세요' : '');
-      renderImu();
-    }
-  };
-};
-$('bImuSave').onclick = () => download(`imu_calib_${new Date().toISOString().slice(0,10)}.json`, imuResult());
-
-// ======================================================================
-// ② A/B tuning
+// A/B tuning
 // ======================================================================
 // One constant at a time. The changed version and the current one are shown blind as 1/2 in random order.
 // Changed better -> adopt it and step further the same way; current better -> try the other direction once;
@@ -547,7 +364,7 @@ document.addEventListener('keydown', e => {
 });
 
 // ======================================================================
-// ③ merge pilot results -> one parameter set for the study
+// merge pilot results -> one parameter set for the study
 // ======================================================================
 let merged = null;
 $('sumFiles').onchange = async e => {
@@ -572,7 +389,6 @@ function loop(now){
   $('kTheta').textContent = E.theta == null ? '–' : E.theta.toFixed(1) + '°';
   $('kR0').textContent = E.r0 == null ? '–' : E.r0.toFixed(1) + '°';
   $('kRange').textContent = E.range ? `${E.range.min.toFixed(0)}–${E.range.max.toFixed(0)}°` : '안 잼';
-  if(now - imuT0 > 1000){ imuHz = imuCount; if(firmware) $('kImu').textContent = `연결됨 · ${imuCount} Hz`; imuCount = 0; imuT0 = now; }
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
