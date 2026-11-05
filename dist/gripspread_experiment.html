@@ -57,6 +57,9 @@
   .sheet p{line-height:1.65;margin:0 0 10px;color:#3A3F45}
   .form{display:grid;grid-template-columns:200px 1fr;gap:10px 16px;align-items:center}
   .form label{color:var(--muted)}
+  .pair{display:flex;gap:8px} .pair input{flex:1;min-width:0}
+  .check{font-size:13px;color:var(--muted)} .check.bad{color:var(--alert)}
+  details.guide{background:var(--rail);border-radius:6px;padding:10px 14px;margin:0 0 12px;font-size:14px} details.guide p{margin:8px 0 0}
   .order{background:var(--rail);border-radius:6px;padding:12px 14px;line-height:1.7;margin-top:12px}
   .actions{display:flex;gap:8px;margin-top:20px}
   .big-cond{font-size:30px;font-weight:600;letter-spacing:-.02em;margin:6px 0 12px}
@@ -141,12 +144,32 @@
     <section id="sSetup" class="screen on">
       <div class="sheet">
         <h1>참가자 설정</h1>
-        <p>참가자 번호로 기법 순서와 컵 순서가 정해집니다. 손 길이는 손목 주름에서 중지 끝까지, span은 엄지 끝에서 소지 끝까지 최대로 벌린 길이입니다.</p>
+        <p>참가자 번호로 기법 순서와 컵 순서가 정해집니다.</p>
         <div class="form">
           <label for="fPid">참가자 번호 (1–12)</label><input id="fPid" type="number" min="1" max="99" value="1">
-          <label for="fHandLen">손 길이 (mm)</label><input id="fHandLen" type="number" min="100" max="250" placeholder="예: 185">
-          <label for="fSpan">손 span (mm)</label><input id="fSpan" type="number" min="100" max="300" placeholder="예: 210">
           <label for="fHand">주손 (컵을 드는 손)</label><select id="fHand"><option value="R">오른손</option><option value="L">왼손</option></select>
+        </div>
+
+        <h2>손 크기 (주손, 실험자가 측정)</h2>
+        <details class="guide"><summary>측정 방법 보기</summary>
+          <p><b>준비:</b> 30cm 자(캘리퍼면 더 좋음), A4 용지, 펜. 모든 참가자를 같은 실험자가 잽니다.</p>
+          <p><b>손 길이:</b> 손바닥이 위로 오게 책상에 펴고 손가락을 붙입니다. 손바닥에 가장 가까운 손목 주름에 자의 0을 맞추고, 중지 방향으로 일직선이 되게 대서 중지 끝(손톱 말고 살 끝)까지 읽습니다.</p>
+          <p><b>손 span:</b> 손바닥이 아래로 오게 A4 위에 올리고 다섯 손가락을 최대한 벌립니다. 엄지 끝과 소지 끝에 펜으로 점을 찍고, 손을 뗀 뒤 두 점 사이 직선거리를 잽니다.</p>
+          <p><b>규칙:</b> 각각 두 번 재서 mm 단위로 적습니다. 평균은 자동으로 계산됩니다. 두 번이 5mm 넘게 차이 나면 한 번 더 재서 가까운 두 값을 적습니다.</p>
+        </details>
+        <div class="form">
+          <label>손 길이 (mm) 1차 / 2차</label><span class="pair"><input id="fHandLen1" type="number" min="100" max="250" placeholder="예: 185" aria-label="손 길이 1차"><input id="fHandLen2" type="number" min="100" max="250" placeholder="예: 186" aria-label="손 길이 2차"></span>
+          <label>손 span (mm) 1차 / 2차</label><span class="pair"><input id="fSpan1" type="number" min="100" max="300" placeholder="예: 210" aria-label="손 span 1차"><input id="fSpan2" type="number" min="100" max="300" placeholder="예: 212" aria-label="손 span 2차"></span>
+          <span></span><span id="handCheck" class="check"></span>
+        </div>
+
+        <h2>배경 설문 (참가자에게 물어서 입력)</h2>
+        <div class="form">
+          <label for="fAge">나이</label><input id="fAge" type="number" min="15" max="90">
+          <label for="fGender">성별</label><select id="fGender"><option value="">선택</option><option value="F">여성</option><option value="M">남성</option><option value="O">기타</option><option value="NA">응답 안 함</option></select>
+          <label for="fTpFreq">노트북 트랙패드 사용 빈도</label><select id="fTpFreq"><option value="">선택</option><option value="daily">거의 매일</option><option value="weekly">주 몇 번</option><option value="rarely">거의 안 씀 (주로 마우스)</option></select>
+          <label for="fGesture">손 제스처 입력 경험 (VR 손 추적, Leap Motion 등)</label><select id="fGesture"><option value="">선택</option><option value="none">없음</option><option value="few">몇 번 써 봄</option><option value="often">자주 씀</option></select>
+          <label for="fDrink">노트북을 쓰면서 음료를 드는 빈도</label><select id="fDrink"><option value="">선택</option><option value="often">자주</option><option value="sometimes">가끔</option><option value="rarely">거의 없음</option></select>
           <label for="fNote">메모</label><input id="fNote" placeholder="선택">
         </div>
         <div id="orderBox" class="order num"></div>
@@ -542,10 +565,35 @@ function buildSteps(){
   return steps;
 }
 
+// hand size: two readings each, mean is stored; flag >5 mm disagreement or values outside the usual adult range
+const HAND_OK = { len:[160,210], span:[170,240] };
+function handMeas(){
+  const v = id => +$(id).value || null, out = {};
+  [['len','fHandLen','손 길이'],['span','fSpan','손 span']].forEach(([k,id,name]) => {
+    const a = v(id+'1'), b = v(id+'2'), notes = [];
+    const mean = a && b ? (a + b) / 2 : a || b || null;
+    if(a && b && Math.abs(a - b) > 5) notes.push(`${name} 두 값 차이 ${Math.abs(a-b)}mm, 한 번 더 재 주세요`);
+    if(mean && (mean < HAND_OK[k][0] || mean > HAND_OK[k][1])) notes.push(`${name} ${mean}mm는 보통 범위(${HAND_OK[k][0]}–${HAND_OK[k][1]}mm) 밖입니다. 다시 확인해 주세요`);
+    out[k] = { a, b, mean, notes };
+  });
+  return out;
+}
+function showHandCheck(){
+  const m = handMeas(), notes = [...m.len.notes, ...m.span.notes], el = $('handCheck');
+  el.className = 'check' + (notes.length ? ' bad' : '');
+  el.textContent = notes.length ? notes.join(' · ') : (m.len.mean || m.span.mean) ? `평균: 손 길이 ${m.len.mean ?? '–'}mm, span ${m.span.mean ?? '–'}mm` : '';
+}
+['fHandLen1','fHandLen2','fSpan1','fSpan2'].forEach(id => $(id).addEventListener('input', showHandCheck));
+
 $('btnStart').onclick = () => {
   const pid = parseInt($('fPid').value);
   if(!pid){ $('fPid').focus(); return; }
-  Object.assign(S, { pid, hand:$('fHand').value, handLen:+$('fHandLen').value || null, span:+$('fSpan').value || null, note:$('fNote').value });
+  const hm = handMeas();
+  Object.assign(S, { pid, hand:$('fHand').value, handLen:hm.len.mean, span:hm.span.mean,
+    handRaw:{ length_mm:[hm.len.a, hm.len.b], span_mm:[hm.span.a, hm.span.b] },
+    demo:{ age:+$('fAge').value || null, gender:$('fGender').value || null, trackpad_freq:$('fTpFreq').value || null,
+      gesture_exp:$('fGesture').value || null, drink_while_laptop:$('fDrink').value || null },
+    note:$('fNote').value });
   const o = orderFor(pid); Object.assign(S, { seq:o.seq, techOrder:o.techOrder, latinRow:LATIN_NAME[o.latinRow] });
   const [pMin, pMax] = parseList($('fPrac').value);
   S.cfg = { D:parseList($('fD').value), W:parseList($('fW').value), reps:+$('fReps').value, warmup:+$('fWarm').value,
@@ -864,7 +912,7 @@ async function downloadZip(snap){
   setTimeout(()=>URL.revokeObjectURL(a.href), 5000); $('hSaved').textContent = '저장: ' + name;
 }
 function sessionObj(){
-  return { pid:S.pid, hand:S.hand, hand_length_mm:S.handLen, span_mm:S.span, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
+  return { pid:S.pid, hand:S.hand, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
     tlx:S.tlx, calibration:S.calib, user_agent:navigator.userAgent };
