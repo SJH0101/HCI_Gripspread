@@ -130,19 +130,14 @@
         </div>
 
         <div class="step" id="st2">
-          <h3>2. 여러 자세로 멈추기 (8자세 이상)</h3>
-          <p class="muted">컵을 서로 다른 방향 8가지로 놓고, 방향마다 <b>삑 소리가 날 때까지 1~2초 가만히</b> 있습니다. 순서는 상관없습니다. 손으로 들기 어려우면 책상이나 책에 기대어 받쳐도 됩니다.</p>
+          <h3>2. 정육면체 받침 6면 (가속도 영점·스케일)</h3>
+          <p class="muted">컵 밑 정육면체 받침의 6면을 차례로 책상에 대고 놓습니다. 면마다 <b>손을 떼고 삑 소리가 날 때까지</b> 기다립니다. 순서는 상관없습니다.</p>
           <ol class="muted" style="margin:4px 0 0 18px;line-height:1.8">
-            <li>똑바로 세우기 (바닥이 아래)</li>
-            <li>거꾸로 뒤집기 (입구가 아래)</li>
-            <li>옆으로 눕히기</li>
-            <li>눕힌 채로 90° 굴리기</li>
-            <li>한 번 더 90° 굴리기</li>
-            <li>한 번 더 90° 굴리기 (옆으로 누운 4방향 완성)</li>
-            <li>앞으로 45°쯤 기울이기</li>
-            <li>옆으로 45°쯤 기울이기</li>
+            <li>바닥면이 아래 (컵 똑바로)</li>
+            <li>윗면이 아래 (컵 거꾸로)</li>
+            <li>~ 6. 옆면 4개를 하나씩 아래로</li>
           </ol>
-          <p class="muted">오른쪽 공에 초록 점이 하나씩 생깁니다. 비슷한 방향은 한 번만 셉니다. 8개가 넘으면 <b>계산</b>을 누릅니다.</p>
+          <p class="muted">오른쪽 공에 초록 점이 6개 생기면(위·아래·앞·뒤·왼·오) <b>계산</b>을 누릅니다. 축마다 위를 볼 때와 아래를 볼 때의 값으로 영점과 1g 크기를 구합니다. 면이 책상에 평평하게 닿아야 정확합니다.</p>
           <div class="actions"><button id="b2">시작</button><button id="b2fit" disabled>계산</button><span id="r2" class="num"></span></div>
         </div>
 
@@ -235,7 +230,7 @@ function imuResult(){
     how_to_apply:'accel_g[i] = (raw_a[i] - accel_offset[i]) / accel_counts_per_g[i];  gyro_dps[i] = (raw_g[i] - gyro_bias[i]) / gyro_counts_per_dps',
     accel_offset: CAL.fit ? CAL.fit.offset.map(x=>+x.toFixed(1)) : null,
     accel_counts_per_g: CAL.fit ? CAL.fit.scale.map(x=>+x.toFixed(1)) : null,
-    accel_fit_rms_g: CAL.fit ? +CAL.fit.rms.toFixed(4) : null, accel_poses: CAL.poses.length,
+    accel_method: CAL.fit ? CAL.fit.method : null, accel_fit_rms_g: CAL.fit ? +CAL.fit.rms.toFixed(4) : null, accel_poses: CAL.poses.length,
     gyro_bias: CAL.still ? CAL.still.gBias.map(x=>+x.toFixed(2)) : null,
     gyro_counts_per_dps: gs ? +gs.toFixed(2) : null, gyro_turns: CAL.turns.map(t => +t.counts_per_dps.toFixed(2)),
     gyro_scale_vs_nominal: gs ? +(gs / NOMINAL_DPS).toFixed(3) : null,
@@ -298,6 +293,18 @@ function solve6(M, y){   // least squares via normal equations + Gaussian elimin
 }
 $('b2fit').onclick = () => {
   poseOn = false; imuSink = null; $('b2').textContent = '다시 시작';
+  // Six-face method: for each axis take the pose where it points up and the one where it points down.
+  // offset = (up + down) / 2, counts per g = (up - down) / 2. Falls back to an ellipsoid fit otherwise.
+  const face = (axis, sign) => CAL.poses.find(p => sign * p[axis] / vnorm(p) > 0.9);
+  const faces = [0,1,2].map(i => [face(i, +1), face(i, -1)]);
+  if(faces.every(([u,d]) => u && d)){
+    const offset = faces.map(([u,d],i) => (u[i] + d[i]) / 2), scale = faces.map(([u,d],i) => (u[i] - d[i]) / 2);
+    const res = CAL.poses.map(p => vnorm(p.map((v,i) => (v - offset[i]) / scale[i])) - 1);
+    const rms = Math.sqrt(res.reduce((s,x)=>s+x*x,0)/res.length);
+    CAL.fit = { offset, scale, rms, method:'six_face' };
+    $('r2').innerHTML = `<span class="${rms < 0.02 ? 'good' : 'bad'}">${rms < 0.02 ? '완료' : '오차가 큽니다. 면이 바닥에 평평하게 닿았는지 확인하고 다시 해 보세요'}</span> · 6면 방식 · 1g = [${scale.map(x=>x.toFixed(0)).join(', ')}] count · 영점 [${offset.map(x=>x.toFixed(0)).join(', ')}] · 확인 오차 ${(rms*1000).toFixed(1)} mg`;
+    return renderImu();
+  }
   // A x^2 + B y^2 + C z^2 + D x + E y + F z = 1, coordinates scaled by 1/16384 for conditioning
   const K = 16384, P = CAL.poses.map(p => p.map(x=>x/K));
   const sol = solve6(P.map(([x,y,z]) => [x*x, y*y, z*z, x, y, z]), P.map(() => 1));
@@ -307,7 +314,7 @@ $('b2fit').onclick = () => {
   const offset = o.map(x=>x*K), scale = rad.map(x=>x*K);
   const res = CAL.poses.map(p => vnorm(p.map((v,i) => (v - offset[i]) / scale[i])) - 1);
   const rms = Math.sqrt(res.reduce((s,x)=>s+x*x,0)/res.length);
-  CAL.fit = { offset, scale, rms };
+  CAL.fit = { offset, scale, rms, method:'ellipsoid' };
   $('r2').innerHTML = `<span class="${rms < 0.02 ? 'good' : 'bad'}">${rms < 0.02 ? '완료' : '오차가 큽니다. 다시 해 보세요'}</span> · 자세 ${CAL.poses.length}개 · 1g = [${scale.map(x=>x.toFixed(0)).join(', ')}] count · 맞춤 오차 ${(rms*1000).toFixed(1)} mg`;
   renderImu();
 };
