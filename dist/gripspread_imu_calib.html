@@ -93,7 +93,18 @@
 </style>
 <style>
   .solo{display:grid;grid-template-rows:52px 1fr;height:100vh}
-  .solo main{overflow:auto} .solo header{grid-column:auto}
+  .solo main{overflow:auto;display:flex;gap:20px;justify-content:center;align-items:flex-start;padding:0 16px} .solo header{grid-column:auto}
+  .solo main .sheet{margin:24px 0;flex:1 1 640px;max-width:760px}
+  .live{position:sticky;top:24px;margin:24px 0;flex:0 0 340px;background:#fff;border-radius:8px;padding:16px 18px;box-shadow:0 1px 2px rgba(31,35,40,.18),0 6px 18px rgba(31,35,40,.08)}
+  .live h2{font-size:14px;margin:0 0 4px} .live .cap{font-size:12px;color:var(--muted);margin:0 0 8px;line-height:1.5}
+  .live canvas{display:block;width:100%}
+  .meter{display:grid;grid-template-columns:70px 1fr 64px;gap:6px;align-items:center;font-size:12px;margin-top:6px}
+  .meter .track{height:8px;background:var(--rail);border-radius:4px;position:relative;overflow:hidden}
+  .meter .fill{position:absolute;inset:0 auto 0 0;background:var(--ok);border-radius:4px}
+  .meter .fill.over{background:var(--alert)}
+  .meter .lim{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink)}
+  #liveState{font-weight:600;font-size:15px;margin:8px 0 0}
+  @media(max-width:1100px){.solo main{flex-direction:column;align-items:stretch}.live{position:static;flex:none}}
 </style>
 </head>
 <body>
@@ -137,6 +148,20 @@
     </section>
 
 
+    <aside class="live" aria-label="실시간 센서">
+      <h2>실시간</h2>
+      <p class="cap">연결하면 계속 움직입니다. 공은 컵에서 본 중력 방향입니다. 큰 점이 지금 방향, 초록 점이 잡은 자세, 빈 원은 공 뒤쪽입니다.</p>
+      <canvas id="sphere" width="600" height="300" role="img" aria-label="중력 방향과 잡은 자세"></canvas>
+      <div id="liveState" class="muted">센서 연결 대기</div>
+      <div class="meter"><span>가속 흔들림</span><span class="track"><span class="fill" id="mA"></span><span class="lim" id="lA"></span></span><b id="vA" class="num">–</b></div>
+      <div class="meter"><span>자이로 흔들림</span><span class="track"><span class="fill" id="mG"></span><span class="lim" id="lG"></span></span><b id="vG" class="num">–</b></div>
+      <div class="meter"><span>회전 속도</span><span class="track"><span class="fill" id="mW"></span></span><b id="vW" class="num">–</b></div>
+      <h2 style="margin-top:14px">가속도 (최근 5초)</h2>
+      <canvas id="plotA" width="600" height="150" role="img" aria-label="가속도 그래프"></canvas>
+      <h2 style="margin-top:10px">자이로 (최근 5초, 영점 뺀 값)</h2>
+      <canvas id="plotG" width="600" height="150" role="img" aria-label="자이로 그래프"></canvas>
+      <p class="cap" style="margin-top:6px"><span style="color:#2367da">━ X</span> &nbsp;<span style="color:#087b66">━ Y</span> &nbsp;<span style="color:#c9324f">━ Z</span></p>
+    </aside>
   </main>
 </div>
 <script>
@@ -177,7 +202,7 @@ $('btnImu').onclick = async () => {
   try{
     const dev = await navigator.bluetooth.requestDevice({ filters:[{ name:IMU_NAME }], optionalServices:[IMU_SVC] });
     const ch = await (await (await dev.gatt.connect()).getPrimaryService(IMU_SVC)).getCharacteristic(IMU_DATA);
-    ch.addEventListener('characteristicvaluechanged', ev => { const r = imuDecode(ev.target.value); if(!r) return; imuCount++; if(imuSink) imuSink(r); });
+    ch.addEventListener('characteristicvaluechanged', ev => { const r = imuDecode(ev.target.value); if(!r) return; imuCount++; liveFeed(r); if(imuSink) imuSink(r); });
     await ch.startNotifications();
     dev.addEventListener('gattserverdisconnected', () => $('kImu').textContent = '끊김 · 다시 연결해 주세요');
     firmware = dev.name; $('kImu').textContent = '연결됨';
@@ -306,6 +331,57 @@ $('b3').onclick = () => {
 $('bImuSave').onclick = () => download(`imu_calib_${new Date().toISOString().slice(0,10)}.json`, imuResult());
 
 
+// ---------- live view: always on once connected ----------
+const LIVE = [], LIVE_S = 5, A_LIM = 0.02, G_LIM = 4;
+function liveFeed(r){ LIVE.push(r); while(LIVE.length && ((r.t - LIVE[0].t) >>> 0) / 1e6 > LIVE_S) LIVE.shift(); }
+const COL = ['#2367da','#087b66','#c9324f'];
+function drawSphere(cur){
+  const c = $('sphere'), x = c.getContext('2d'), W = c.width, H = c.height; x.clearRect(0,0,W,H);
+  // two orthographic views of the unit sphere: looking down +Z (left) and from +X (right)
+  const views = [ { cx:W*0.25, title:'위에서 (XY)', u:0, v:1, d:2 }, { cx:W*0.75, title:'옆에서 (YZ)', u:1, v:2, d:0 } ], R = H*0.38, cy = H*0.53;
+  views.forEach(vw => {
+    x.strokeStyle = '#D0D3D7'; x.lineWidth = 2; x.beginPath(); x.arc(vw.cx, cy, R, 0, Math.PI*2); x.stroke();
+    x.beginPath(); x.moveTo(vw.cx-R, cy); x.lineTo(vw.cx+R, cy); x.moveTo(vw.cx, cy-R); x.lineTo(vw.cx, cy+R); x.stroke();
+    x.fillStyle = '#6B7178'; x.font = '22px system-ui'; x.textAlign = 'center'; x.fillText(vw.title, vw.cx, 26);
+    const dot = (p, rad, fill, stroke) => { const u = vunit(p), px = vw.cx + u[vw.u]*R, py = cy - u[vw.v]*R, front = u[vw.d] >= 0;
+      x.beginPath(); x.arc(px, py, rad, 0, Math.PI*2); if(front){ x.fillStyle = fill; x.fill(); } else { x.strokeStyle = stroke; x.lineWidth = 3; x.stroke(); } };
+    CAL.poses.forEach(p => dot(p, 10, '#2F7D4F', '#2F7D4F'));
+    if(cur) dot(cur, 15, '#1F2328', '#1F2328');
+  });
+}
+function drawPlot(id, key, sub, unit){
+  const c = $(id), x = c.getContext('2d'), W = c.width, H = c.height; x.clearRect(0,0,W,H);
+  if(LIVE.length < 2) return;
+  const t1 = LIVE.at(-1).t, val = r => r[key].map((v,i) => (v - (sub ? sub[i] : 0)) / unit);
+  let lo = Infinity, hi = -Infinity; LIVE.forEach(r => val(r).forEach(v => { lo = Math.min(lo,v); hi = Math.max(hi,v); }));
+  const pad = Math.max(0.05, (hi-lo)*0.1); lo -= pad; hi += pad;
+  const X = r => W - (((t1 - r.t) >>> 0) / 1e6) / LIVE_S * W, Y = v => H - (v - lo) / (hi - lo) * H;
+  x.strokeStyle = '#E4E6E9'; x.lineWidth = 1; x.beginPath(); x.moveTo(0, Y(0)); x.lineTo(W, Y(0)); x.stroke();
+  for(let k=0;k<3;k++){ x.strokeStyle = COL[k]; x.lineWidth = 2.5; x.beginPath(); LIVE.forEach((r,i) => { const v = val(r)[k]; i ? x.lineTo(X(r), Y(v)) : x.moveTo(X(r), Y(v)); }); x.stroke(); }
+  x.fillStyle = '#6B7178'; x.font = '20px system-ui'; x.textAlign = 'left'; x.fillText(hi.toFixed(hi < 10 ? 2 : 0), 6, 22); x.fillText(lo.toFixed(lo > -10 ? 2 : 0), 6, H-8);
+}
+function setMeter(id, v, lim, max, txt){
+  const f = $('m'+id); f.style.width = Math.min(100, v / max * 100) + '%'; f.classList.toggle('over', lim != null && v > lim);
+  if(lim != null) $('l'+id).style.left = (lim / max * 100) + '%'; $('v'+id).textContent = txt;
+}
+function liveLoop(){
+  if(LIVE.length > 20){
+    const last = LIVE.filter(r => ((LIVE.at(-1).t - r.t) >>> 0) / 1e6 <= 1.0);
+    const a = last.map(r => r.a), am = mean3(a), aRel = vnorm(sd3(a, am)) / vnorm(am);
+    const gSd = vnorm(sd3(last.map(r => r.g), mean3(last.map(r => r.g)))) / NOMINAL_DPS;
+    const bias = CAL.still ? CAL.still.gBias : null, gNow = LIVE.at(-1).g, w = vnorm(gNow.map((v,i) => v - (bias ? bias[i] : 0))) / NOMINAL_DPS;
+    setMeter('A', aRel*100, A_LIM*100, 6, (aRel*100).toFixed(1) + '%');
+    setMeter('G', gSd, G_LIM, 15, gSd.toFixed(1) + '°/s');
+    setMeter('W', w, null, 200, w.toFixed(0) + '°/s');
+    const still = aRel < A_LIM && gSd < G_LIM;
+    $('liveState').textContent = still ? '멈춤' : '움직이는 중'; $('liveState').className = still ? 'good' : 'muted';
+    drawSphere(am.map((v,i) => CAL.fit ? (v - CAL.fit.offset[i]) / CAL.fit.scale[i] : v));
+    drawPlot('plotA', 'a', CAL.fit ? CAL.fit.offset : null, CAL.fit ? 1 : 16384);
+    drawPlot('plotG', 'g', bias || mean3(LIVE.map(r => r.g)), NOMINAL_DPS);
+  } else drawSphere(null);
+  requestAnimationFrame(liveLoop);
+}
+requestAnimationFrame(liveLoop);
 setInterval(() => { imuHz = imuCount; if(firmware) $('kImu').textContent = `연결됨 · ${imuCount} Hz`; imuCount = 0; }, 1000);
 </script>
 </body>
