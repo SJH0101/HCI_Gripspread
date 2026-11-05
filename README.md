@@ -17,10 +17,28 @@ CSE333 HCI개론 (UNIST, 2026 가을) Team 10 프로젝트.
 | `src/core_template.html` | 프로토타입 원본. 빌드하면 예시 문서 이미지가 안에 들어간다 |
 | `src/experiment_template.html` | 실험 프로그램 원본. 빌드하면 `engine.js`가 안에 들어간다 |
 | `assets/sample_doc_pages/` | 예시 문서 페이지 이미지 |
+| `imu/GripSpread_Portable.html` | 컵 IMU 단독 모니터. 센서 연결, 가상 컵으로 기울기 확인, 원시 데이터 CSV 저장 |
 | `docs/` | 아래 설명에 쓰는 그림 |
 
 `dist/`의 두 파일은 파일 하나만 있으면 돌아간다. 크롬에서 열고 카메라를 허용하면 된다. 손 인식 모델은 처음 열 때 인터넷에서 받아온다.
-컵 IMU를 블루투스로 연결하려면 크롬을 써야 한다. 사파리는 Web Bluetooth를 지원하지 않는다.
+컵 IMU를 블루투스로 연결하려면 크롬이나 엣지를 써야 한다. 사파리랑 파이어폭스는 Web Bluetooth를 지원하지 않는다.
+
+## 컵 IMU
+
+| 항목 | 값 |
+|---|---|
+| 보드 | ESP32-C3 + MPU6050, 펌웨어 `GS-MPU-C3-34-v4` |
+| 배선 | SDA → GPIO3, SCL → GPIO4, VCC → 3.3V, GND 공통 |
+| BLE | 이름 `GripSpread-C3-MPU`, 서비스 `FFE0`, 데이터 알림 `FFE3`, 상태 읽기 `FFE4`(JSON) |
+| 패킷 | 20바이트: magic(0xA3/0xA4), flags, seq(u16), t_us(u32), ax ay az gx gy gz (i16, 리틀 엔디언) |
+| 속도 | 약 100 Hz |
+
+- **실험할 때:** 실험 프로그램에서 `컵 IMU 연결`을 누르고 `GripSpread-C3-MPU`를 고른다. 연결되면 컵을 세워서 1초쯤 가만히 두면 그 자세가 수직 기준이 된다. 컵을 바꿀 때마다 센서를 옮겨 붙이니까 `컵 수직 기준 다시 잡기`를 누르고 다시 세워둔다. 시행 중 샘플이 `P01_imu.csv`에 trial_uid랑 같이 저장된다.
+- **센서만 확인할 때:** `imu/GripSpread_Portable.html`을 크롬/엣지에서 열면 된다. 가상 컵이 따라 움직이고, 원시값 CSV를 내려받을 수 있다. 한 센서는 한 번에 한 창에만 붙으니까 실험 프로그램이랑 동시에 열지 않는다.
+- **기울기 계산:** 처음 가만히 있던 자세의 가속도 방향을 수직으로 잡고, 그다음부터는 자이로를 적분해서 자세를 따라가되 가속도(중력 방향)로 계속 보정한다(상보 필터). 기울기 = 지금 컵 위쪽 방향과 수직 기준 사이 각도. 두 프로그램이 같은 식을 쓴다.
+- **한계:** 센서 식별값(WHO_AM_I)이 MPU6050 표준값이랑 다를 수 있어서 단위 환산(자이로 65.5 count = 1°/s)은 명목값이다. 분석은 원시값 count를 기준으로 하고, 기울기는 추정치로 본다. 이동 거리는 재지 않는다.
+
+`P01_imu.csv` 열: `t_ms`(실험 프로그램 시계), `technique`, `cup`, `step`, `trial_uid`, `phase`, `seq`, `t_us`(센서 시계), `ax_raw`~`gz_raw`, `tilt_deg`, `ref_ready`(기준 잡혔으면 1), `connection_id`(재연결할 때마다 +1).
 
 ## 빌드
 
@@ -294,10 +312,13 @@ Team 10 project for CSE333 Introduction to HCI (UNIST, Fall 2026).
 | `src/core_template.html` | Prototype source. The build inlines the sample document images |
 | `src/experiment_template.html` | Study program source. The build inlines `engine.js` |
 | `assets/sample_doc_pages/` | Sample document page images |
+| `imu/GripSpread_Portable.html` | Standalone cup IMU monitor: connect the sensor, see tilt on a virtual cup, save raw CSV |
 | `docs/` | Figures used in this README |
 
 Each file in `dist/` runs on its own. Open it in Chrome and allow the camera. The hand model is downloaded the first time.
-Connecting the cup IMU over Bluetooth needs Chrome (Safari has no Web Bluetooth). To rebuild after editing `src/`, run `./build.sh`.
+Connecting the cup IMU over Bluetooth needs Chrome or Edge (Safari and Firefox have no Web Bluetooth). To rebuild after editing `src/`, run `./build.sh`.
+
+**Cup IMU.** ESP32-C3 + MPU6050 (firmware `GS-MPU-C3-34-v4`; SDA GPIO3, SCL GPIO4, 3.3 V). It advertises as `GripSpread-C3-MPU` and streams 20-byte packets at about 100 Hz on service `FFE0`, characteristic `FFE3` (magic, flags, u16 seq, u32 t_us, six i16 raw axes, little endian). In the study program, press `컵 IMU 연결`, then stand the cup still for about a second to set the vertical reference; press `컵 수직 기준 다시 잡기` after moving the sensor to another cup. Tilt is the angle between the cup's current up axis and that reference, tracked with a complementary filter (gyro integration corrected by gravity). Unit conversion is nominal because the sensor ID is not verified, so analyses use raw counts and treat tilt as an estimate. `imu/GripSpread_Portable.html` is a standalone monitor for checking the sensor and saving raw CSV; open only one of the two pages at a time.
 
 Participant data is saved as one zip per participant, backed up in the browser (IndexedDB) after each condition, and never committed (`.gitignore`).
 

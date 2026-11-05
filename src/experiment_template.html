@@ -117,11 +117,13 @@
       <span>손 범위</span><b id="kRange">–</b>
       <span>카메라</span><b id="kFps">–</b>
       <span>컵 IMU</span><b id="kImu">연결 안 됨</b>
+      <span>컵 기울기</span><b id="kTilt">–</b>
     </div>
     <div class="rail-actions">
       <button id="btnRange">손 범위 재기</button>
       <button id="btnRecal">편한 V 다시 잡기</button>
       <button id="btnImu">컵 IMU 연결</button>
+      <button id="btnImuRef">컵 수직 기준 다시 잡기</button>
       <button id="btnSaveNow">지금까지 저장 (zip)</button>
     </div>
     <div class="keys">
@@ -567,7 +569,7 @@ function toCSV(head, rows){ return [head.join(',')].concat(rows.map(r => (Array.
 const TRIAL_HEAD = ['pid','technique','cup','step','cond_index','trial_index','trial_uid','warmup','D','W','ID','direction','target_line','start_ms','first_move_ms','end_ms','rt_ms','mt_ms','move_ms','success','skipped','switchbacks','overshoot_px','gs_r0','gs_range_min','gs_range_max','gs_dead','gs_gain','gs_gamma','gs_boost_max','gs_boost_ms','gs_acc_ms','gs_brake_ms','gs_dir','tech_order','latin_row'];
 function frameHead(cfgFrames){ const h = ['t_ms','technique','cup','step','trial_uid','phase','scroll_top','target_offset_px','in_frame','wheel_dy','gs_state','gs_theta','gs_velocity','gs_command','gs_boost','gs_reliable','gs_reason'];
   if(cfgFrames === 2) for(let i=0;i<21;i++) h.push(`w${i}_x`,`w${i}_y`,`w${i}_z`); return h; }
-const IMU_HEAD = ['t_ms','technique','cup','step','trial_uid','phase','ax','ay','az','gx','gy','gz','raw'];
+const IMU_HEAD = ['t_ms','technique','cup','step','trial_uid','phase','seq','t_us','ax_raw','ay_raw','az_raw','gx_raw','gy_raw','gz_raw','tilt_deg','ref_ready','connection_id'];
 const TLX_HEAD = ['pid','technique','mental','physical','temporal','performance','effort','frustration','raw_tlx'];
 const allFrames = [], allImu = [];
 const pTag = pid => `P${String(pid).padStart(2,'0')}`;
@@ -668,29 +670,64 @@ function showDone(){
 }
 $('btnSaveAll').onclick = () => downloadZip(snapshot());
 
-// ---------- cup IMU over Web Bluetooth (Nordic UART: one "ax,ay,az,gx,gy,gz" line per sample) ----------
-const NUS = '6e400001-b5a3-f393-e0a9-e50e24dcca9e', NUS_TX = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
-let imuBuf = '', imuCount = 0, imuT = 0;
+// ---------- cup IMU over Web Bluetooth ----------
+// Firmware GS-MPU-C3-34-v4 (ESP32-C3 + MPU6050). Service FFE0, notify FFE3 (20-byte binary packet), status FFE4 (JSON).
+// Packet: u8 magic(0xA3|0xA4), u8 flags, u16 seq, u32 t_us, i16 ax ay az gx gy gz (little endian). Same decoder as imu/GripSpread_Portable.html.
+const IMU_SVC = '0000ffe0-0000-1000-8000-00805f9b34fb', IMU_DATA = '0000ffe3-0000-1000-8000-00805f9b34fb', IMU_NAME = 'GripSpread-C3-MPU';
+const IMU_KEYS = ['ax_raw','ay_raw','az_raw','gx_raw','gy_raw','gz_raw'];
+function imuDecode(v){
+  if(v.byteLength !== 20) return null;
+  const magic = v.getUint8(0), flags = v.getUint8(1);
+  if(![0xa3,0xa4].includes(magic) || !(flags & 1) || (magic === 0xa4 && !(flags & 4))) return null;
+  const r = { seq:v.getUint16(2,true), t_us:v.getUint32(4,true) };
+  IMU_KEYS.forEach((k,i) => r[k] = v.getInt16(8 + i*2, true)); return r;
+}
+// Tilt relative to an upright reference: complementary filter (gyro integration + gravity correction), copied from the portable monitor.
+const qn = v => Math.hypot(...v), qu = v => { const n = qn(v); return n > 1e-12 ? v.map(x=>x/n) : v.map(()=>0); };
+const qx = (a,b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const qm = (a,b) => { const [w,x,y,z]=a,[v,i,j,k]=b; return [w*v-x*i-y*j-z*k, w*i+x*v+y*k-z*j, w*j-x*k+y*v+z*i, w*k+x*j-y*i+z*v]; };
+const qc = q => [q[0],-q[1],-q[2],-q[3]], qr = (q,v) => qm(qm(q,[0,...v]),qc(q)).slice(1);
+function qalign(a,b){ a=qu(a); b=qu(b); const d=a.reduce((s,v,i)=>s+v*b[i],0); if(d<-.999999) return [0,...qu(qx(a,Math.abs(a[0])<.9?[1,0,0]:[0,1,0]))]; return qu([1+d,...qx(a,b)]); }
+const IP = { win:[], ref:null, q:null, bias:[0,0,0], g:null, prev:null, tilt:null };
+function imuResetRef(){ Object.assign(IP, { win:[], ref:null, q:null, bias:[0,0,0], g:null, prev:null, tilt:null }); }
+function imuFeed(r){
+  const a = IMU_KEYS.slice(0,3).map(k=>r[k]), g = IMU_KEYS.slice(3).map(k=>r[k]), t = r.t_us;
+  if(!IP.ref){   // wait for ~1.2 s of the cup standing still, then take that as vertical
+    IP.win.push({t,a,g}); if(IP.win.length > 150) IP.win.shift(); IP.prev = t;
+    const w = IP.win; if(w.length < 120 || ((w.at(-1).t - w[0].t) >>> 0) / 1e6 < 1) return;
+    const avg = key => [0,1,2].map(i => w.reduce((s,x)=>s+x[key][i],0)/w.length), ma = avg('a'), mg = avg('g'), sc = qn(ma);
+    const sd = (key,m) => Math.sqrt(w.reduce((s,x)=>s+x[key].reduce((u,v,i)=>u+(v-m[i])**2,0),0)/w.length);
+    if(sc < 100 || sd('a',ma)/sc > .025 || sd('g',mg)/65.5 > 1.2 || qn(mg)/65.5 > 18) return;
+    IP.ref = qalign(ma,[0,0,1]); IP.q = IP.ref.slice(); IP.g = sc; IP.bias = mg; return;
+  }
+  const dt = ((t - IP.prev) >>> 0) / 1e6; IP.prev = t;
+  if(dt > 0 && dt <= .2){
+    const exp = qr(qc(IP.q),[0,0,1]), corr = qx(qu(a),exp), trust = Math.max(0, 1 - Math.abs(qn(a)/IP.g - 1)/.25);
+    const om = g.map((v,i) => (v-IP.bias[i])/65.5*Math.PI/180 + 2.4*trust*corr[i]), d = qm(IP.q,[0,...om]);
+    IP.q = qu(IP.q.map((v,i) => v + .5*dt*d[i]));
+  } else if(dt > .2) IP.q = qu(qm(qalign(qr(IP.q,qu(a)),[0,0,1]),IP.q));
+  const up = qr(qu(qm(IP.q,qc(IP.ref))),[0,0,1]);
+  IP.tilt = Math.acos(Math.max(-1, Math.min(1, up[2]))) * 180 / Math.PI;
+}
+let imuCount = 0, imuT = 0, imuConn = 0, imuDev = null;
 $('btnImu').onclick = async () => {
-  if(!navigator.bluetooth){ $('kImu').textContent = '이 브라우저는 블루투스 미지원 (크롬 필요)'; return; }
+  if(!navigator.bluetooth){ $('kImu').textContent = '이 브라우저는 블루투스 미지원 (크롬/엣지 필요)'; return; }
   try{
-    const dev = await navigator.bluetooth.requestDevice({ filters:[{ services:[NUS] }] });
-    const srv = await (await dev.gatt.connect()).getPrimaryService(NUS);
-    const ch = await srv.getCharacteristic(NUS_TX);
-    ch.addEventListener('characteristicvaluechanged', ev => {
-      imuBuf += new TextDecoder().decode(ev.target.value);
-      let k; while((k = imuBuf.indexOf('\n')) >= 0){ const line = imuBuf.slice(0,k).trim(); imuBuf = imuBuf.slice(k+1); onImuLine(line); }
-    });
+    imuDev = await navigator.bluetooth.requestDevice({ filters:[{ name:IMU_NAME }], optionalServices:[IMU_SVC] });
+    const ch = await (await (await imuDev.gatt.connect()).getPrimaryService(IMU_SVC)).getCharacteristic(IMU_DATA);
+    ch.addEventListener('characteristicvaluechanged', ev => { const r = imuDecode(ev.target.value); if(r) onImu(r); });
     await ch.startNotifications();
-    dev.addEventListener('gattserverdisconnected', () => $('kImu').textContent = '끊김');
-    $('kImu').textContent = '연결됨 (' + (dev.name || 'IMU') + ')';
-  }catch(e){ $('kImu').textContent = '연결 실패'; }
+    imuDev.addEventListener('gattserverdisconnected', () => $('kImu').textContent = '끊김 · 다시 연결 눌러');
+    imuConn++; imuResetRef();
+    $('kImu').textContent = '연결됨 · 컵 세워서 가만히';
+  }catch(e){ $('kImu').textContent = '연결 실패: ' + e.message; }
 };
-function onImuLine(line){
-  imuCount++;
+$('btnImuRef').onclick = () => { imuResetRef(); $('kTilt').textContent = '기준 잡는 중'; };
+function onImu(r){
+  imuCount++; imuFeed(r);
   if(!run || run.phase === 'idle') return;
-  const v = line.split(','), t = performance.now();
-  imuRows.push([Math.round(t), run.st.tech, run.st.cup, run.st.type, run.trial ? run.trial.uid : '', run.phase, ...[0,1,2,3,4,5].map(i => v[i] ?? ''), v.length !== 6 ? line : '']);
+  imuRows.push([Math.round(performance.now()), run.st.tech, run.st.cup, run.st.type, run.trial ? run.trial.uid : '', run.phase,
+    r.seq, r.t_us, ...IMU_KEYS.map(k => r[k]), IP.tilt == null ? '' : +IP.tilt.toFixed(2), IP.ref ? 1 : 0, imuConn]);
 }
 
 // ---------- main loop ----------
@@ -701,6 +738,7 @@ function loop(now){
   $('kR0').textContent = E.r0 == null ? '–' : E.r0.toFixed(1) + '°';
   $('kRange').textContent = E.range ? `${E.range.min.toFixed(0)}–${E.range.max.toFixed(0)}°` : '안 잼';
   if(now - imuT > 1000){ $('kFps').textContent = E.fps + ' fps'; if(imuCount) $('kImu').textContent = `연결됨 · ${imuCount} Hz`; imuCount = 0; imuT = now; }
+  $('kTilt').textContent = IP.tilt == null ? (IP.q || !imuConn ? '–' : '기준 잡는 중') : IP.tilt.toFixed(1) + '°';
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
