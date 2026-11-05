@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GripSpread 파일럿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --canvas:#D5D8DB; --rail:#F3F4F5; --ink:#1F2328; --muted:#6B7178; --hair:#D0D3D7;
+    --mark:#F5D020; --mark-soft:rgba(245,208,32,.35); --alert:#C8372D; --ok:#2F7D4F;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--canvas);color:var(--ink);
+    font-family:"IBM Plex Sans KR",-apple-system,"Apple SD Gothic Neo",sans-serif;font-size:14px}
+  .num{font-variant-numeric:tabular-nums}
+  button{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--hair);border-radius:6px;padding:6px 12px;cursor:pointer}
+  button:hover{border-color:var(--ink)}
+  button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button:disabled{opacity:.45;cursor:default}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+  input,select,textarea{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--hair);border-radius:6px;padding:6px 8px}
+
+  .app{display:grid;grid-template-columns:300px 1fr;grid-template-rows:52px 1fr;height:100vh}
+  header{grid-column:1/3;display:flex;align-items:center;gap:6px;padding:0 16px;background:var(--rail);border-bottom:1px solid var(--hair)}
+  .brand{font-weight:600;font-size:15px;margin-right:14px}
+  .tab{border:0;background:transparent;border-radius:6px;padding:6px 12px;color:var(--muted)}
+  .tab.on{background:#fff;color:var(--ink);box-shadow:0 0 0 1px var(--hair)}
+  .spacer{flex:1}
+  .prog{color:var(--muted)}
+
+  aside{background:var(--rail);border-right:1px solid var(--hair);display:flex;flex-direction:column;overflow:auto}
+  aside > *{flex:none}
+  .cam{position:relative;aspect-ratio:4/3;background:#2A2E33;margin:16px 16px 0;border-radius:6px;overflow:hidden}
+  video,#overlay{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  .status{display:flex;align-items:center;gap:8px;margin:12px 16px 0;padding:6px 12px 6px 8px;border-radius:999px;background:#fff;border:1px solid var(--hair);position:relative;overflow:hidden;font-size:13px}
+  .status .lamp{width:10px;height:10px;border-radius:50%;background:#B9BDC2;flex:none}
+  .status.hold .lamp{background:transparent;border:2px solid var(--ink)}
+  .status.pause .lamp{background:transparent;border:2px dashed var(--ink)}
+  .status.active{background:var(--mark);border-color:var(--mark)}
+  .status.active .lamp{background:var(--ink)}
+  .status.warn{border-color:var(--alert)} .status.warn .lamp{background:var(--alert)}
+  .status .bar{position:absolute;left:0;bottom:0;height:2px;width:0;background:var(--ink)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;padding:12px 16px;font-size:13px}
+  .kv span{color:var(--muted)} .kv b{font-weight:500;text-align:right}
+  .rail-actions{display:flex;flex-direction:column;gap:6px;padding:0 16px 16px}
+
+  main{position:relative;min-height:0;overflow:hidden}
+  .screen{position:absolute;inset:0;display:none;overflow:auto}
+  .screen.on{display:block}
+  .sheet{max-width:760px;margin:32px auto;background:#fff;border-radius:8px;padding:26px 30px;box-shadow:0 1px 2px rgba(31,35,40,.18),0 6px 18px rgba(31,35,40,.08)}
+  .sheet h1{font-size:21px;margin:0 0 6px;letter-spacing:-.01em}
+  .sheet h2{font-size:15px;margin:22px 0 8px}
+  .sheet p{line-height:1.65;margin:0 0 10px;color:#3A3F45}
+  .muted{color:var(--muted)}
+  .form{display:grid;grid-template-columns:190px 1fr;gap:10px 16px;align-items:center}
+  .form label{color:var(--muted)}
+  .box{background:var(--rail);border-radius:6px;padding:12px 14px;line-height:1.7;margin-top:10px}
+  .actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center}
+  .step{border:1px solid var(--hair);border-radius:8px;padding:14px 16px;margin-top:12px}
+  .step h3{margin:0 0 6px;font-size:14px}
+  .step.done{border-color:var(--ok)}
+  .step.done h3::after{content:"  ✓";color:var(--ok)}
+  .bad{color:var(--alert)} .good{color:var(--ok)}
+  table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:13px}
+  th,td{border-bottom:1px solid var(--hair);padding:6px 8px;text-align:right}
+  th:first-child,td:first-child{text-align:left}
+  th{color:var(--muted);font-weight:500}
+  .big{font-size:28px;font-weight:600;letter-spacing:-.02em;margin:4px 0 10px}
+  .choice{display:flex;gap:10px;margin-top:16px}
+  .choice button{flex:1;padding:16px;font-size:16px}
+  pre{white-space:pre-wrap;font-size:12px;background:var(--rail);border-radius:6px;padding:10px;max-height:240px;overflow:auto}
+
+  /* task (same look as the study program) */
+  #sTask{overflow:hidden}
+  #track{position:absolute;inset:0;overflow-y:hidden;scrollbar-width:none;overscroll-behavior:none}
+  #track::-webkit-scrollbar{display:none}
+  #content{position:relative;width:min(760px, calc(100% - 64px));margin:0 auto;background:#fff;
+    background-image:repeating-linear-gradient(to bottom, transparent 0 22px, #EEF0F2 22px 30px, transparent 30px 36px);
+    background-size:100% 36px;background-origin:content-box;padding:0 56px}
+  #target{position:absolute;left:0;right:0;height:8px;margin-top:-4px;background:var(--mark);box-shadow:0 0 0 1px var(--ink)}
+  #frame{position:absolute;left:50%;transform:translateX(-50%);width:min(820px, calc(100% - 24px));border:2px solid var(--ink);border-radius:2px;pointer-events:none}
+  #frame.in{background:var(--mark-soft)}
+  #frame .dw{position:absolute;left:0;bottom:-2px;height:4px;width:0;background:var(--ink)}
+  .ln{position:absolute;left:4px;width:44px;height:14px;margin-top:-7px;text-align:right;font:12px/14px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8A9099;pointer-events:none}
+  .ln.tgt{color:var(--ink);font-weight:700;background:var(--mark);border-radius:3px;padding-right:3px}
+  #lineCue{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:var(--ink);color:#fff;font-weight:600;border-radius:999px;padding:7px 18px;font-size:15px;pointer-events:none}
+  #verTag{position:absolute;right:20px;top:16px;background:#fff;border:2px solid var(--ink);border-radius:8px;padding:4px 12px;font-weight:700;font-size:18px;pointer-events:none}
+  #taskMsg{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:999px;padding:6px 14px;font-size:13px;pointer-events:none}
+  #taskMsg:empty{display:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span class="brand">GripSpread 파일럿</span>
+    <button class="tab on" data-tab="sImu">① IMU 보정</button>
+    <button class="tab" data-tab="sTune">② 값 맞추기</button>
+    <button class="tab" data-tab="sSum">③ 결과 합치기</button>
+    <span class="spacer"></span>
+    <span id="hInfo" class="prog"></span>
+  </header>
+
+  <aside>
+    <div class="cam"><video id="video" autoplay playsinline muted></video><canvas id="overlay"></canvas></div>
+    <div id="status" class="status"><span class="lamp"></span><span id="stateText">카메라 준비 중</span><span id="holdBar" class="bar"></span></div>
+    <div class="kv num">
+      <span>벌림 각도</span><b id="kTheta">–</b>
+      <span>편한 V</span><b id="kR0">–</b>
+      <span>손 범위</span><b id="kRange">–</b>
+      <span>컵 IMU</span><b id="kImu">연결 안 됨</b>
+    </div>
+    <div class="rail-actions">
+      <button id="btnImu">컵 IMU 연결</button>
+    </div>
+  </aside>
+
+  <main>
+    <!-- ① IMU calibration (experimenter, once per sensor before the pilot) -->
+    <section id="sImu" class="screen on">
+      <div class="sheet">
+        <h1>IMU 보정</h1>
+        <p>센서를 컵에 붙인 채로 합니다. 원시값(count)을 g와 °/s로 바꾸는 값과, 컵이 가만히 있을 때의 잡음을 잽니다. 결과 파일은 분석할 때 원시 IMU 데이터에 적용합니다. 왼쪽에서 <b>컵 IMU 연결</b>을 먼저 눌러 주세요.</p>
+
+        <div class="step" id="st1">
+          <h3>1. 가만히 두기 (10초)</h3>
+          <p class="muted">컵을 책상에 똑바로 세우고 손을 뗍니다. 자이로 영점, 잡음 크기, 기울기 잡음을 잽니다.</p>
+          <div class="actions"><button id="b1">시작</button><span id="r1" class="num"></span></div>
+        </div>
+
+        <div class="step" id="st2">
+          <h3>2. 여러 자세로 멈추기 (8자세 이상)</h3>
+          <p class="muted">컵을 들고 방향을 바꿔 가며 자세마다 2초씩 멈춥니다. 똑바로, 거꾸로, 옆으로 눕혀 굴려 가며 4방향, 비스듬히 몇 번. 멈춘 자세가 자동으로 잡힙니다. 서로 25° 이상 다른 자세만 셉니다.</p>
+          <div class="actions"><button id="b2">시작</button><button id="b2fit" disabled>계산</button><span id="r2" class="num"></span></div>
+        </div>
+
+        <div class="step" id="st3">
+          <h3>3. 책상 위에서 한 바퀴 돌리기 (2번)</h3>
+          <p class="muted">컵을 똑바로 세우고 바닥이 책상에서 떨어지지 않게 정확히 360° 돌립니다. 테이프로 시작 위치를 표시해 두세요. 시작을 누르고 1초 가만히 있다가 돌리고, 다 돌린 뒤 멈추면 자동으로 끝납니다.</p>
+          <div class="actions"><button id="b3">시작</button><span id="r3" class="num"></span></div>
+        </div>
+
+        <h2>결과</h2>
+        <pre id="imuOut">아직 없음</pre>
+        <div class="actions"><button id="bImuSave" class="primary" disabled>imu_calib.json 저장</button></div>
+      </div>
+    </section>
+
+    <!-- ② A/B tuning with one pilot participant -->
+    <section id="sTune" class="screen">
+      <div class="sheet" id="tuneSetup">
+        <h1>값 맞추기</h1>
+        <p>값 하나만 바꾼 두 버전(1, 2)을 각각 짧게 써 보고 어느 쪽이 나았는지 고릅니다. 바꾼 쪽이 나으면 그 방향으로 한 칸 더, 아니면 반대 방향을 시험하고, 더 나아지지 않으면 그 값에서 멈춥니다. 참가자에게는 어느 쪽이 바뀐 값인지 알려주지 않습니다.</p>
+        <div class="form">
+          <label for="tId">파일럿 참가자</label><input id="tId" value="T1">
+          <label for="tCup">컵</label><select id="tCup"><option value="75">75mm 컵</option><option value="60">60mm 컵</option><option value="90">90mm 컵</option><option value="none">컵 없음</option></select>
+          <label for="tN">버전당 시행 수</label><input id="tN" type="number" min="2" max="10" value="4">
+        </div>
+        <h2>맞출 값 (순서대로)</h2>
+        <div id="paramList" class="box"></div>
+        <h2>보정</h2>
+        <p class="muted">컵을 쥔 채로 손 범위와 편한 V를 잽니다. 값 맞추는 동안 고정됩니다.</p>
+        <div class="actions"><button id="tCalib">보정 시작</button><span id="tCalibR" class="num"></span></div>
+        <div class="actions"><button id="tStart" class="primary" disabled>값 맞추기 시작</button></div>
+      </div>
+
+      <div class="sheet" id="tuneAsk" style="display:none">
+        <p id="askKind" class="muted"></p>
+        <div class="big">어느 쪽이 더 나았나요?</div>
+        <p>목표 줄에 맞추기 쉬웠는지, 속도가 자연스러웠는지, 원하지 않을 때 움직이지 않았는지를 같이 생각해 주세요.</p>
+        <div class="choice"><button data-pick="1">1이 나음</button><button data-pick="0">비슷함</button><button data-pick="2">2가 나음</button></div>
+        <div class="form" style="margin-top:16px"><label for="askNote">한마디 (선택)</label><input id="askNote" placeholder="예: 2는 너무 빨라서 지나침"></div>
+      </div>
+
+      <div class="sheet" id="tuneDone" style="display:none">
+        <h1>끝</h1>
+        <div id="doneTable"></div>
+        <div class="actions"><button id="tSave" class="primary">결과 저장 (json)</button><button id="tAgain">처음으로</button></div>
+      </div>
+    </section>
+
+    <section id="sTask" class="screen">
+      <div id="track"><div id="content"><div id="target"></div></div></div>
+      <div id="frame"><span class="dw" id="dwellBar"></span></div>
+      <div id="lineCue"></div>
+      <div id="verTag"></div>
+      <div id="taskMsg"></div>
+    </section>
+
+    <!-- ③ merge pilot results -->
+    <section id="sSum" class="screen">
+      <div class="sheet">
+        <h1>결과 합치기</h1>
+        <p>파일럿 참가자별 결과 파일(json)을 모두 고르면, 값마다 사람별 최종값과 평균을 보여줍니다. 평균을 본 실험 값으로 고정하고, 실험 프로그램 시작 화면의 <b>값 불러오기</b>로 넣습니다.</p>
+        <div class="actions"><input id="sumFiles" type="file" accept=".json" multiple></div>
+        <div id="sumTable" style="margin-top:14px"></div>
+        <div class="actions"><button id="sumSave" class="primary" disabled>gripspread_params.json 저장</button></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script type="module">
+import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+{{ENGINE}}
+
+const $ = id => document.getElementById(id);
+let actx = null;
+function beep(freq=880, dur=0.08, vol=0.12){
+  try{ actx = actx || new AudioContext(); const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = freq; g.gain.setValueAtTime(vol, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.001, actx.currentTime+dur);
+    o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime+dur); }catch(e){}
+}
+document.addEventListener('click', () => { try{ actx = actx || new AudioContext(); actx.resume(); }catch(e){} }, {once:true});
+function download(name, obj){
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'}));
+  a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000);
+}
+const tabs = [...document.querySelectorAll('.tab')];
+function show(id){ document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); }
+tabs.forEach(t => t.onclick = () => { if(run) return; tabs.forEach(x => x.classList.toggle('on', x === t)); show(t.dataset.tab); });
+
+// ---------- engine ----------
+const E = GripEngine;
+E.freezeRange = true;
+window.GS_DEBUG = { E };
+const statusEl = $('status');
+E.onBeep = (f,d) => beep(f,d);
+E.onStatus = (text, cls, prog) => { $('stateText').textContent = text; statusEl.className = 'status ' + cls; $('holdBar').style.width = (prog*100)+'%'; };
+const video = $('video'), overlay = $('overlay'), oc = overlay.getContext('2d');
+function drawOverlay(){
+  overlay.width = video.videoWidth || 640; overlay.height = video.videoHeight || 480; oc.clearRect(0,0,overlay.width,overlay.height);
+  const lm = E.lm; if(!lm) return;
+  const X = p => p.x*overlay.width, Y = p => p.y*overlay.height, mx = (X(lm[5])+X(lm[9]))/2, my = (Y(lm[5])+Y(lm[9]))/2;
+  oc.strokeStyle = E.reliable ? '#F5D020' : '#C8372D'; oc.lineWidth = 4;
+  for(const t of [8,12]){ oc.beginPath(); oc.moveTo(mx,my); oc.lineTo(X(lm[t]),Y(lm[t])); oc.stroke(); }
+}
+
+// ======================================================================
+// ① IMU calibration
+// ======================================================================
+// Firmware GS-MPU-C3-34-v4: service FFE0, notify FFE3, 20-byte packet (magic, flags, u16 seq, u32 t_us, i16 ax ay az gx gy gz).
+const IMU_SVC = '0000ffe0-0000-1000-8000-00805f9b34fb', IMU_DATA = '0000ffe3-0000-1000-8000-00805f9b34fb', IMU_NAME = 'GripSpread-C3-MPU';
+const NOMINAL_DPS = 65.5;   // counts per deg/s at +-500 dps, only used to detect stillness before calibration
+function imuDecode(v){
+  if(v.byteLength !== 20) return null;
+  const magic = v.getUint8(0), flags = v.getUint8(1);
+  if(![0xa3,0xa4].includes(magic) || !(flags & 1) || (magic === 0xa4 && !(flags & 4))) return null;
+  const r = { seq:v.getUint16(2,true), t:v.getUint32(4,true), a:[0,0,0], g:[0,0,0] };
+  for(let i=0;i<3;i++){ r.a[i] = v.getInt16(8+i*2,true); r.g[i] = v.getInt16(14+i*2,true); }
+  return r;
+}
+const vnorm = v => Math.hypot(...v), vdot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2], vunit = v => { const n = vnorm(v) || 1; return v.map(x=>x/n); };
+const mean3 = rows => [0,1,2].map(i => rows.reduce((s,r)=>s+r[i],0)/rows.length);
+const sd3 = (rows, m) => [0,1,2].map(i => Math.sqrt(rows.reduce((s,r)=>s+(r[i]-m[i])**2,0)/rows.length));
+const angDeg = (a,b) => Math.acos(Math.max(-1, Math.min(1, vdot(vunit(a), vunit(b))))) * 180/Math.PI;
+
+let imuCount = 0, imuHz = 0, imuT0 = 0, imuSink = null, firmware = null;
+$('btnImu').onclick = async () => {
+  if(!navigator.bluetooth){ $('kImu').textContent = '블루투스 미지원 (크롬/엣지 필요)'; return; }
+  try{
+    const dev = await navigator.bluetooth.requestDevice({ filters:[{ name:IMU_NAME }], optionalServices:[IMU_SVC] });
+    const ch = await (await (await dev.gatt.connect()).getPrimaryService(IMU_SVC)).getCharacteristic(IMU_DATA);
+    ch.addEventListener('characteristicvaluechanged', ev => { const r = imuDecode(ev.target.value); if(!r) return; imuCount++; if(imuSink) imuSink(r); });
+    await ch.startNotifications();
+    dev.addEventListener('gattserverdisconnected', () => $('kImu').textContent = '끊김 · 다시 연결해 주세요');
+    firmware = dev.name; $('kImu').textContent = '연결됨';
+  }catch(e){ $('kImu').textContent = '연결 실패: ' + e.message; }
+};
+
+const CAL = { still:null, poses:[], fit:null, turns:[] };
+function renderImu(){
+  $('st1').classList.toggle('done', !!CAL.still); $('st2').classList.toggle('done', !!CAL.fit); $('st3').classList.toggle('done', CAL.turns.length >= 2);
+  const out = imuResult();
+  $('imuOut').textContent = out ? JSON.stringify(out, null, 2) : '아직 없음';
+  $('bImuSave').disabled = !out;
+}
+function imuResult(){
+  if(!CAL.still && !CAL.fit && !CAL.turns.length) return null;
+  const gs = CAL.turns.length ? CAL.turns.reduce((s,t)=>s+t.counts_per_dps,0)/CAL.turns.length : null;
+  return {
+    sensor:firmware || IMU_NAME, firmware:'GS-MPU-C3-34-v4', calibrated_at:new Date().toISOString(),
+    how_to_apply:'accel_g[i] = (raw_a[i] - accel_offset[i]) / accel_counts_per_g[i];  gyro_dps[i] = (raw_g[i] - gyro_bias[i]) / gyro_counts_per_dps',
+    accel_offset: CAL.fit ? CAL.fit.offset.map(x=>+x.toFixed(1)) : null,
+    accel_counts_per_g: CAL.fit ? CAL.fit.scale.map(x=>+x.toFixed(1)) : null,
+    accel_fit_rms_g: CAL.fit ? +CAL.fit.rms.toFixed(4) : null, accel_poses: CAL.poses.length,
+    gyro_bias: CAL.still ? CAL.still.gBias.map(x=>+x.toFixed(2)) : null,
+    gyro_counts_per_dps: gs ? +gs.toFixed(2) : null, gyro_turns: CAL.turns.map(t => +t.counts_per_dps.toFixed(2)),
+    gyro_scale_vs_nominal: gs ? +(gs / NOMINAL_DPS).toFixed(3) : null,
+    still_noise: CAL.still ? {
+      gyro_sd_dps: +(CAL.still.gSdCounts / (gs || NOMINAL_DPS)).toFixed(3),
+      accel_sd_g: CAL.fit ? +(CAL.still.aSdCounts / (CAL.fit.scale.reduce((a,b)=>a+b,0)/3)).toFixed(4) : null,
+      accel_sd_counts: +CAL.still.aSdCounts.toFixed(1),
+      tilt_sd_deg: +CAL.still.tiltSd.toFixed(3), seconds: CAL.still.seconds } : null,
+    sample_rate_hz: imuHz || null,
+  };
+}
+
+// step 1: still 10 s
+$('b1').onclick = () => {
+  if(!firmware){ $('r1').textContent = '먼저 IMU를 연결해 주세요'; return; }
+  const rows = []; let t0 = null; $('r1').textContent = '측정 중… 건드리지 마세요';
+  imuSink = r => {
+    rows.push(r); if(t0 == null) t0 = r.t;
+    const sec = ((r.t - t0) >>> 0) / 1e6;
+    $('r1').textContent = `측정 중… ${sec.toFixed(1)} / 10초`;
+    if(sec < 10) return;
+    imuSink = null;
+    const a = rows.map(x=>x.a), g = rows.map(x=>x.g), am = mean3(a), gm = mean3(g);
+    const aSd = sd3(a, am), gSd = sd3(g, gm);
+    const tilt = a.map(v => angDeg(v, am)), tiltSd = Math.sqrt(tilt.reduce((s,x)=>s+x*x,0)/tilt.length);
+    if(Math.max(...gSd) / NOMINAL_DPS > 1.5){ $('r1').innerHTML = '<span class="bad">움직임이 감지됐습니다. 컵을 가만히 두고 다시 해 주세요</span>'; return; }
+    CAL.still = { gBias:gm, gSdCounts:vnorm(gSd), aSdCounts:vnorm(aSd), tiltSd, up:vunit(am), seconds:10, n:rows.length };
+    $('r1').innerHTML = `<span class="good">완료</span> · 샘플 ${rows.length}개 · 자이로 영점 [${gm.map(x=>x.toFixed(1)).join(', ')}] · 기울기 잡음 ${tiltSd.toFixed(3)}°`;
+    renderImu();
+  };
+};
+
+// step 2: multi-pose accelerometer -> axis-aligned ellipsoid (offset + per-axis scale)
+let poseOn = false;
+$('b2').onclick = () => {
+  if(!firmware){ $('r2').textContent = '먼저 IMU를 연결해 주세요'; return; }
+  if(poseOn){ poseOn = false; imuSink = null; $('b2').textContent = '시작'; return; }
+  poseOn = true; CAL.poses = []; CAL.fit = null; $('b2').textContent = '그만'; const win = [];
+  imuSink = r => {
+    win.push(r); while(win.length && ((r.t - win[0].t) >>> 0) / 1e6 > 1.2) win.shift();
+    if(win.length < 30) return;
+    const a = win.map(x=>x.a), am = mean3(a), aSd = vnorm(sd3(a, am)), gMag = vnorm(mean3(win.map(x=>x.g.map(Math.abs))));
+    const still = aSd / vnorm(am) < 0.012 && gMag / NOMINAL_DPS < 3;
+    if(still && CAL.poses.every(p => angDeg(p, am) > 25)){ CAL.poses.push(am); beep(990, 0.08); win.length = 0; }
+    $('r2').textContent = `잡은 자세 ${CAL.poses.length}개` + (still ? ' · 멈춤' : ' · 움직이는 중');
+    $('b2fit').disabled = CAL.poses.length < 6;
+  };
+};
+function solve6(M, y){   // least squares via normal equations + Gaussian elimination
+  const n = 6, A = Array.from({length:n}, (_,i) => Array.from({length:n+1}, (_,j) => j < n ? M.reduce((s,r)=>s+r[i]*r[j],0) : M.reduce((s,r,k)=>s+r[i]*y[k],0)));
+  for(let c=0;c<n;c++){ let p = c; for(let r=c+1;r<n;r++) if(Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r; [A[c],A[p]] = [A[p],A[c]];
+    if(Math.abs(A[c][c]) < 1e-18) return null;
+    for(let r=0;r<n;r++) if(r !== c){ const f = A[r][c] / A[c][c]; for(let k=c;k<=n;k++) A[r][k] -= f*A[c][k]; } }
+  return A.map((r,i) => r[n] / r[i]);
+}
+$('b2fit').onclick = () => {
+  poseOn = false; imuSink = null; $('b2').textContent = '다시 시작';
+  // A x^2 + B y^2 + C z^2 + D x + E y + F z = 1, coordinates scaled by 1/16384 for conditioning
+  const K = 16384, P = CAL.poses.map(p => p.map(x=>x/K));
+  const sol = solve6(P.map(([x,y,z]) => [x*x, y*y, z*z, x, y, z]), P.map(() => 1));
+  if(!sol || sol.slice(0,3).some(v => v <= 0)){ $('r2').innerHTML = '<span class="bad">계산 실패. 방향이 더 다양한 자세로 다시 해 주세요</span>'; return; }
+  const [A,B,C,D,Ee,F] = sol, o = [-D/(2*A), -Ee/(2*B), -F/(2*C)], G = 1 + A*o[0]**2 + B*o[1]**2 + C*o[2]**2;
+  const rad = [Math.sqrt(G/A), Math.sqrt(G/B), Math.sqrt(G/C)];
+  const offset = o.map(x=>x*K), scale = rad.map(x=>x*K);
+  const res = CAL.poses.map(p => vnorm(p.map((v,i) => (v - offset[i]) / scale[i])) - 1);
+  const rms = Math.sqrt(res.reduce((s,x)=>s+x*x,0)/res.length);
+  CAL.fit = { offset, scale, rms };
+  $('r2').innerHTML = `<span class="${rms < 0.02 ? 'good' : 'bad'}">${rms < 0.02 ? '완료' : '오차가 큽니다. 다시 해 보세요'}</span> · 자세 ${CAL.poses.length}개 · 1g = [${scale.map(x=>x.toFixed(0)).join(', ')}] count · 맞춤 오차 ${(rms*1000).toFixed(1)} mg`;
+  renderImu();
+};
+
+// step 3: 360 deg turn on the table -> gyro counts per deg/s (rotation about the cup's up axis)
+$('b3').onclick = () => {
+  if(!firmware){ $('r3').textContent = '먼저 IMU를 연결해 주세요'; return; }
+  if(!CAL.still){ $('r3').textContent = '1번(가만히 두기)을 먼저 해 주세요'; return; }
+  const rows = []; let phase = 'settle', t0 = null, integ = 0, prevT = null, stillSince = null, moved = false, up = null;
+  $('r3').textContent = '1초 가만히…';
+  imuSink = r => {
+    if(t0 == null) t0 = r.t;
+    const sec = ((r.t - t0) >>> 0) / 1e6;
+    if(phase === 'settle'){ rows.push(r.a); if(sec >= 1){ up = vunit(mean3(rows)); phase = 'turn'; prevT = r.t; beep(1046, 0.06); $('r3').textContent = '돌리세요'; } return; }
+    const dt = ((r.t - prevT) >>> 0) / 1e6; prevT = r.t;
+    const w = vdot(r.g.map((v,i) => v - CAL.still.gBias[i]), up);          // counts, about the up axis
+    if(dt > 0 && dt < 0.2) integ += w * dt;                                 // counts * s
+    const rate = Math.abs(w) / NOMINAL_DPS;
+    if(rate > 20) moved = true;
+    if(moved && rate < 2){ if(stillSince == null) stillSince = sec; } else stillSince = null;
+    $('r3').textContent = `돌리는 중… 대략 ${(Math.abs(integ) / NOMINAL_DPS).toFixed(0)}°`;
+    if(moved && stillSince != null && sec - stillSince > 0.8){
+      imuSink = null;
+      const cpd = Math.abs(integ) / 360;
+      if(cpd / NOMINAL_DPS < 0.7 || cpd / NOMINAL_DPS > 1.3){ $('r3').innerHTML = `<span class="bad">${(Math.abs(integ)/NOMINAL_DPS).toFixed(0)}°로 나왔습니다. 정확히 한 바퀴 돌렸는지 확인하고 다시 해 주세요</span>`; return; }
+      CAL.turns.push({ counts_per_dps:cpd });
+      $('r3').innerHTML = `<span class="good">${CAL.turns.length}번째 완료</span> · ${cpd.toFixed(2)} count/(°/s) (명목값 65.5 대비 ${(cpd/NOMINAL_DPS*100).toFixed(1)}%)` + (CAL.turns.length < 2 ? ' · 한 번 더 해 주세요' : '');
+      renderImu();
+    }
+  };
+};
+$('bImuSave').onclick = () => download(`imu_calib_${new Date().toISOString().slice(0,10)}.json`, imuResult());
+
+// ======================================================================
+// ② A/B tuning
+// ======================================================================
+// One constant at a time. The changed version and the current one are shown blind as 1/2 in random order.
+// Changed better -> adopt it and step further the same way; current better -> try the other direction once;
+// same -> stop. At most MAX_CMP comparisons per constant (Fashimpaur et al., CHI 2023, second pilot).
+const PARAMS = [
+  { k:'dead',    name:'멈춤 구간',        unit:'',   step:0.05, min:0.05, max:0.40, dec:2, why:'편한 V 주변에서 안 움직이는 폭 (범위 대비)' },
+  { k:'gain',    name:'기본 속도',        unit:'px/s', step:200, min:300, max:2000, dec:0, why:'끝까지 벌렸을 때 속도 (가속 전)' },
+  { k:'gamma',   name:'속도 곡선 지수',   unit:'',   step:0.4,  min:1.0,  max:3.4,  dec:1, why:'클수록 살짝 벌릴 때 더 느림' },
+  { k:'boostMax',name:'유지 가속 최대 배수', unit:'×', step:0.5, min:1.0, max:4.0, dec:1, why:'끝까지 벌린 채 버티면 붙는 가속' },
+  { k:'accMs',   name:'가속 반응',        unit:'ms', step:100,  min:50,   max:600,  dec:0, why:'빨라질 때 따라가는 시간상수' },
+  { k:'brakeMs', name:'감속 반응',        unit:'ms', step:40,   min:20,   max:200,  dec:0, why:'멈출 때 따라가는 시간상수' },
+];
+const MAX_CMP = 4;
+const BASE = { ...E.P };
+$('paramList').innerHTML = PARAMS.map((p,i) => `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-k="${p.k}" checked> ${i+1}. ${p.name} <span class="muted">· 지금 ${BASE[p.k]}${p.unit} · 한 칸 ${p.step}${p.unit} · ${p.why}</span></label>`).join('');
+
+let T = null;      // tuning session
+let run = null;    // block of trials
+$('tCalib').onclick = () => { E.r0 = null; E.startRange(); $('tCalibR').textContent = '손 범위 → 편한 V 순서로 잽니다'; T = T || {}; T.calibWait = true; };
+E.onRange = () => updCalib(); E.onNeutral = () => updCalib();
+function updCalib(){
+  if(!$('tuneSetup').offsetParent) return;
+  const ok = E.range && E.r0 != null;
+  $('tCalibR').innerHTML = ok ? `<span class="good">완료</span> · 범위 ${E.range.min.toFixed(1)}~${E.range.max.toFixed(1)}° · 편한 V ${E.r0.toFixed(1)}°`
+    : E.range ? `범위 ${E.range.min.toFixed(1)}~${E.range.max.toFixed(1)}° · 손을 내렸다가 편한 V로 올려 주세요` : '';
+  $('tStart').disabled = !ok;
+}
+$('tStart').onclick = () => {
+  const keys = [...document.querySelectorAll('#paramList input:checked')].map(i => i.dataset.k);
+  if(!keys.length) return;
+  Object.assign(E.P, BASE);
+  T = { id:$('tId').value.trim() || 'T?', cup:$('tCup').value, n:Math.max(2, +$('tN').value || 4), keys, ki:0,
+        values:{ ...BASE }, calib:{ range:{ ...E.range }, r0:E.r0 }, comparisons:[], trials:[], started:new Date().toISOString() };
+  $('hInfo').textContent = `${T.id} · ${$('tCup').selectedOptions[0].textContent}`;
+  startParam();
+};
+function startParam(){
+  if(T.ki >= T.keys.length) return finishTuning();
+  const p = PARAMS.find(x => x.k === T.keys[T.ki]);
+  T.cur = { p, dir:+1, triedOther:false, n:0 };
+  nextComparison();
+}
+const clampP = (p, v) => +Math.min(p.max, Math.max(p.min, v)).toFixed(p.dec);
+function nextComparison(){
+  const c = T.cur, p = c.p, base = T.values[p.k];
+  let cand = clampP(p, base + c.dir * p.step);
+  if(cand === base){ if(!c.triedOther){ c.triedOther = true; c.dir = -c.dir; cand = clampP(p, base + c.dir * p.step); } }
+  if(cand === base || c.n >= MAX_CMP){ T.ki++; return startParam(); }
+  c.n++;
+  const changedFirst = Math.random() < 0.5;
+  c.cmp = { param:p.k, base, cand, versions: changedFirst ? [cand, base] : [base, cand], idx:T.comparisons.length + 1 };
+  runBlock(0);
+}
+function runBlock(vi){
+  const c = T.cur.cmp;
+  Object.assign(E.P, T.values); E.P[c.param] = c.versions[vi];
+  run = { vi, i:-1, trials:makeTrials(T.n), trial:null, phase:'idle' };
+  tabs.forEach(t => t.disabled = true);
+  show('sTask'); $('verTag').textContent = `버전 ${vi + 1}`;
+  nextTrial();
+}
+function askPreference(){
+  run = null; tabs.forEach(t => t.disabled = false);
+  const c = T.cur, p = c.p;
+  show('sTune'); $('tuneSetup').style.display = 'none'; $('tuneDone').style.display = 'none'; $('tuneAsk').style.display = '';
+  $('askKind').textContent = `${T.ki + 1}/${T.keys.length} · ${p.name} · 비교 ${c.n}`;
+  $('askNote').value = '';
+}
+document.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
+  const pick = +b.dataset.pick, c = T.cur, cmp = c.cmp;
+  const chose = pick === 0 ? null : cmp.versions[pick - 1];
+  const verdict = chose == null ? 'same' : chose === cmp.cand ? 'changed' : 'current';
+  T.comparisons.push({ ...cmp, pick, verdict, note:$('askNote').value.trim(), at:new Date().toISOString() });
+  $('tuneAsk').style.display = 'none';
+  if(verdict === 'changed'){ T.values[cmp.param] = cmp.cand; return nextComparison(); }                // keep going this way
+  if(verdict === 'current' && !c.triedOther && c.n === 1){ c.triedOther = true; c.dir = -c.dir; return nextComparison(); }  // try the other way once
+  T.ki++; startParam();                                                                                 // settled
+});
+function finishTuning(){
+  Object.assign(E.P, BASE);
+  show('sTune'); $('tuneSetup').style.display = 'none'; $('tuneAsk').style.display = 'none'; $('tuneDone').style.display = '';
+  $('doneTable').innerHTML = '<table><tr><th>값</th><th>시작</th><th>최종</th><th>비교 횟수</th></tr>' +
+    T.keys.map(k => { const p = PARAMS.find(x=>x.k===k); return `<tr><td>${p.name}</td><td>${BASE[k]}</td><td><b>${T.values[k]}</b></td><td>${T.comparisons.filter(c=>c.param===k).length}</td></tr>`; }).join('') + '</table>';
+  T.finished = new Date().toISOString();
+}
+$('tSave').onclick = () => download(`pilot_${T.id}_${T.started.slice(0,10)}.json`, {
+  pilot_id:T.id, cup:T.cup, trials_per_version:T.n, started:T.started, finished:T.finished, calibration:T.calib,
+  start_values:Object.fromEntries(T.keys.map(k => [k, BASE[k]])), final_values:Object.fromEntries(T.keys.map(k => [k, T.values[k]])),
+  all_engine_values:T.values, comparisons:T.comparisons, trials:T.trials });
+$('tAgain').onclick = () => { T = null; $('tuneDone').style.display = 'none'; $('tuneSetup').style.display = ''; $('hInfo').textContent = ''; updCalib(); };
+
+// ---------- short scroll trials (same task and stop rule as the study program) ----------
+const track = $('track'), content = $('content'), target = $('target'), frameEl = $('frame'), dwellBar = $('dwellBar'), taskMsg = $('taskMsg'), lineCue = $('lineCue');
+const CONTENT_H = 12000, PITCH = 36, LINE_Y = 26, N_LINES = Math.floor((CONTENT_H - LINE_Y) / PITCH) + 1, TARGET_HALF = 4;
+const STOP_MS = 66, PRE_MS = 800, TIMEOUT = 15000, ITI = 500, W = 80;
+const lineY = k => (k - 1) * PITCH + LINE_Y;
+content.style.height = CONTENT_H + 'px';
+const lnEls = [null];
+{ const f = document.createDocumentFragment(); for(let k=1;k<=N_LINES;k++){ const s = document.createElement('span'); s.className = 'ln'; s.style.top = lineY(k)+'px'; s.textContent = k; f.appendChild(s); lnEls.push(s); } content.appendChild(f); }
+let tgtLn = null;
+function makeTrials(n){
+  const D = [400, 1200, 3600], out = [];
+  for(let i=0;i<n;i++) out.push({ D:D[i % D.length], dir: i % 2 ? 'up' : 'down' });
+  for(let i=out.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [out[i],out[j]] = [out[j],out[i]]; }
+  return out;
+}
+function nextTrial(){
+  run.i++;
+  if(run.i >= run.trials.length){
+    if(run.vi === 0){ taskMsg.textContent = '버전 2로 바뀝니다'; const r = run; r.phase = 'gap'; setTimeout(() => runBlock(1), 1200); return; }
+    return askPreference();
+  }
+  const t = run.trials[run.i], fc = track.clientHeight / 2, viewH = track.clientHeight;
+  let lo, hi;
+  if(t.dir === 'down'){ lo = 0; hi = Math.min(CONTENT_H - viewH - t.D, CONTENT_H - 300 - fc - t.D); }
+  else { lo = Math.max(t.D, t.D + 300 - fc); hi = CONTENT_H - viewH; }
+  const off = fc + (t.dir === 'down' ? t.D : -t.D);
+  const kMin = Math.ceil((lo + off - LINE_Y) / PITCH) + 1, kMax = Math.max(kMin, Math.floor((hi + off - LINE_Y) / PITCH) + 1);
+  const line = kMin + Math.floor(Math.random() * (kMax - kMin + 1)), Tt = lineY(line), S0 = Tt - off;
+  if(tgtLn) tgtLn.classList.remove('tgt'); tgtLn = lnEls[line]; if(tgtLn) tgtLn.classList.add('tgt');
+  run.trial = { ...t, line, T:Tt, S0, startT:null, dwellStart:null, switchbacks:0, lastDir:0, minRem:t.D, prevTop:S0, sgn: t.dir === 'down' ? 1 : -1, lastTick:null };
+  track.scrollTop = S0; target.style.top = Tt + 'px';
+  frameEl.style.height = W + 'px'; frameEl.style.top = (fc - W/2) + 'px'; frameEl.classList.remove('in'); dwellBar.style.width = '0';
+  lineCue.textContent = `${line}번 줄을 네모 안에`;
+  run.phase = E.state === 'ACTIVE' ? 'pre' : 'waitActive'; run.trial.preAt = performance.now();
+  taskMsg.textContent = run.phase === 'waitActive' ? '편한 V로 돌아와 주세요' : '';
+}
+function tickTask(now){
+  if(!run || !run.trial) return;
+  const tr = run.trial, fc = track.clientHeight / 2;
+  if(run.phase === 'waitActive'){ track.scrollTop = tr.S0; if(E.state === 'ACTIVE'){ run.phase = 'pre'; tr.preAt = now; taskMsg.textContent = ''; } }
+  else if(run.phase === 'pre'){ track.scrollTop = tr.S0; if(now - tr.preAt >= PRE_MS){ run.phase = 'running'; tr.startT = now; beep(1046, 0.05, 0.08); } }
+  else if(run.phase === 'running'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); track.scrollTop += E.velocity * dt; }
+  tr.lastTick = now;
+  if(run.phase !== 'running'){ tr.prevTop = track.scrollTop; return; }
+  const top = track.scrollTop, d = (tr.T - top) - fc, rem = d * tr.sgn, inFrame = Math.abs(d) <= W/2 - TARGET_HALF, delta = top - tr.prevTop;
+  frameEl.classList.toggle('in', inFrame);
+  if(Math.abs(delta) > 0.5){ const s = Math.sign(delta); if(tr.lastDir && s !== tr.lastDir) tr.switchbacks++; tr.lastDir = s; }
+  tr.minRem = Math.min(tr.minRem, rem);
+  const moving = Math.abs(delta) > 0.5 || Math.abs(E.velocity) > 5;
+  if(inFrame && !moving){ if(tr.dwellStart == null) tr.dwellStart = now; } else tr.dwellStart = null;
+  dwellBar.style.width = tr.dwellStart != null ? Math.min(100, (now - tr.dwellStart) / STOP_MS * 100) + '%' : '0';
+  if(tr.dwellStart != null && now - tr.dwellStart >= STOP_MS) endTrial(now, 1);
+  else if(now - tr.startT > TIMEOUT) endTrial(now, 0);
+  tr.prevTop = top;
+}
+function endTrial(now, success){
+  const tr = run.trial, cmp = T.cur.cmp; run.trial = null; run.phase = 'iti';
+  beep(success ? 880 : 220, success ? 0.06 : 0.2, 0.08);
+  T.trials.push({ cmp:cmp.idx, param:cmp.param, version:run.vi + 1, value:cmp.versions[run.vi], is_changed: cmp.versions[run.vi] === cmp.cand ? 1 : 0,
+    D:tr.D, W, direction:tr.dir, success, mt_ms: success ? Math.round(tr.dwellStart - tr.startT) : '', switchbacks:tr.switchbacks,
+    overshoot_px: Math.max(0, Math.round(-tr.minRem - W/2)) });
+  setTimeout(() => { if(run) nextTrial(); }, ITI);
+}
+document.addEventListener('keydown', e => {
+  if((e.key === 'n' || e.key === 'N') && run && run.trial && run.phase === 'running') endTrial(performance.now(), 0);
+});
+
+// ======================================================================
+// ③ merge pilot results -> one parameter set for the study
+// ======================================================================
+let merged = null;
+$('sumFiles').onchange = async e => {
+  const files = [...e.target.files], data = [];
+  for(const f of files){ try{ data.push(JSON.parse(await f.text())); }catch(err){} }
+  const ok = data.filter(d => d.final_values);
+  if(!ok.length){ $('sumTable').innerHTML = '<p class="bad">결과 파일이 아닙니다</p>'; return; }
+  const keys = PARAMS.map(p => p.k).filter(k => ok.some(d => k in d.final_values));
+  const mean = k => { const v = ok.filter(d => k in d.final_values).map(d => d.final_values[k]); return v.reduce((a,b)=>a+b,0)/v.length; };
+  merged = { from:ok.map(d => d.pilot_id), n:ok.length, merged_at:new Date().toISOString(), rule:'mean of each pilot participant\'s final value (Fashimpaur et al., CHI 2023)', values:{} };
+  keys.forEach(k => { const p = PARAMS.find(x=>x.k===k); merged.values[k] = +mean(k).toFixed(p.dec); });
+  $('sumTable').innerHTML = '<table><tr><th>값</th>' + ok.map(d => `<th>${d.pilot_id}</th>`).join('') + '<th>평균 (고정값)</th></tr>' +
+    keys.map(k => { const p = PARAMS.find(x=>x.k===k); return `<tr><td>${p.name}</td>` + ok.map(d => `<td>${d.final_values[k] ?? '–'}</td>`).join('') + `<td><b>${merged.values[k]}</b></td></tr>`; }).join('') + '</table>';
+  $('sumSave').disabled = false;
+};
+$('sumSave').onclick = () => merged && download('gripspread_params.json', merged);
+
+// ---------- main loop ----------
+function loop(now){
+  if(E.update(now)) drawOverlay();
+  tickTask(now);
+  $('kTheta').textContent = E.theta == null ? '–' : E.theta.toFixed(1) + '°';
+  $('kR0').textContent = E.r0 == null ? '–' : E.r0.toFixed(1) + '°';
+  $('kRange').textContent = E.range ? `${E.range.min.toFixed(0)}–${E.range.max.toFixed(0)}°` : '안 잼';
+  if(now - imuT0 > 1000){ imuHz = imuCount; if(firmware) $('kImu').textContent = `연결됨 · ${imuCount} Hz`; imuCount = 0; imuT0 = now; }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+E.init(HandLandmarker, FilesetResolver, video).catch(e => E.onStatus('카메라나 손 인식 모델을 열지 못했습니다: ' + e.message, 'warn', 0));
+</script>
+</body>
+</html>

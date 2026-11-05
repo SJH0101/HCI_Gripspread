@@ -147,7 +147,7 @@
         <h1>참가자 설정</h1>
         <p>참가자 번호로 기법 순서와 컵 순서가 정해집니다.</p>
         <div class="form">
-          <label for="fPid">참가자 번호 (1–12)</label><input id="fPid" type="number" min="1" max="99" value="1">
+          <label for="fPid">참가자 번호 (1–20)</label><input id="fPid" type="number" min="1" max="99" value="1">
           <label for="fHand">주손 (컵을 드는 손)</label><select id="fHand"><option value="R">오른손</option><option value="L">왼손</option></select>
         </div>
 
@@ -194,6 +194,7 @@
           <label for="fFrames">프레임 기록</label><select id="fFrames"><option value="1">켜기</option><option value="2">켜기 + 손 랜드마크</option><option value="0">끄기</option></select>
         </div>
         <h2>GripSpread 값 (파일럿에서 조정)</h2>
+        <div class="actions" style="margin:0 0 10px"><label for="fParams" class="muted" style="color:var(--muted)">파일럿 결과 값 불러오기</label><input id="fParams" type="file" accept=".json"><span id="paramsMsg" class="check"></span></div>
         <div class="form num">
           <label for="gDead">멈춤 구간 (범위 대비, 0–0.5)</label><input id="gDead" type="number" step="0.01" min="0" max="0.5" value="0.15">
           <label for="gGain">기본 속도 (px/s)</label><input id="gGain" type="number" step="50" min="200" max="5000" value="800">
@@ -326,10 +327,10 @@ const allTrials = [], tlxRows = [];
 let frames = [], imuRows = [], stepTrials = [];
 
 function parseList(v){ return v.split(',').map(x=>parseFloat(x.trim())).filter(x=>!isNaN(x)); }
-// 12 participants: each Latin-square row gets 3 people; technique order alternates within and across rows,
-// so cup order is balanced (3 per row) and technique order splits 6/6.
-//   row A: TP, GS, TP   row B: GS, TP, GS   row C: TP, GS, TP   row D: GS, TP, GS
-const N_PART = 12;
+// Target 20 participants (minimum 16). Every block of 4 consecutive IDs completes one balanced Latin square,
+// and technique order alternates within and across rows, so stopping after P16 (8/8) or P20 (10/10) stays balanced.
+//   round 0: A TP, B GS, C TP, D GS   round 1: A GS, B TP, C GS, D TP   ...
+const N_PART = 20;
 function orderFor(pid){
   const seq = (pid - 1) % N_PART;
   const latinRow = seq % 4, round = Math.floor(seq / 4);
@@ -377,6 +378,18 @@ function showHandCheck(){
   el.textContent = notes.length ? notes.join(' · ') : (m.len.mean || m.span.mean) ? `평균: 손 길이 ${m.len.mean ?? '–'}mm, span ${m.span.mean ?? '–'}mm` : '';
 }
 ['fHandLen1','fHandLen2','fSpan1','fSpan2'].forEach(id => $(id).addEventListener('input', showHandCheck));
+
+// load the averaged pilot values (gripspread_params.json from the pilot tool) into the fields below
+const PARAM_FIELD = { dead:'gDead', gain:'gGain', gamma:'gGamma', boostMax:'gBoost', boostMs:'gBoostMs', boostOn:'gBoostOn', minSide:'gMinSide', accMs:'gAcc', brakeMs:'gBrake', curlMax:'gCurl', holdMs:'gHold' };
+let paramsSource = null;
+$('fParams').onchange = async e => {
+  try{
+    const j = JSON.parse(await e.target.files[0].text()), v = j.values || j.final_values;
+    const set = Object.entries(v).filter(([k]) => PARAM_FIELD[k]).map(([k,x]) => { $(PARAM_FIELD[k]).value = x; return `${k}=${x}`; });
+    paramsSource = { file:e.target.files[0].name, from:j.from || j.pilot_id || null, values:v };
+    $('paramsMsg').className = 'check'; $('paramsMsg').textContent = '불러옴: ' + set.join(', ');
+  }catch(err){ $('paramsMsg').className = 'check bad'; $('paramsMsg').textContent = '파일을 읽지 못했습니다'; }
+};
 
 $('btnStart').onclick = () => {
   const pid = parseInt($('fPid').value);
@@ -709,7 +722,7 @@ function sessionObj(){
   return { pid:S.pid, hand:S.hand, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
-    tlx:S.tlx, calibration:S.calib, user_agent:navigator.userAgent };
+    tlx:S.tlx, calibration:S.calib, params_source:paramsSource, user_agent:navigator.userAgent };
 }
 $('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
 // recovery list on the setup screen
