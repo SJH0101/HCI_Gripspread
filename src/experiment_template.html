@@ -181,6 +181,13 @@
           <span></span><span id="envCheck" class="check"></span>
         </div>
 
+        <h2>컵 IMU 보정 (실험자, 매 세션 시작 전)</h2>
+        <p class="muted" style="color:var(--muted)">① 센서 보정 파일은 센서를 받침에 새로 끼웠을 때만 <b>IMU 보정 페이지</b>(gripspread_imu_calib.html)에서 새로 만들고, 여기서 한 번 불러오면 브라우저가 기억합니다. ② 정지 확인은 매 세션 합니다: 왼쪽 <b>컵 IMU 연결</b> 후 컵을 책상에 세워 두고 손을 뗀 채 10초. 그날의 자이로 영점과 잡음을 잽니다.</p>
+        <div class="form">
+          <label for="fImuCal">① 센서 보정 파일</label><span><input id="fImuCal" type="file" accept=".json"> <span id="imuCalMsg" class="check"></span></span>
+          <label>② 정지 확인 (10초)</label><span><button id="btnImuCheck" type="button">정지 확인 시작</button> <span id="imuChkMsg" class="check"></span></span>
+        </div>
+
         <h2>배경 설문 (참가자에게 물어서 입력)</h2>
         <div class="form">
           <label for="fAge">나이</label><input id="fAge" type="number" min="15" max="90">
@@ -408,6 +415,45 @@ $('fParams').onchange = async e => {
   }catch(err){ $('paramsMsg').className = 'check bad'; $('paramsMsg').textContent = '파일을 읽지 못했습니다'; }
 };
 
+// ---------- cup IMU calibration before the session ----------
+// The sensor file (offset, counts per g, counts per deg/s) comes from gripspread_imu_calib.html and is remembered here.
+// The 10 s still check runs every session: today's gyro zero and noise, compared with the sensor file.
+const IMUCAL_KEY = 'gripspread_imucal_v1';
+let IMU_CAL = null, IMU_CHECK = null, imuTap = null, IMU_CPD = 65.5;
+function useImuCal(c, src){
+  IMU_CAL = c; IMU_CPD = c.gyro_counts_per_dps || 65.5;
+  $('imuCalMsg').className = 'check';
+  $('imuCalMsg').textContent = `${src} · ${(c.calibrated_at || '').slice(0,10)} 보정 · 1g ≈ ${(c.accel_counts_per_g || []).map(x=>Math.round(x)).join('/')} · ${IMU_CPD} count/(°/s)`;
+}
+try{ const c = JSON.parse(localStorage.getItem(IMUCAL_KEY)); if(c && c.gyro_counts_per_dps) useImuCal(c, '저장된 파일'); }catch(e){}
+$('fImuCal').onchange = async e => {
+  try{ const c = JSON.parse(await e.target.files[0].text()); if(!c.gyro_counts_per_dps || !c.accel_counts_per_g) throw 0;
+    useImuCal(c, e.target.files[0].name); try{ localStorage.setItem(IMUCAL_KEY, JSON.stringify(c)); }catch(err){} }
+  catch(err){ $('imuCalMsg').className = 'check bad'; $('imuCalMsg').textContent = 'IMU 보정 파일이 아닙니다'; }
+};
+$('btnImuCheck').onclick = () => {
+  if(!imuConn){ $('imuChkMsg').className = 'check bad'; $('imuChkMsg').textContent = '먼저 왼쪽에서 컵 IMU를 연결해 주세요'; return; }
+  const rows = []; $('imuChkMsg').className = 'check'; $('btnImuCheck').disabled = true;
+  imuTap = r => {
+    rows.push(r); const sec = ((r.t_us - rows[0].t_us) >>> 0) / 1e6;
+    $('imuChkMsg').textContent = `측정 중… ${sec.toFixed(1)} / 10초 (건드리지 마세요)`;
+    if(sec < 10) return;
+    imuTap = null; $('btnImuCheck').disabled = false;
+    const col = k => rows.map(x => x[k]), mean = v => v.reduce((a,b)=>a+b,0)/v.length, sd = v => { const m = mean(v); return Math.sqrt(v.reduce((a,b)=>a+(b-m)**2,0)/v.length); };
+    const gk = ['gx_raw','gy_raw','gz_raw'], ak = ['ax_raw','ay_raw','az_raw'];
+    const bias = gk.map(k => mean(col(k))), gSd = Math.hypot(...gk.map(k => sd(col(k)))) / IMU_CPD;
+    const cpg = IMU_CAL ? IMU_CAL.accel_counts_per_g.reduce((a,b)=>a+b,0)/3 : 8192, aSd = Math.hypot(...ak.map(k => sd(col(k)))) / cpg;
+    if(gSd > 1.0){ $('imuChkMsg').className = 'check bad'; $('imuChkMsg').textContent = `움직임이 감지됐습니다 (자이로 흔들림 ${gSd.toFixed(2)}°/s). 컵을 가만히 두고 다시 해 주세요`; return; }
+    const drift = IMU_CAL && IMU_CAL.gyro_bias ? Math.hypot(...bias.map((b,i) => b - IMU_CAL.gyro_bias[i])) / IMU_CPD : null;
+    IMU_CHECK = { at:new Date().toISOString(), samples:rows.length, gyro_bias:bias.map(x => +x.toFixed(2)), gyro_sd_dps:+gSd.toFixed(3), accel_sd_g:+aSd.toFixed(4),
+      bias_drift_from_calib_dps: drift == null ? null : +drift.toFixed(3) };
+    const warn = (IMU_CAL && gSd > 3 * IMU_CAL.still_noise.gyro_sd_dps) || (drift != null && drift > 1);
+    $('imuChkMsg').className = 'check' + (warn ? ' bad' : '');
+    $('imuChkMsg').textContent = `완료 · 자이로 잡음 ${gSd.toFixed(2)}°/s · 가속 잡음 ${(aSd*1000).toFixed(1)} mg` + (drift != null ? ` · 영점 변화 ${drift.toFixed(2)}°/s` : '') +
+      (warn ? ' · 보정 때보다 많이 다릅니다. 센서가 흔들리거나 받침에서 빠졌는지 확인해 주세요' : ' · 정상');
+  };
+};
+
 // apparatus: device fields are remembered in this browser; checks are per session
 const ENV_KEY = 'gripspread_env_v1';
 try{ const v = JSON.parse(localStorage.getItem(ENV_KEY)); if(v){ $('eDevice').value = v.device || ''; $('eOS').value = v.os || ''; $('eScroll').value = v.scroll || ''; } }catch(e){}
@@ -423,6 +469,9 @@ $('btnStart').onclick = () => {
   const pid = parseInt($('fPid').value);
   if(!pid){ $('fPid').focus(); return; }
   const env = envInfo();
+  const imuMissing = [!IMU_CAL && '센서 보정 파일', !IMU_CHECK && '정지 확인'].filter(Boolean);
+  if(imuMissing.length && !confirm(`컵 IMU 보정 중 ${imuMissing.join(', ')}이(가) 안 됐습니다. 그래도 시작할까요?`)) return;
+  S.imu = { calib:IMU_CAL, session_check:IMU_CHECK, counts_per_dps_used:IMU_CPD };
   if(env.unchecked.length && !confirm(`장비 확인이 ${env.unchecked.length}개 안 됐습니다. 그래도 시작할까요?`)){ $('envCheck').className = 'check bad'; $('envCheck').textContent = '체크 안 된 항목을 확인해 주세요'; return; }
   try{ localStorage.setItem(ENV_KEY, JSON.stringify({ device:env.device, os:env.macos, scroll:env.trackpad_scroll_speed })); }catch(e){}
   S.env = env;
@@ -754,7 +803,7 @@ function sessionObj(){
   return { pid:S.pid, hand:S.hand, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
-    tlx:S.tlx, calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, user_agent:navigator.userAgent };
+    tlx:S.tlx, calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, imu:S.imu || null, user_agent:navigator.userAgent };
 }
 $('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
 // recovery list on the setup screen
@@ -844,13 +893,13 @@ function imuFeed(r){
     const w = IP.win; if(w.length < 120 || ((w.at(-1).t - w[0].t) >>> 0) / 1e6 < 1) return;
     const avg = key => [0,1,2].map(i => w.reduce((s,x)=>s+x[key][i],0)/w.length), ma = avg('a'), mg = avg('g'), sc = qn(ma);
     const sd = (key,m) => Math.sqrt(w.reduce((s,x)=>s+x[key].reduce((u,v,i)=>u+(v-m[i])**2,0),0)/w.length);
-    if(sc < 100 || sd('a',ma)/sc > .025 || sd('g',mg)/65.5 > 1.2 || qn(mg)/65.5 > 18) return;
+    if(sc < 100 || sd('a',ma)/sc > .025 || sd('g',mg)/IMU_CPD > 1.2 || qn(mg)/IMU_CPD > 18) return;
     IP.ref = qalign(ma,[0,0,1]); IP.q = IP.ref.slice(); IP.g = sc; IP.bias = mg; return;
   }
   const dt = ((t - IP.prev) >>> 0) / 1e6; IP.prev = t;
   if(dt > 0 && dt <= .2){
     const exp = qr(qc(IP.q),[0,0,1]), corr = qx(qu(a),exp), trust = Math.max(0, 1 - Math.abs(qn(a)/IP.g - 1)/.25);
-    const om = g.map((v,i) => (v-IP.bias[i])/65.5*Math.PI/180 + 2.4*trust*corr[i]), d = qm(IP.q,[0,...om]);
+    const om = g.map((v,i) => (v-IP.bias[i])/IMU_CPD*Math.PI/180 + 2.4*trust*corr[i]), d = qm(IP.q,[0,...om]);
     IP.q = qu(IP.q.map((v,i) => v + .5*dt*d[i]));
   } else if(dt > .2) IP.q = qu(qm(qalign(qr(IP.q,qu(a)),[0,0,1]),IP.q));
   const up = qr(qu(qm(IP.q,qc(IP.ref))),[0,0,1]);
@@ -871,11 +920,12 @@ $('btnImu').onclick = async () => {
 };
 $('btnImuRef').onclick = () => { imuResetRef(); $('kTilt').textContent = '기준 잡는 중'; };
 function onImu(r){
-  imuCount++; imuFeed(r);
+  imuCount++; imuFeed(r); if(imuTap) imuTap(r);
   if(!run || run.phase === 'idle') return;
   imuRows.push([Math.round(performance.now()), run.st.tech, run.st.cup, run.st.type, run.trial ? run.trial.uid : '', run.phase,
     r.seq, r.t_us, ...IMU_KEYS.map(k => r[k]), IP.tilt == null ? '' : +IP.tilt.toFixed(2), IP.ref ? 1 : 0, imuConn]);
 }
+window.GS_DEBUG.imu = { feed:onImu, markConnected:() => { imuConn = Math.max(imuConn, 1); } };   // console/testing
 
 // ---------- main loop ----------
 function loop(now){
