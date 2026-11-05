@@ -175,6 +175,7 @@
             <label><input type="checkbox" value="air_gesture"> 폰·TV·차의 허공 손동작 (에어 제스처)</label>
             <label><input type="checkbox" value="sensor"> Kinect, Leap Motion 같은 센서</label>
             <label><input type="checkbox" value="none"> 써 본 적 없음</label>
+            <input id="fGestureOther" placeholder="그 밖에 써 본 것, 써 본 느낌 등 (자유롭게)">
           </span>
           <label for="fNote">메모</label><input id="fNote" placeholder="선택">
         </div>
@@ -598,7 +599,8 @@ $('btnStart').onclick = () => {
   Object.assign(S, { pid, hand:$('fHand').value, handLen:hm.len.mean, span:hm.span.mean,
     handRaw:{ length_mm:[hm.len.a, hm.len.b], span_mm:[hm.span.a, hm.span.b] },
     demo:{ age:+$('fAge').value || null, gender:$('fGender').value || null, trackpad_freq:$('fTpFreq').value || null,
-      gesture_exp:[...document.querySelectorAll('#fGesture input:checked')].map(i => i.value) },
+      gesture_exp:[...document.querySelectorAll('#fGesture input:checked')].map(i => i.value),
+      gesture_other:$('fGestureOther').value.trim() || null },
     note:$('fNote').value });
   const o = orderFor(pid); Object.assign(S, { seq:o.seq, techOrder:o.techOrder, latinRow:LATIN_NAME[o.latinRow] });
   const [pMin, pMax] = parseList($('fPrac').value);
