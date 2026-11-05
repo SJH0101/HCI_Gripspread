@@ -50,6 +50,9 @@
   .grp{border-top:1px solid var(--hair);margin-top:10px;padding-top:8px}
   .grp h3{margin:0;padding:0 16px;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em}
   .grp .kv{padding:6px 16px 8px}
+  .testtoggle{display:block;margin:14px 0;padding:10px 12px;border:1px dashed var(--hair);border-radius:6px;font-size:14px;line-height:1.7} body.test .testtoggle{border-color:var(--alert);background:#FDECEA}
+  .testonly{display:none} body.test .testonly{display:inline}
+  #testBadge{display:none;background:var(--alert);color:#fff;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600} body.test #testBadge{display:inline-block}
   .keys{margin-top:auto;padding:12px 16px 16px;color:var(--muted);font-size:12px;line-height:1.7;border-top:1px solid var(--hair)}
   kbd{font:inherit;border:1px solid var(--hair);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:#fff;color:var(--ink)}
 
@@ -133,7 +136,7 @@
 <body>
 <div class="app">
   <header>
-    <span class="brand">GripSpread 실험</span>
+    <span class="brand">GripSpread 실험</span> <span id="testBadge">테스트 모드 · 저장 안 함</span>
     <span id="hCond" class="cond"></span>
     <span id="hProg" class="prog num"></span>
     <span class="spacer"></span>
@@ -181,8 +184,8 @@
       <kbd>Space</kbd> 다음 조건 시작<br>
       <kbd>P</kbd> 지금 시행 끝나면 일시정지<br>
       <kbd>S</kbd> 연습 끝내기 (실험자)<br>
-      <kbd>N</kbd> 이 시행 건너뛰기<br>
-      <kbd>K</kbd> 이 조건 건너뛰기
+      <span class="testonly"><kbd>N</kbd> 이 시행 건너뛰기 (테스트 모드)<br>
+      <kbd>K</kbd> 이 조건 건너뛰기 (테스트 모드)</span>
     </div>
   </aside>
 
@@ -229,6 +232,7 @@
           <p>GripSpread 값은 파일럿 도구(gripspread_pilot.html)에서 정한 <b>gripspread_params.json</b>을 불러옵니다. 한 번 불러오면 본 실험 동안 바꾸지 않습니다.</p>
         <div class="actions" style="margin:0 0 10px"><label for="fParams" class="muted" style="color:var(--muted)">파일럿 결과 값 불러오기</label><input id="fParams" type="file" accept=".json"><span id="paramsMsg" class="check"></span></div>
           <div id="paramSummary" class="order num"></div>
+          <label class="testtoggle"><input id="fTest" type="checkbox"> <b>테스트 모드</b> · 데이터를 저장하지 않고, <kbd>N</kbd> 시행 건너뛰기 · <kbd>K</kbd> 조건 건너뛰기를 켭니다. 본 실험에서는 꺼 두세요.</label>
           <details class="guide"><summary>고급 설정 (개발용, 바꾸지 마세요)</summary>
             <h2>GripSpread 값</h2>
         <div class="form num">
@@ -253,7 +257,7 @@
           <label for="fDwell">멈춤 판정 (ms)</label><input id="fDwell" type="number" min="30" max="1500" step="1" value="66" title="표적이 네모 안에 완전히 들어온 채 이 시간 동안 스크롤이 안 움직이면 선택 (ScrollTest 2022: 66ms)">
           <label for="fTimeout">시간 초과 (초)</label><input id="fTimeout" type="number" min="5" max="60" value="15">
           <label for="fPrac">연습 시행 (최소, 최대)</label><input id="fPrac" value="10, 30">
-          <label for="fSave">파일 저장</label><select id="fSave"><option value="1">끝날 때 zip 하나로 저장 (본 실험)</option><option value="0">저장 안 함 (검토 모드)</option></select>
+          <label for="fSave">파일 저장</label><select id="fSave"><option value="1">끝날 때 zip 하나로 저장 (본 실험)</option><option value="0">저장 안 함 · 테스트 모드 (N/K 건너뛰기 켜짐)</option></select>
           <label for="fFrames">프레임 기록</label><select id="fFrames"><option value="1">켜기</option><option value="2">켜기 + 손 랜드마크</option><option value="0">끄기</option></select>
         </div>
           </details>
@@ -494,6 +498,11 @@ function buildSteps(){
   steps.push({ type:'done' });
   return steps;
 }
+
+const syncTestMode = () => { const t = $('fSave').value === '0'; document.body.classList.toggle('test', t); $('fTest').checked = t; };
+$('fSave').addEventListener('change', syncTestMode);
+$('fTest').addEventListener('change', () => { $('fSave').value = $('fTest').checked ? '0' : '1'; syncTestMode(); });
+syncTestMode();
 
 // ---------- setup wizard: researcher steps (1–4), then participant steps (5–7), then start ----------
 const WZ = [...document.querySelectorAll('.wz')], STEPS = [...document.querySelectorAll('#stepper li[data-go]')];
@@ -873,10 +882,11 @@ document.addEventListener('keydown', e => {
     else if(run && run.phase === 'paused'){ e.preventDefault(); taskMsg.textContent = ''; nextTrial(); }
   }
   if((e.key === 'p' || e.key === 'P') && run){ pauseRequested = true; taskMsg.textContent = '이번 시행 끝나면 일시정지'; }
-  if(e.key === 'n' || e.key === 'N'){
+  const testMode = $('fSave').value === '0';      // skipping is for testing only: it would leave holes in real data
+  if(testMode && (e.key === 'n' || e.key === 'N')){
     if(run && run.trial && ['waitActive','pre','running'].includes(run.phase)){ run.trial.skipped = 1; finishTrial(performance.now(), 0); }
   }
-  if(e.key === 'k' || e.key === 'K'){
+  if(testMode && (e.key === 'k' || e.key === 'K')){
     if(run){ if(run.trial) run.trial = null; endStep(); }
     else if(['sBrief','sCalib','sTlx','sRest'].some(id => $(id).classList.contains('on'))) gotoStep(S.stepIdx + 1);
   }
