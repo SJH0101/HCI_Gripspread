@@ -45,7 +45,9 @@ GripSpread 기획, 실험 설계, 파일럿 절차에서 근거로 쓴 자료. �
 - **AIST 일본인 손 치수 데이터 (産総研 デジタルヒューマン研究チーム).** 항목 L01 "손 길이: 붓돌기점에서"(ISO 7250-1 4.3.1)와 L02 "손 길이: 손목 주름에서"를 따로 둔다. https://www.airc.aist.go.jp/dhrt/hand/data/list.html
   - 쓴 곳: 우리 손 길이는 L02처럼 손목 주름 기준. 뼈 위치를 손으로 짚는 것보다 실험자 간 오차가 적어서 고름.
 - **Ruiz-Ruiz, J., Mesa, J. L. M., Gutiérrez, A., & Castillo, M. J. (2002).** Hand size influences optimal grip span in women but not in men. *Journal of Hand Surgery*, 27(5), 897–901. https://doi.org/10.1053/jhsu.2002.34315
-  - 쓴 곳: 손 span(최대로 벌린 엄지 끝–소지 끝 거리)이 편한 쥐기 폭과 관련된다는 근거. 컵 지름 효과를 볼 때 span을 공변량으로 쓰는 이유.
+  - 쓴 곳: 손 크기가 편한 쥐기 폭과 관련된다는 근거 (여성에서만 유의). 원문 방법 부분은 열람하지 못함.
+- **Ruiz, J. R., España-Romero, V., Ortega, F. B., Sjöström, M., Castillo, M. J., & Gutierrez, A. (2006).** Hand span influences optimal grip span in male and female teenagers. *Journal of Hand Surgery (Am)*, 31(8), 1367–1372. https://doi.org/10.1016/j.jhsa.2006.06.014
+  - 쓴 곳: **span 측정 정의의 출처.** 손을 최대한 벌린 상태에서 엄지 끝부터 소지 끝까지 잰다 (초록에 명시). 같은 그룹의 2002 연구를 잇는 후속 연구로, span이 최적 쥐기 폭과 남녀 모두에서 관련됨(13–18세 206명).
 
 ## IMU
 
