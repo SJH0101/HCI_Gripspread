@@ -205,8 +205,8 @@
           <h1>장비 확인</h1>
           <p>모든 참여자가 같은 기기, 같은 설정으로 해야 합니다. 기기 정보는 이 브라우저에 기억되고, 체크는 매 세션 새로 합니다.</p>
         <div class="form">
-          <label for="eDevice">노트북 모델</label><input id="eDevice" placeholder="예: MacBook Air 13 M2 (2022)">
-          <label for="eOS">macOS 버전</label><input id="eOS" placeholder="예: macOS 26.1">
+          <label for="eDevice">노트북 모델</label><input id="eDevice" placeholder="실험에 쓰는 맥북 한 대 (예: MacBook Pro 14 M3, 2023)">
+          <label for="eOS">macOS 버전 (자동)</label><span><input id="eOS" placeholder="크롬에서 자동으로 읽습니다" style="width:100%"> <span id="osMsg" class="check"></span></span>
           <label for="eScroll">트랙패드 설정 (슬라이더 눈금 위치)</label><input id="eScroll" placeholder="스크롤 속도 5/8 (0.3125) · 이동 속도 4/10">
           <label>확인</label><span class="checks" id="eChecks">
             <label><input type="checkbox" value="natural_scroll_on"> 자연스러운 스크롤 켜짐 (트랙패드 › 스크롤 및 확대/축소)</label>
@@ -214,6 +214,7 @@
             <label><input type="checkbox" value="scroll_speed_same"> 스크롤 속도가 위에 적은 값 그대로</label>
             <label><input type="checkbox" value="chrome_zoom_100"> 크롬 확대/축소 100%, 창 최대화</label>
             <label><input type="checkbox" value="power_plugged"> 전원 연결 (저전력 모드 꺼짐)</label>
+            <label><input type="checkbox" value="auto_update_off"> 실험 기간 동안 자동 업데이트 꺼짐 (일반 › 소프트웨어 업데이트 › 자동 업데이트)</label>
             <label><input type="checkbox" value="setup_same"> 책상 높이, 노트북 위치, 조명이 표시해 둔 자리 그대로</label>
           </span>
           <span></span><span id="envCheck" class="check"></span>
@@ -675,10 +676,26 @@ $('btnImuCalApply').onclick = () => {
 
 // apparatus: device fields are remembered in this browser; checks are per session
 const ENV_KEY = 'gripspread_env_v1';
-try{ const v = JSON.parse(localStorage.getItem(ENV_KEY)); if(v){ $('eDevice').value = v.device || ''; $('eOS').value = v.os || ''; $('eScroll').value = v.scroll || ''; } }catch(e){}
+let ENV_PREV = null;
+try{ ENV_PREV = JSON.parse(localStorage.getItem(ENV_KEY)); if(ENV_PREV){ $('eDevice').value = ENV_PREV.device || ''; $('eOS').value = ENV_PREV.os || ''; $('eScroll').value = ENV_PREV.scroll || ''; } }catch(e){}
+// macOS version: Chrome reports the real version through User-Agent Client Hints (the UA string is frozen at 10.15.7).
+// Compared with the last session so an OS update in the middle of the study gets noticed and logged.
+let OS_CHANGED = null;
+(async () => {
+  try{
+    const h = await navigator.userAgentData.getHighEntropyValues(['platformVersion']);
+    if(navigator.userAgentData.platform !== 'macOS' || !h.platformVersion) throw 0;
+    const now = 'macOS ' + h.platformVersion.split('.').filter((x,i) => i < 2 || x !== '0').join('.');
+    const prev = ENV_PREV && ENV_PREV.os;
+    $('eOS').value = now; $('eOS').readOnly = true;
+    if(prev && prev !== now){ OS_CHANGED = { from:prev, to:now }; $('osMsg').className = 'check bad';
+      $('osMsg').textContent = `지난 세션(${prev})에서 바뀌었습니다. 보고서에 적고, 남은 세션 동안은 업데이트를 미뤄 주세요`; }
+    else { $('osMsg').className = 'check'; $('osMsg').textContent = prev ? '지난 세션과 같음' : '처음 기록'; }
+  }catch(e){ $('osMsg').className = 'check'; $('osMsg').textContent = '자동으로 못 읽었습니다. 직접 적어 주세요 (Apple 메뉴 › 이 Mac에 관하여)'; }
+})();
 function envInfo(){
   const checks = [...document.querySelectorAll('#eChecks input')];
-  return { device:$('eDevice').value.trim() || null, macos:$('eOS').value.trim() || null, trackpad_scroll_speed:$('eScroll').value.trim() || null,
+  return { device:$('eDevice').value.trim() || null, macos:$('eOS').value.trim() || null, macos_changed:OS_CHANGED, trackpad_scroll_speed:$('eScroll').value.trim() || null,
     checked:checks.filter(i => i.checked).map(i => i.value), unchecked:checks.filter(i => !i.checked).map(i => i.value),
     screen:{ w:screen.width, h:screen.height, dpr:window.devicePixelRatio }, window:{ w:window.innerWidth, h:window.innerHeight },
     camera:E.camera || null, user_agent:navigator.userAgent };
