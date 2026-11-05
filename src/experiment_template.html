@@ -57,6 +57,7 @@
   .sheet p{line-height:1.65;margin:0 0 10px;color:#3A3F45}
   .form{display:grid;grid-template-columns:200px 1fr;gap:10px 16px;align-items:center}
   .form label{color:var(--muted)}
+  .checks{display:flex;flex-direction:column;gap:4px} .checks label{color:var(--ink);display:flex;gap:8px;align-items:center}
   .pair{display:flex;gap:8px} .pair input{flex:1;min-width:0}
   .check{font-size:13px;color:var(--muted)} .check.bad{color:var(--alert)}
   details.guide{background:var(--rail);border-radius:6px;padding:10px 14px;margin:0 0 12px;font-size:14px} details.guide p{margin:8px 0 0}
@@ -168,7 +169,13 @@
           <label for="fAge">나이</label><input id="fAge" type="number" min="15" max="90">
           <label for="fGender">성별</label><select id="fGender"><option value="">선택</option><option value="F">여성</option><option value="M">남성</option><option value="O">기타</option><option value="NA">응답 안 함</option></select>
           <label for="fTpFreq">노트북 트랙패드 사용 빈도</label><select id="fTpFreq"><option value="">선택</option><option value="daily">거의 매일</option><option value="weekly">주 몇 번</option><option value="rarely">거의 안 씀 (주로 마우스)</option></select>
-          <label for="fGesture">손 제스처 입력 경험 (VR 손 추적, Leap Motion 등)</label><select id="fGesture"><option value="">선택</option><option value="none">없음</option><option value="few">몇 번 써 봄</option><option value="often">자주 씀</option></select>
+          <label>컨트롤러 없이 손 모양으로 기기를 조작해 본 것 (모두 체크)</label><span class="checks" id="fGesture">
+            <label><input type="checkbox" value="vr_hand"> VR 헤드셋 손 추적 (Meta Quest 등)</label>
+            <label><input type="checkbox" value="vision_pro"> Apple Vision Pro</label>
+            <label><input type="checkbox" value="air_gesture"> 폰·TV·차의 허공 손동작 (에어 제스처)</label>
+            <label><input type="checkbox" value="sensor"> Kinect, Leap Motion 같은 센서</label>
+            <label><input type="checkbox" value="none"> 써 본 적 없음</label>
+          </span>
           <label for="fNote">메모</label><input id="fNote" placeholder="선택">
         </div>
         <div id="orderBox" class="order num"></div>
@@ -377,7 +384,7 @@ $('btnStart').onclick = () => {
   Object.assign(S, { pid, hand:$('fHand').value, handLen:hm.len.mean, span:hm.span.mean,
     handRaw:{ length_mm:[hm.len.a, hm.len.b], span_mm:[hm.span.a, hm.span.b] },
     demo:{ age:+$('fAge').value || null, gender:$('fGender').value || null, trackpad_freq:$('fTpFreq').value || null,
-      gesture_exp:$('fGesture').value || null },
+      gesture_exp:[...document.querySelectorAll('#fGesture input:checked')].map(i => i.value) },
     note:$('fNote').value });
   const o = orderFor(pid); Object.assign(S, { seq:o.seq, techOrder:o.techOrder, latinRow:LATIN_NAME[o.latinRow] });
   const [pMin, pMax] = parseList($('fPrac').value);
