@@ -137,13 +137,13 @@
             <li>윗면이 아래 (컵 거꾸로)</li>
             <li>~ 6. 옆면 4개를 하나씩 아래로</li>
           </ol>
-          <p class="muted">오른쪽 공에 초록 점이 6개 생기면(위·아래·앞·뒤·왼·오) <b>계산</b>을 누릅니다. 축마다 위를 볼 때와 아래를 볼 때의 값으로 영점과 1g 크기를 구합니다. 면이 책상에 평평하게 닿아야 정확합니다.</p>
+          <p class="muted">오른쪽 정육면체에서 잰 면이 초록색으로 바뀝니다. 6면이 다 초록이 되면 <b>계산</b>을 누릅니다. 축마다 위를 볼 때와 아래를 볼 때의 값으로 영점과 1g 크기를 구합니다. 면이 책상에 평평하게 닿아야 정확합니다.</p>
           <div class="actions"><button id="b2">시작</button><button id="b2fit" disabled>계산</button><span id="r2" class="num"></span></div>
         </div>
 
         <div class="step" id="st3">
           <h3>3. 책상 위에서 한 바퀴 돌리기 (2번)</h3>
-          <p class="muted">컵을 똑바로 세우고 바닥이 책상에서 떨어지지 않게 정확히 360° 돌립니다. 테이프로 시작 위치를 표시해 두세요. 시작을 누르고 1초 가만히 있다가 돌리고, 다 돌린 뒤 멈추면 자동으로 끝납니다.</p>
+          <p class="muted">컵을 똑바로 세우고 테이프로 시작 위치를 표시합니다. <b>시작</b>을 누르고 1초 가만히 있다가(삑), 바닥이 책상에서 떨어지지 않게 한 바퀴 돌립니다. 중간에 손을 바꿔 잡아도 됩니다. 테이프 위치로 정확히 돌아오면 <b>다 돌렸음</b>을 누릅니다. 이 값으로 센서의 자이로 측정 범위도 확인합니다.</p>
           <div class="actions"><button id="b3">시작</button><span id="r3" class="num"></span></div>
         </div>
 
@@ -156,17 +156,12 @@
 
     <aside class="live" aria-label="실시간 센서">
       <h2>실시간</h2>
-      <p class="cap">연결하면 계속 움직입니다. 공은 컵에서 본 중력 방향입니다. 큰 점이 지금 방향, 초록 점이 잡은 자세, 빈 원은 공 뒤쪽입니다.</p>
-      <canvas id="sphere" width="600" height="300" role="img" aria-label="중력 방향과 잡은 자세"></canvas>
+      <p class="cap">센서를 넣은 정육면체 받침이 지금 어떻게 놓여 있는지 보여줍니다. 2단계에서 이미 잰 면은 초록색으로 바뀝니다.</p>
+      <canvas id="cube" width="640" height="520" role="img" aria-label="센서 받침 자세"></canvas>
       <div id="liveState" class="muted">센서 연결 대기</div>
       <div class="meter"><span>가속 흔들림</span><span class="track"><span class="fill" id="mA"></span><span class="lim" id="lA"></span></span><b id="vA" class="num">–</b></div>
       <div class="meter"><span>자이로 흔들림</span><span class="track"><span class="fill" id="mG"></span><span class="lim" id="lG"></span></span><b id="vG" class="num">–</b></div>
-      <div class="meter"><span>회전 속도</span><span class="track"><span class="fill" id="mW"></span></span><b id="vW" class="num">–</b></div>
-      <h2 style="margin-top:14px">가속도 (최근 5초)</h2>
-      <canvas id="plotA" width="600" height="150" role="img" aria-label="가속도 그래프"></canvas>
-      <h2 style="margin-top:10px">자이로 (최근 5초, 영점 뺀 값)</h2>
-      <canvas id="plotG" width="600" height="150" role="img" aria-label="자이로 그래프"></canvas>
-      <p class="cap" style="margin-top:6px"><span style="color:#2367da">━ X</span> &nbsp;<span style="color:#087b66">━ Y</span> &nbsp;<span style="color:#c9324f">━ Z</span></p>
+      <p class="cap" style="margin-top:6px">두 막대가 검은 선 왼쪽(초록)이면 멈춘 것으로 칩니다.</p>
     </aside>
   </main>
 </div>
@@ -232,7 +227,7 @@ function imuResult(){
     accel_counts_per_g: CAL.fit ? CAL.fit.scale.map(x=>+x.toFixed(1)) : null,
     accel_method: CAL.fit ? CAL.fit.method : null, accel_fit_rms_g: CAL.fit ? +CAL.fit.rms.toFixed(4) : null, accel_poses: CAL.poses.length,
     gyro_bias: CAL.still ? CAL.still.gBias.map(x=>+x.toFixed(2)) : null,
-    gyro_counts_per_dps: gs ? +gs.toFixed(2) : null, gyro_turns: CAL.turns.map(t => +t.counts_per_dps.toFixed(2)),
+    gyro_counts_per_dps: gs ? +gs.toFixed(2) : null, gyro_turns: CAL.turns.map(t => +t.counts_per_dps.toFixed(2)), gyro_range_dps: CAL.turns.length ? CAL.turns[0].range_dps : null,
     gyro_scale_vs_nominal: gs ? +(gs / NOMINAL_DPS).toFixed(3) : null,
     still_noise: CAL.still ? {
       gyro_sd_dps: +(CAL.still.gSdCounts / (gs || NOMINAL_DPS)).toFixed(3),
@@ -319,84 +314,106 @@ $('b2fit').onclick = () => {
   renderImu();
 };
 
-// step 3: 360 deg turn on the table -> gyro counts per deg/s (rotation about the cup's up axis)
+// step 3: 360 deg turn on the table -> gyro counts per deg/s (rotation about the up axis)
+// Manual stop: turning a cup a full circle needs regrips, so pauses must not end the measurement.
+const RANGES = [ {dps:250, cpd:131}, {dps:500, cpd:65.5}, {dps:1000, cpd:32.8}, {dps:2000, cpd:16.4} ];
+let turn = null;
 $('b3').onclick = () => {
   if(!firmware){ $('r3').textContent = '먼저 IMU를 연결해 주세요'; return; }
   if(!CAL.still){ $('r3').textContent = '1번(가만히 두기)을 먼저 해 주세요'; return; }
-  const rows = []; let phase = 'settle', t0 = null, integ = 0, prevT = null, stillSince = null, moved = false, up = null;
+  if(turn){ return finishTurn(); }
+  turn = { integ:0, prevT:null, up:null, rows:[] };
+  $('b3').textContent = '다 돌렸음 (끝)'; $('b3').classList.add('primary');
   $('r3').textContent = '1초 가만히…';
   imuSink = r => {
-    if(t0 == null) t0 = r.t;
-    const sec = ((r.t - t0) >>> 0) / 1e6;
-    if(phase === 'settle'){ rows.push(r.a); if(sec >= 1){ up = vunit(mean3(rows)); phase = 'turn'; prevT = r.t; beep(1046, 0.06); $('r3').textContent = '돌리세요'; } return; }
-    const dt = ((r.t - prevT) >>> 0) / 1e6; prevT = r.t;
-    const w = vdot(r.g.map((v,i) => v - CAL.still.gBias[i]), up);          // counts, about the up axis
-    if(dt > 0 && dt < 0.2) integ += w * dt;                                 // counts * s
-    const rate = Math.abs(w) / NOMINAL_DPS;
-    if(rate > 20) moved = true;
-    if(moved && rate < 2){ if(stillSince == null) stillSince = sec; } else stillSince = null;
-    $('r3').textContent = `돌리는 중… 대략 ${(Math.abs(integ) / NOMINAL_DPS).toFixed(0)}°`;
-    if(moved && stillSince != null && sec - stillSince > 0.8){
-      imuSink = null;
-      const cpd = Math.abs(integ) / 360;
-      if(cpd / NOMINAL_DPS < 0.7 || cpd / NOMINAL_DPS > 1.3){ $('r3').innerHTML = `<span class="bad">${(Math.abs(integ)/NOMINAL_DPS).toFixed(0)}°로 나왔습니다. 정확히 한 바퀴 돌렸는지 확인하고 다시 해 주세요</span>`; return; }
-      CAL.turns.push({ counts_per_dps:cpd });
-      $('r3').innerHTML = `<span class="good">${CAL.turns.length}번째 완료</span> · ${cpd.toFixed(2)} count/(°/s) (명목값 65.5 대비 ${(cpd/NOMINAL_DPS*100).toFixed(1)}%)` + (CAL.turns.length < 2 ? ' · 한 번 더 해 주세요' : '');
-      renderImu();
-    }
+    const T = turn; if(!T) return;
+    if(!T.up){ T.rows.push(r); if(((r.t - T.rows[0].t) >>> 0) / 1e6 >= 1){ T.up = vunit(mean3(T.rows.map(x=>x.a))); T.prevT = r.t; beep(1046, 0.06); } return; }
+    const dt = ((r.t - T.prevT) >>> 0) / 1e6; T.prevT = r.t;
+    const w = vdot(r.g.map((v,i) => v - CAL.still.gBias[i]), T.up);
+    if(dt > 0 && dt < 0.2) T.integ += w * dt;
+    const deg = Math.abs(T.integ) / NOMINAL_DPS;
+    $('r3').innerHTML = `돌리세요. 중간에 손을 바꿔 잡아도 됩니다. 테이프 위치로 돌아오면 <b>다 돌렸음</b>을 누르세요. <span class="muted">(돌린 양 ${deg.toFixed(0)} · 센서 범위를 모르는 상태의 대략값이라 360이 아니어도 괜찮습니다)</span>`;
   };
 };
+function finishTurn(){
+  const T = turn; turn = null; imuSink = null; $('b3').textContent = '시작'; $('b3').classList.remove('primary');
+  if(!T || !T.up){ $('r3').textContent = '측정이 시작되기 전에 끝났습니다. 다시 해 주세요'; return; }
+  const cpd = Math.abs(T.integ) / 360;
+  const near = RANGES.reduce((b,r) => Math.abs(Math.log(cpd/r.cpd)) < Math.abs(Math.log(cpd/b.cpd)) ? r : b);
+  const off = cpd / near.cpd;
+  if(off < 0.85 || off > 1.15){ $('r3').innerHTML = `<span class="bad">${cpd.toFixed(1)} count/(°/s): 어느 측정 범위와도 맞지 않습니다. 정확히 한 바퀴였는지 확인하고 다시 해 주세요</span>`; return; }
+  CAL.turns.push({ counts_per_dps:cpd, range_dps:near.dps });
+  $('r3').innerHTML = `<span class="good">${CAL.turns.length}번째 완료</span> · ${cpd.toFixed(2)} count/(°/s) → 센서 자이로 범위 <b>±${near.dps}°/s</b> (표준값 ${near.cpd} 대비 ${(off*100).toFixed(1)}%)` + (CAL.turns.length < 2 ? ' · 한 번 더 해 주세요' : '');
+  renderImu();
+}
 $('bImuSave').onclick = () => download(`imu_calib_${new Date().toISOString().slice(0,10)}.json`, imuResult());
 
 
-// ---------- live view: always on once connected ----------
-const LIVE = [], LIVE_S = 5, A_LIM = 0.02, G_LIM = 4;
-function liveFeed(r){ LIVE.push(r); while(LIVE.length && ((r.t - LIVE[0].t) >>> 0) / 1e6 > LIVE_S) LIVE.shift(); }
-const COL = ['#2367da','#087b66','#c9324f'];
-function drawSphere(cur){
-  const c = $('sphere'), x = c.getContext('2d'), W = c.width, H = c.height; x.clearRect(0,0,W,H);
-  // two orthographic views of the unit sphere: looking down +Z (left) and from +X (right)
-  const views = [ { cx:W*0.25, title:'위에서 (XY)', u:0, v:1, d:2 }, { cx:W*0.75, title:'옆에서 (YZ)', u:1, v:2, d:0 } ], R = H*0.38, cy = H*0.53;
-  views.forEach(vw => {
-    x.strokeStyle = '#D0D3D7'; x.lineWidth = 2; x.beginPath(); x.arc(vw.cx, cy, R, 0, Math.PI*2); x.stroke();
-    x.beginPath(); x.moveTo(vw.cx-R, cy); x.lineTo(vw.cx+R, cy); x.moveTo(vw.cx, cy-R); x.lineTo(vw.cx, cy+R); x.stroke();
-    x.fillStyle = '#6B7178'; x.font = '22px system-ui'; x.textAlign = 'center'; x.fillText(vw.title, vw.cx, 26);
-    const dot = (p, rad, fill, stroke) => { const u = vunit(p), px = vw.cx + u[vw.u]*R, py = cy - u[vw.v]*R, front = u[vw.d] >= 0;
-      x.beginPath(); x.arc(px, py, rad, 0, Math.PI*2); if(front){ x.fillStyle = fill; x.fill(); } else { x.strokeStyle = stroke; x.lineWidth = 3; x.stroke(); } };
-    CAL.poses.forEach(p => dot(p, 10, '#2F7D4F', '#2F7D4F'));
-    if(cur) dot(cur, 15, '#1F2328', '#1F2328');
-  });
+// ---------- live view: a cube that follows the sensor ----------
+const LIVE = [], A_LIM = 0.02, G_LIM = 4;
+const qmul = (a,b) => { const [w,x,y,z]=a,[v,i,j,k]=b; return [w*v-x*i-y*j-z*k, w*i+x*v+y*k-z*j, w*j-x*k+y*v+z*i, w*k+x*j-y*i+z*v]; };
+const qcon = q => [q[0],-q[1],-q[2],-q[3]], qrot = (q,v) => qmul(qmul(q,[0,...v]),qcon(q)).slice(1);
+const qnorm = q => { const n = Math.hypot(...q) || 1; return q.map(x=>x/n); };
+const vcross = (a,b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+function qalign(a,b){ a=vunit(a); b=vunit(b); const d=vdot(a,b); if(d<-.999999) return [0,...vunit(vcross(a,Math.abs(a[0])<.9?[1,0,0]:[0,1,0]))]; return qnorm([1+d,...vcross(a,b)]); }
+let Q = null, qPrevT = null;                     // sensor -> world, world z = up
+const gyroScale = () => CAL.turns.length ? CAL.turns.reduce((s,t)=>s+t.counts_per_dps,0)/CAL.turns.length : NOMINAL_DPS;
+function liveFeed(r){
+  LIVE.push(r); while(LIVE.length && ((r.t - LIVE[0].t) >>> 0) / 1e6 > 1.0) LIVE.shift();
+  const bias = CAL.still ? CAL.still.gBias : (LIVE.length > 50 ? mean3(LIVE.map(x=>x.g)) : r.g);
+  if(!Q){ Q = qalign(r.a, [0,0,1]); qPrevT = r.t; return; }
+  const dt = ((r.t - qPrevT) >>> 0) / 1e6; qPrevT = r.t; if(!(dt > 0 && dt < 0.2)) return;
+  const om = r.g.map((v,i) => (v - bias[i]) / gyroScale() * Math.PI / 180);
+  const upS = qrot(qcon(Q), [0,0,1]), corr = vcross(vunit(r.a), upS);      // pull toward gravity
+  const w = om.map((v,i) => v + 2.0 * corr[i]), d = qmul(Q, [0, ...w]);
+  Q = qnorm(Q.map((v,i) => v + 0.5 * dt * d[i]));
 }
-function drawPlot(id, key, sub, unit){
-  const c = $(id), x = c.getContext('2d'), W = c.width, H = c.height; x.clearRect(0,0,W,H);
-  if(LIVE.length < 2) return;
-  const t1 = LIVE.at(-1).t, val = r => r[key].map((v,i) => (v - (sub ? sub[i] : 0)) / unit);
-  let lo = Infinity, hi = -Infinity; LIVE.forEach(r => val(r).forEach(v => { lo = Math.min(lo,v); hi = Math.max(hi,v); }));
-  const pad = Math.max(0.05, (hi-lo)*0.1); lo -= pad; hi += pad;
-  const X = r => W - (((t1 - r.t) >>> 0) / 1e6) / LIVE_S * W, Y = v => H - (v - lo) / (hi - lo) * H;
-  x.strokeStyle = '#E4E6E9'; x.lineWidth = 1; x.beginPath(); x.moveTo(0, Y(0)); x.lineTo(W, Y(0)); x.stroke();
-  for(let k=0;k<3;k++){ x.strokeStyle = COL[k]; x.lineWidth = 2.5; x.beginPath(); LIVE.forEach((r,i) => { const v = val(r)[k]; i ? x.lineTo(X(r), Y(v)) : x.moveTo(X(r), Y(v)); }); x.stroke(); }
-  x.fillStyle = '#6B7178'; x.font = '20px system-ui'; x.textAlign = 'left'; x.fillText(hi.toFixed(hi < 10 ? 2 : 0), 6, 22); x.fillText(lo.toFixed(lo > -10 ? 2 : 0), 6, H-8);
+// faces: outward normal in sensor axes. A pose with +axis pointing up means the opposite face is on the table.
+const FACES = [ {n:[0,0,-1], name:'바닥'}, {n:[0,0,1], name:'윗면'}, {n:[1,0,0], name:'옆 +X'}, {n:[-1,0,0], name:'옆 −X'}, {n:[0,1,0], name:'옆 +Y'}, {n:[0,-1,0], name:'옆 −Y'} ];
+const faceDone = f => CAL.poses.some(p => vdot(vunit(p), f.n.map(x=>-x)) > 0.9);
+function drawCube(){
+  const c = $('cube'), x = c.getContext('2d'), W = c.width, H = c.height; x.clearRect(0,0,W,H);
+  const cam = vunit([1.2,-1.6,1.0]), right = vunit(vcross([0,0,1], cam)), upv = vcross(cam, right), S = 120, cy = H*0.48;
+  const P = v => [W/2 + vdot(v,right)*S, cy - vdot(v,upv)*S], depth = v => vdot(v, cam);
+  // table
+  x.fillStyle = '#EEF0F2'; x.beginPath(); [[-2.2,-2.2],[2.2,-2.2],[2.2,2.2],[-2.2,2.2]].forEach(([a,b],i) => { const p = P([a,b,-1.15]); i ? x.lineTo(...p) : x.moveTo(...p); }); x.closePath(); x.fill();
+  x.fillStyle = '#9AA0A6'; x.font = '22px system-ui'; x.textAlign = 'center'; x.fillText('책상', ...P([1.6,1.9,-1.15]));
+  if(!Q){ x.fillStyle = '#6B7178'; x.font = '24px system-ui'; x.fillText('센서 연결 대기', W/2, cy); return; }
+  const faces = FACES.map(f => {
+    const n = f.n, a = n.findIndex(v => v !== 0), u = [0,0,0], v = [0,0,0]; u[(a+1)%3] = 1; v[(a+2)%3] = 1;
+    const corners = [[1,1],[1,-1],[-1,-1],[-1,1]].map(([s,t]) => qrot(Q, n.map((k,i) => k + s*u[i] + t*v[i])));
+    const nw = qrot(Q, n);
+    return { f, corners, nw, z: depth(corners.reduce((acc,p)=>acc.map((q,i)=>q+p[i]/4),[0,0,0])) };
+  }).sort((p,q) => p.z - q.z);
+  faces.forEach(({f, corners, nw}) => {
+    if(vdot(nw, cam) <= 0) return;                         // back face
+    const done = faceDone(f), lit = 0.55 + 0.45 * Math.max(0, vdot(nw, vunit([-.3,-.4,1])));
+    const base = done ? [47,125,79] : [200,205,211];
+    x.fillStyle = `rgb(${base.map(c => Math.round(c*lit)).join(',')})`; x.strokeStyle = '#1F2328'; x.lineWidth = 3;
+    x.beginPath(); corners.forEach((p,i) => i ? x.lineTo(...P(p)) : x.moveTo(...P(p))); x.closePath(); x.fill(); x.stroke();
+    const cen = P(corners.reduce((acc,p)=>acc.map((q,i)=>q+p[i]/4),[0,0,0]));
+    x.fillStyle = done ? '#fff' : '#1F2328'; x.font = '600 24px system-ui'; x.textAlign = 'center'; x.fillText(f.name + (done ? ' ✓' : ''), cen[0], cen[1] + 8);
+  });
+  // which face is on the table now
+  const down = FACES.find(f => vdot(qrot(Q, f.n), [0,0,-1]) > 0.9);
+  x.fillStyle = '#1F2328'; x.font = '600 26px system-ui'; x.textAlign = 'center';
+  x.fillText(down ? `책상에 닿은 면: ${down.name}${faceDone(down) ? ' (잼)' : ''}` : '기울어져 있음', W/2, H - 24);
+  x.fillStyle = '#6B7178'; x.font = '22px system-ui'; x.fillText(`잰 면 ${FACES.filter(faceDone).length} / 6`, W/2, 30);
 }
 function setMeter(id, v, lim, max, txt){
-  const f = $('m'+id); f.style.width = Math.min(100, v / max * 100) + '%'; f.classList.toggle('over', lim != null && v > lim);
-  if(lim != null) $('l'+id).style.left = (lim / max * 100) + '%'; $('v'+id).textContent = txt;
+  const f = $('m'+id); f.style.width = Math.min(100, v / max * 100) + '%'; f.classList.toggle('over', v > lim);
+  $('l'+id).style.left = (lim / max * 100) + '%'; $('v'+id).textContent = txt;
 }
 function liveLoop(){
   if(LIVE.length > 20){
-    const last = LIVE.filter(r => ((LIVE.at(-1).t - r.t) >>> 0) / 1e6 <= 1.0);
-    const a = last.map(r => r.a), am = mean3(a), aRel = vnorm(sd3(a, am)) / vnorm(am);
-    const gSd = vnorm(sd3(last.map(r => r.g), mean3(last.map(r => r.g)))) / NOMINAL_DPS;
-    const bias = CAL.still ? CAL.still.gBias : null, gNow = LIVE.at(-1).g, w = vnorm(gNow.map((v,i) => v - (bias ? bias[i] : 0))) / NOMINAL_DPS;
+    const a = LIVE.map(r => r.a), am = mean3(a), aRel = vnorm(sd3(a, am)) / vnorm(am);
+    const gSd = vnorm(sd3(LIVE.map(r => r.g), mean3(LIVE.map(r => r.g)))) / NOMINAL_DPS;
     setMeter('A', aRel*100, A_LIM*100, 6, (aRel*100).toFixed(1) + '%');
     setMeter('G', gSd, G_LIM, 15, gSd.toFixed(1) + '°/s');
-    setMeter('W', w, null, 200, w.toFixed(0) + '°/s');
     const still = aRel < A_LIM && gSd < G_LIM;
     $('liveState').textContent = still ? '멈춤' : '움직이는 중'; $('liveState').className = still ? 'good' : 'muted';
-    drawSphere(am.map((v,i) => CAL.fit ? (v - CAL.fit.offset[i]) / CAL.fit.scale[i] : v));
-    drawPlot('plotA', 'a', CAL.fit ? CAL.fit.offset : null, CAL.fit ? 1 : 16384);
-    drawPlot('plotG', 'g', bias || mean3(LIVE.map(r => r.g)), NOMINAL_DPS);
-  } else drawSphere(null);
+  }
+  drawCube();
   requestAnimationFrame(liveLoop);
 }
 requestAnimationFrame(liveLoop);
