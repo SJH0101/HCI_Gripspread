@@ -51,6 +51,17 @@ CSE333 HCI개론 (UNIST, 2026 가을) Team 10 프로젝트.
 | 자리 | 책상 높이, 노트북 위치, 서 있는 자리, 조명을 테이프로 표시해 두고 그대로 |
 | 컵 | 비즈를 입구 1cm 아래까지 채움, IMU는 컵 바닥에 고정 |
 
+**설정값 적는 법.** 시스템 설정의 슬라이더에는 숫자가 안 나와서, 터미널에서 실제 저장된 값을 읽어 장비 확인 칸에 적는다.
+
+```bash
+defaults read -g com.apple.trackpad.scrolling        # 스크롤 속도
+defaults read -g com.apple.trackpad.scaling          # 포인터 이동 속도
+defaults read -g com.apple.swipescrolldirection      # 자연스러운 스크롤 (1 = 켜짐)
+defaults read com.apple.AppleMultitouchTrackpad TrackpadMomentumScroll   # 관성 (1 = 켜짐)
+```
+
+"does not exist"가 나오면 한 번도 안 바꾼 기본값이라는 뜻이니 `기본값`이라고 적는다. 첫 세션 전에 한 번 읽어 두고, 세션마다 같은지 다시 확인한다. 트랙패드 옵션 창 스크린샷도 같이 남겨 둔다.
+
 평소 자연스러운 스크롤을 끄고 쓰는 참가자도 설정은 바꾸지 않는다. 연습 시행에서 적응하게 하고, 메모에 적어 둔다.
 
 ## 컵 흔들림 지표 (데이터 보기 전에 정함)
