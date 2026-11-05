@@ -164,6 +164,23 @@
           <span></span><span id="handCheck" class="check"></span>
         </div>
 
+        <h2>장비 확인 (실험자, 매 세션 시작 전)</h2>
+        <p class="muted" style="color:var(--muted)">모든 참가자가 같은 기기와 같은 설정으로 해야 합니다. 기기 정보는 이 브라우저에 기억됩니다. 아래 항목을 확인하고 모두 체크해 주세요.</p>
+        <div class="form">
+          <label for="eDevice">노트북 모델</label><input id="eDevice" placeholder="예: MacBook Air 13 M2 (2022)">
+          <label for="eOS">macOS 버전</label><input id="eOS" placeholder="예: macOS 26.1">
+          <label for="eScroll">스크롤 속도 (손쉬운 사용 › 포인터 제어 › 트랙패드 옵션)</label><input id="eScroll" placeholder="예: 기본값 (가운데에서 4칸)">
+          <label>확인</label><span class="checks" id="eChecks">
+            <label><input type="checkbox" value="natural_scroll_on"> 자연스러운 스크롤 켜짐 (트랙패드 › 스크롤 및 확대/축소)</label>
+            <label><input type="checkbox" value="inertia_on"> 스크롤할 때 관성 사용 켜짐 (트랙패드 옵션)</label>
+            <label><input type="checkbox" value="scroll_speed_same"> 스크롤 속도가 위에 적은 값 그대로</label>
+            <label><input type="checkbox" value="chrome_zoom_100"> 크롬 확대/축소 100%, 창 최대화</label>
+            <label><input type="checkbox" value="power_plugged"> 전원 연결 (저전력 모드 꺼짐)</label>
+            <label><input type="checkbox" value="setup_same"> 책상 높이, 노트북 위치, 조명이 표시해 둔 자리 그대로</label>
+          </span>
+          <span></span><span id="envCheck" class="check"></span>
+        </div>
+
         <h2>배경 설문 (참가자에게 물어서 입력)</h2>
         <div class="form">
           <label for="fAge">나이</label><input id="fAge" type="number" min="15" max="90">
@@ -436,6 +453,7 @@ const GripEngine = (() => {
     video = videoEl;
     const stream = await navigator.mediaDevices.getUserMedia({video:{width:640, height:480, frameRate:{ideal:60}}, audio:false});
     video.srcObject = stream; await video.play();
+    try{ const tr = stream.getVideoTracks()[0], st = tr.getSettings(); E.camera = { label:tr.label, width:st.width, height:st.height, frameRate:st.frameRate }; }catch(e){ E.camera = null; }
     const fileset = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
     const opts = d => ({ baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate:d },
       runningMode:"VIDEO", numHands:1, minHandDetectionConfidence:0.5, minHandPresenceConfidence:0.5, minTrackingConfidence:0.5 });
@@ -605,9 +623,24 @@ $('fParams').onchange = async e => {
   }catch(err){ $('paramsMsg').className = 'check bad'; $('paramsMsg').textContent = '파일을 읽지 못했습니다'; }
 };
 
+// apparatus: device fields are remembered in this browser; checks are per session
+const ENV_KEY = 'gripspread_env_v1';
+try{ const v = JSON.parse(localStorage.getItem(ENV_KEY)); if(v){ $('eDevice').value = v.device || ''; $('eOS').value = v.os || ''; $('eScroll').value = v.scroll || ''; } }catch(e){}
+function envInfo(){
+  const checks = [...document.querySelectorAll('#eChecks input')];
+  return { device:$('eDevice').value.trim() || null, macos:$('eOS').value.trim() || null, trackpad_scroll_speed:$('eScroll').value.trim() || null,
+    checked:checks.filter(i => i.checked).map(i => i.value), unchecked:checks.filter(i => !i.checked).map(i => i.value),
+    screen:{ w:screen.width, h:screen.height, dpr:window.devicePixelRatio }, window:{ w:window.innerWidth, h:window.innerHeight },
+    camera:E.camera || null, user_agent:navigator.userAgent };
+}
+
 $('btnStart').onclick = () => {
   const pid = parseInt($('fPid').value);
   if(!pid){ $('fPid').focus(); return; }
+  const env = envInfo();
+  if(env.unchecked.length && !confirm(`장비 확인이 ${env.unchecked.length}개 안 됐습니다. 그래도 시작할까요?`)){ $('envCheck').className = 'check bad'; $('envCheck').textContent = '체크 안 된 항목을 확인해 주세요'; return; }
+  try{ localStorage.setItem(ENV_KEY, JSON.stringify({ device:env.device, os:env.macos, scroll:env.trackpad_scroll_speed })); }catch(e){}
+  S.env = env;
   const hm = handMeas();
   Object.assign(S, { pid, hand:$('fHand').value, handLen:hm.len.mean, span:hm.span.mean,
     handRaw:{ length_mm:[hm.len.a, hm.len.b], span_mm:[hm.span.a, hm.span.b] },
@@ -936,7 +969,7 @@ function sessionObj(){
   return { pid:S.pid, hand:S.hand, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
-    tlx:S.tlx, calibration:S.calib, params_source:paramsSource, user_agent:navigator.userAgent };
+    tlx:S.tlx, calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, user_agent:navigator.userAgent };
 }
 $('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
 // recovery list on the setup screen

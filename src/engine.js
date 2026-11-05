@@ -152,6 +152,7 @@ const GripEngine = (() => {
     video = videoEl;
     const stream = await navigator.mediaDevices.getUserMedia({video:{width:640, height:480, frameRate:{ideal:60}}, audio:false});
     video.srcObject = stream; await video.play();
+    try{ const tr = stream.getVideoTracks()[0], st = tr.getSettings(); E.camera = { label:tr.label, width:st.width, height:st.height, frameRate:st.frameRate }; }catch(e){ E.camera = null; }
     const fileset = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
     const opts = d => ({ baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate:d },
       runningMode:"VIDEO", numHands:1, minHandDetectionConfidence:0.5, minHandPresenceConfidence:0.5, minTrackingConfidence:0.5 });
