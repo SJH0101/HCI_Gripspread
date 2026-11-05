@@ -37,6 +37,7 @@
   .status{display:flex;align-items:center;gap:8px;margin:12px 16px 0;padding:6px 12px 6px 8px;border-radius:999px;background:#fff;border:1px solid var(--hair);position:relative;overflow:hidden;font-size:13px}
   .status .lamp{width:10px;height:10px;border-radius:50%;background:#B9BDC2;flex:none}
   .status.hold .lamp{background:transparent;border:2px solid var(--ink)}
+  .status.pause .lamp{background:transparent;border:2px dashed var(--ink)}
   .status.active{background:var(--mark);border-color:var(--mark)}
   .status.active .lamp{background:var(--ink)}
   .status.warn{border-color:var(--alert)} .status.warn .lamp{background:var(--alert)}
@@ -140,7 +141,7 @@
     <section id="sSetup" class="screen on">
       <div class="sheet">
         <h1>참가자 설정</h1>
-        <p>참가자 번호로 기법 순서와 컵 순서가 정해져. 손 길이는 손목 주름에서 중지 끝까지, span은 엄지 끝에서 소지 끝까지 최대로 벌린 길이야.</p>
+        <p>참가자 번호로 기법 순서와 컵 순서가 정해집니다. 손 길이는 손목 주름에서 중지 끝까지, span은 엄지 끝에서 소지 끝까지 최대로 벌린 길이입니다.</p>
         <div class="form">
           <label for="fPid">참가자 번호 (1–12)</label><input id="fPid" type="number" min="1" max="99" value="1">
           <label for="fHandLen">손 길이 (mm)</label><input id="fHandLen" type="number" min="100" max="250" placeholder="예: 185">
@@ -179,7 +180,7 @@
         <div class="actions"><button id="btnStart" class="primary">실험 시작</button></div>
         <div id="recoverBox" style="display:none">
           <h2>브라우저에 백업된 세션</h2>
-          <p>실험 도중 창이 닫혔다면 여기서 그때까지의 데이터를 zip으로 받을 수 있어.</p>
+          <p>실험 도중 창이 닫혔다면 여기서 그때까지의 데이터를 zip으로 받을 수 있습니다.</p>
           <div id="recoverList" class="order num"></div>
         </div>
       </div>
@@ -196,6 +197,17 @@
       </div>
     </section>
 
+    <!-- 2b. GripSpread calibration (range + neutral) before each new cup -->
+    <section id="sCalib" class="screen">
+      <div class="sheet">
+        <p style="color:var(--muted);margin:0">GripSpread 보정</p>
+        <div id="cTitle" class="big-cond"></div>
+        <p id="cHow"></p>
+        <div class="order" id="cSteps"></div>
+        <div class="actions"><button id="btnCalibGo" class="primary">보정 시작</button><button id="btnCalibNext" disabled>다음 (Space)</button></div>
+      </div>
+    </section>
+
     <!-- 3. task -->
     <section id="sTask" class="screen" style="overflow:hidden">
       <div id="track"><div id="content"><div id="target"></div></div></div>
@@ -207,8 +219,8 @@
     <!-- 4. NASA-TLX -->
     <section id="sTlx" class="screen">
       <div class="sheet">
-        <h1 id="tlxTitle">방금 쓴 방법은 어땠어?</h1>
-        <p>각 항목 막대를 움직여서 0–100 사이로 표시해줘 (5점 단위). 정답은 없어. 모든 항목을 한 번씩 움직여야 제출돼.</p>
+        <h1 id="tlxTitle">방금 쓴 방법은 어땠나요?</h1>
+        <p>각 항목의 막대를 움직여 0–100 사이로 표시해 주세요 (5점 단위). 정답은 없습니다. 모든 항목을 한 번씩 움직여야 제출됩니다.</p>
         <div id="tlxItems"></div>
         <div class="actions"><button id="btnTlx" class="primary">제출</button><span id="tlxWarn"></span></div>
       </div>
@@ -218,7 +230,7 @@
     <section id="sRest" class="screen">
       <div class="sheet">
         <h1>앉아서 쉬어요</h1>
-        <p>다음 방법으로 넘어가기 전에 3분 정도 쉬어. 손목 스트랩도 잠깐 풀어도 돼.</p>
+        <p>다음 방법으로 넘어가기 전에 3분 정도 쉬어 주세요. 손목 스트랩은 잠깐 풀어도 됩니다.</p>
         <div class="big-cond num" id="restClock">3:00</div>
         <div class="actions"><button id="btnRestDone" class="primary">계속하기</button></div>
       </div>
@@ -228,7 +240,7 @@
     <section id="sDone" class="screen">
       <div class="sheet">
         <h1>실험 끝</h1>
-        <p>데이터가 zip 파일 하나로 저장됐어. 다운로드가 안 됐으면 아래 버튼으로 다시 받아.</p>
+        <p>데이터가 zip 파일 하나로 저장됐습니다. 다운로드가 안 됐다면 아래 버튼으로 다시 받아 주세요.</p>
         <div id="doneSummary" class="order num"></div>
         <div class="actions"><button id="btnSaveAll" class="primary">zip 다시 받기</button></div>
       </div>
@@ -259,6 +271,8 @@ document.addEventListener('click', () => { try{ actx = actx || new AudioContext(
 
 // ---------- engine wiring ----------
 const E = GripEngine;
+E.freezeRange = true;   // study: normalization stays exactly as calibrated (no auto-widening)
+window.GS_DEBUG = { E };   // console access for the experimenter
 const statusEl = $('status'), stateText = $('stateText'), holdBar = $('holdBar');
 E.onBeep = (f,d) => beep(f,d);
 E.onStatus = (text, cls, prog) => { stateText.textContent = text; statusEl.className = 'status ' + cls; holdBar.style.width = (prog*100)+'%'; };
@@ -277,7 +291,7 @@ function drawOverlay(){
 
 // ---------- session ----------
 const S = { pid:null, hand:'R', handLen:null, span:null, note:'', seq:null, techOrder:null, latinRow:null,
-  cfg:null, steps:[], stepIdx:-1, startedAt:null, tlx:[], files:[] };
+  cfg:null, steps:[], stepIdx:-1, startedAt:null, tlx:[], files:[], calib:[] };
 const allTrials = [], tlxRows = [];
 let frames = [], imuRows = [], stepTrials = [];
 
@@ -302,9 +316,11 @@ $('fPid').addEventListener('input', showOrder); showOrder();
 function buildSteps(){
   const o = orderFor(S.pid), steps = [];
   o.techOrder.forEach((tech, bi) => {
-    steps.push({ type:'practice', tech, cup:'none' });
-    steps.push({ type:'practice', tech, cup:'75' });
-    o.cups.forEach((cup, ci) => steps.push({ type:'measure', tech, cup, condIndex: ci+1 }));
+    let lastCup = null;   // GripSpread: calibrate range + neutral whenever the cup changes
+    const add = st => { if(tech === 'gs' && st.cup !== lastCup){ steps.push({ type:'calib', tech, cup:st.cup }); lastCup = st.cup; } steps.push(st); };
+    add({ type:'practice', tech, cup:'none' });
+    add({ type:'practice', tech, cup:'75' });
+    o.cups.forEach((cup, ci) => add({ type:'measure', tech, cup, condIndex: ci+1 }));
     steps.push({ type:'tlx', tech });
     if(bi === 0) steps.push({ type:'rest' });
   });
@@ -334,6 +350,7 @@ $('btnStart').onclick = () => {
 function stepName(st){
   if(st.type === 'practice') return `${TECH[st.tech]} 연습 · ${CUPS[st.cup]}`;
   if(st.type === 'measure') return `${TECH[st.tech]} · ${CUPS[st.cup]}`;
+  if(st.type === 'calib') return `${TECH[st.tech]} 보정 · ${CUPS[st.cup]}`;
   return { tlx:`${TECH[st.tech]} 설문`, rest:'휴식', done:'끝' }[st.type] || st.type;
 }
 function gotoStep(i){
@@ -352,6 +369,7 @@ function nextStep(){
   S.stepIdx++;
   const st = S.steps[S.stepIdx]; header();
   if($('hJump').options.length) $('hJump').value = S.stepIdx;
+  if(st.type === 'calib') return showCalib(st);
   if(st.type === 'practice' || st.type === 'measure') return showBrief(st);
   if(st.type === 'tlx') return showTlx(st);
   if(st.type === 'rest') return showRest();
@@ -363,18 +381,45 @@ function showBrief(st){
   $('bKind').textContent = st.type === 'practice' ? '연습' : `본 측정 · 조건 ${st.condIndex}/4`;
   $('bTitle').textContent = `${TECH[st.tech]} · ${CUPS[st.cup]}`;
   const how = st.tech === 'gs'
-    ? '컵을 쥔 손을 카메라 앞에 올리고 편한 V로 멈춰 켜. 오므리면 아래로, 벌리면 위로 움직여. 위에 나온 번호의 줄(노란 줄)을 가운데 네모 안에 넣고 잠깐 멈추면 다음으로 넘어가. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있어.'
-    : '컵을 쥔 손 그대로, 편한 손가락으로 트랙패드를 써. 위에 나온 번호의 줄(노란 줄)을 가운데 네모 안에 넣고 잠깐 멈추면 다음으로 넘어가. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있어.';
-  $('bText').textContent = how + (st.type === 'practice' ? ' 연습은 익숙해질 때까지 계속돼.' : ' 최대한 빠르고 정확하게 해줘.');
+    ? '컵을 쥔 손을 카메라 앞에 올리고 편한 V로 멈추면 켜집니다. 오므리면 아래로, 벌리면 위로 움직입니다. 위에 나온 번호의 줄(노란 줄)을 가운데 네모 안에 넣고 잠깐 멈추면 다음으로 넘어갑니다. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있습니다.'
+    : '컵을 쥔 손 그대로, 편한 손가락으로 트랙패드를 써 주세요. 위에 나온 번호의 줄(노란 줄)을 가운데 네모 안에 넣고 잠깐 멈추면 다음으로 넘어갑니다. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있습니다.';
+  $('bText').textContent = how + (st.type === 'practice' ? ' 연습은 익숙해질 때까지 계속됩니다.' : ' 최대한 빠르고 정확하게 해 주세요.');
   const checks = [];
   if(st.cup !== 'none') checks.push(`${CUPS[st.cup]} 준비, 비즈가 입구 1cm 아래까지 차 있는지 확인`);
   else checks.push('컵 없이 빈손');
   checks.push('반대손은 손목 스트랩으로 고정');
-  if(st.tech === 'gs' && !E.range) checks.push('<b style="color:var(--alert)">손 범위를 아직 안 쟀어. 왼쪽 "손 범위 재기"를 먼저 해줘</b>');
+  if(st.tech === 'gs' && E.r0 != null) checks.push(`보정값: 편한 V ${E.r0.toFixed(1)}°, 범위 ${E.range.min.toFixed(0)}~${E.range.max.toFixed(0)}° (이 조건 동안 고정)`);
   $('bCheck').innerHTML = checks.map(c=>'· '+c).join('<br>');
   show('sBrief');
 }
 $('btnGo').onclick = () => startStep();
+
+// ---------- calibration: hand range, then neutral (편한 V), once per cup ----------
+let calibState = null;
+function showCalib(st){
+  calibState = { st, range:null, r0:null };
+  $('cTitle').textContent = CUPS[st.cup];
+  $('cHow').textContent = (st.cup === 'none' ? '빈손으로 해 주세요. ' : `${CUPS[st.cup]}을 쥔 그대로 해 주세요. `) + '여기서 잰 값은 이 컵 조건이 끝날 때까지 고정됩니다. 손이 화면 밖으로 나갔다 와도 바뀌지 않습니다.';
+  $('btnCalibGo').textContent = '보정 시작'; $('btnCalibNext').disabled = true;
+  renderCalib(); show('sCalib');
+}
+function renderCalib(){
+  const c = calibState; if(!c) return;
+  const r = c.range ? `${c.range.min.toFixed(1)}° ~ ${c.range.max.toFixed(1)}°` : '아직';
+  const n = c.r0 != null ? `${c.r0.toFixed(1)}°` : c.range ? '손을 내렸다가 편한 V로 올리고 멈춰 주세요' : '아직';
+  $('cSteps').innerHTML = `① 손 범위: 최대로 벌리기 → 최대로 오므리기 · <b>${r}</b><br>② 편한 V: 컵 쥔 채 편하게 · <b>${n}</b>`;
+  $('btnCalibNext').disabled = !(c.range && c.r0 != null);
+}
+$('btnCalibGo').onclick = () => { if(!calibState) return; calibState.range = null; calibState.r0 = null; E.r0 = null; E.startRange(); $('btnCalibGo').textContent = '처음부터 다시'; renderCalib(); };
+E.onRange = range => { if(calibState && $('sCalib').classList.contains('on')){ calibState.range = { ...range }; renderCalib(); } };
+E.onNeutral = r0 => { if(calibState && $('sCalib').classList.contains('on') && calibState.range){ calibState.r0 = r0; renderCalib(); } };
+function finishCalib(){
+  const c = calibState; if(!c || !c.range || c.r0 == null) return;
+  E.range = { ...c.range }; E.r0 = c.r0;   // lock exactly what was measured
+  S.calib.push({ cup:c.st.cup, tech:c.st.tech, range_min:+c.range.min.toFixed(2), range_max:+c.range.max.toFixed(2), r0:+c.r0.toFixed(2), at:new Date().toISOString() });
+  calibState = null; backup(); nextStep();
+}
+$('btnCalibNext').onclick = finishCalib;
 
 // ---------- trial generation ----------
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; }
@@ -423,7 +468,7 @@ function nextTrial(){
   if(st.type === 'practice' && practiceCriterion()) return endStep();
   run.i++;
   if(run.i >= run.trials.length) return endStep();
-  if(pauseRequested){ pauseRequested = false; taskMsg.textContent = '일시정지. Space를 누르면 계속해'; run.phase = 'paused'; return; }
+  if(pauseRequested){ pauseRequested = false; taskMsg.textContent = '일시정지. Space를 누르면 계속합니다'; run.phase = 'paused'; return; }
   const t = run.trials[run.i], fc = frameCenter(), viewH = track.clientHeight;
   // choose a start scroll S so that the target ends up reachable and inside the content
   let lo, hi;
@@ -443,7 +488,7 @@ function nextTrial(){
   frameEl.style.height = t.W + 'px'; frameEl.style.top = (fc - t.W/2) + 'px';
   frameEl.classList.remove('in'); dwellBar.style.width = '0';
   run.phase = (st.tech === 'gs' && E.state !== 'ACTIVE') ? 'waitActive' : 'pre';
-  taskMsg.textContent = run.phase === 'waitActive' ? 'GripSpread를 켜줘 (편한 V로 잠깐 멈추기)' : '';
+  taskMsg.textContent = run.phase === 'waitActive' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '';
   if(run.phase === 'pre') run.trial.preAt = performance.now();
 }
 
@@ -466,6 +511,7 @@ document.addEventListener('keydown', e => {
   if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End'].includes(e.key) && $('sTask').classList.contains('on')) e.preventDefault();
   if(e.key === ' ' || e.code === 'Space'){
     if($('sBrief').classList.contains('on')){ e.preventDefault(); startStep(); }
+    else if($('sCalib').classList.contains('on')){ e.preventDefault(); finishCalib(); }
     else if(run && run.phase === 'paused'){ e.preventDefault(); taskMsg.textContent = ''; nextTrial(); }
   }
   if((e.key === 'p' || e.key === 'P') && run){ pauseRequested = true; taskMsg.textContent = '이번 시행 끝나면 일시정지'; }
@@ -474,9 +520,9 @@ document.addEventListener('keydown', e => {
   }
   if(e.key === 'k' || e.key === 'K'){
     if(run){ if(run.trial) run.trial = null; endStep(); }
-    else if(['sBrief','sTlx','sRest'].some(id => $(id).classList.contains('on'))) gotoStep(S.stepIdx + 1);
+    else if(['sBrief','sCalib','sTlx','sRest'].some(id => $(id).classList.contains('on'))) gotoStep(S.stepIdx + 1);
   }
-  if((e.key === 's' || e.key === 'S') && run && run.st.type === 'practice'){ run.pracDone = true; taskMsg.textContent = '연습을 이번 시행에서 끝낼게'; }
+  if((e.key === 's' || e.key === 'S') && run && run.st.type === 'practice'){ run.pracDone = true; taskMsg.textContent = '연습을 이번 시행에서 끝냅니다'; }
 });
 
 function tickTask(now){
@@ -591,7 +637,7 @@ function saveStepFiles(){
   backup();
 }
 async function downloadZip(snap){
-  if(!window.JSZip){ $('hSaved').textContent = 'zip 라이브러리를 못 불러왔어 (인터넷 확인)'; return; }
+  if(!window.JSZip){ $('hSaved').textContent = 'zip 라이브러리를 불러오지 못했습니다 (인터넷 확인)'; return; }
   const z = new JSZip(), ss = snap.session, tag = pTag(ss.pid);
   z.file(`${tag}_trials.csv`, toCSV(TRIAL_HEAD, snap.trials));
   if(snap.frames.length) z.file(`${tag}_frames.csv`, toCSV(frameHead(ss.config && ss.config.frames), snap.frames));
@@ -607,7 +653,7 @@ function sessionObj(){
   return { pid:S.pid, hand:S.hand, hand_length_mm:S.handLen, span_mm:S.span, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
-    tlx:S.tlx, user_agent:navigator.userAgent };
+    tlx:S.tlx, calibration:S.calib, user_agent:navigator.userAgent };
 }
 $('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
 // recovery list on the setup screen
@@ -621,15 +667,15 @@ idbAll().then(list => {
 
 // ---------- NASA-TLX ----------
 const TLX = [
-  ['mental','정신적 요구','얼마나 생각하고 집중해야 했어?','낮음','높음'],
-  ['physical','신체적 요구','손과 팔이 얼마나 힘들었어?','낮음','높음'],
-  ['temporal','시간 압박','얼마나 쫓기는 느낌이었어?','낮음','높음'],
-  ['performance','수행 만족도','목표를 얼마나 잘 해냈다고 느껴?','잘함','못함'],
-  ['effort','노력','그 정도로 하려고 얼마나 애써야 했어?','낮음','높음'],
-  ['frustration','좌절감','짜증 나거나 불안했던 정도는?','낮음','높음'],
+  ['mental','정신적 요구','얼마나 생각하고 집중해야 했나요?','낮음','높음'],
+  ['physical','신체적 요구','손과 팔이 얼마나 힘들었나요?','낮음','높음'],
+  ['temporal','시간 압박','얼마나 쫓기는 느낌이었나요?','낮음','높음'],
+  ['performance','수행 만족도','목표를 얼마나 잘 해냈다고 느끼나요?','잘함','못함'],
+  ['effort','노력','그 정도로 하려고 얼마나 애써야 했나요?','낮음','높음'],
+  ['frustration','좌절감','짜증 나거나 불안했던 정도는 어땠나요?','낮음','높음'],
 ];
 function showTlx(st){
-  $('tlxTitle').textContent = `방금 쓴 ${TECH[st.tech]}는 어땠어?`;
+  $('tlxTitle').textContent = `방금 쓴 ${TECH[st.tech]}는 어땠나요?`;
   $('tlxItems').innerHTML = TLX.map(([k,q,d,lo,hi]) => `<div class="tlx-item"><div class="q"><span>${q}</span><span class="val none" id="v_${k}">아직 안 함</span></div><div class="d">${d}</div>
     <div class="scale"><input type="range" class="untouched" min="0" max="100" step="5" value="50" data-k="${k}" aria-label="${q}"></div>
     <div class="nums"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
@@ -641,7 +687,7 @@ function showTlx(st){
 }
 $('btnTlx').onclick = () => {
   const left = [...document.querySelectorAll('#tlxItems input.untouched')];
-  if(left.length){ $('tlxWarn').textContent = `아직 안 움직인 항목이 ${left.length}개 있어`; left[0].focus(); return; }
+  if(left.length){ $('tlxWarn').textContent = `아직 안 움직인 항목이 ${left.length}개 있습니다`; left[0].focus(); return; }
   const st = S.steps[S.stepIdx], row = { pid:S.pid, technique:st.tech };
   document.querySelectorAll('#tlxItems input').forEach(i => row[i.dataset.k] = +i.value);
   row.raw_tlx = +(TLX.reduce((a,[k]) => a + row[k], 0) / TLX.length).toFixed(1);
@@ -717,9 +763,9 @@ $('btnImu').onclick = async () => {
     const ch = await (await (await imuDev.gatt.connect()).getPrimaryService(IMU_SVC)).getCharacteristic(IMU_DATA);
     ch.addEventListener('characteristicvaluechanged', ev => { const r = imuDecode(ev.target.value); if(r) onImu(r); });
     await ch.startNotifications();
-    imuDev.addEventListener('gattserverdisconnected', () => $('kImu').textContent = '끊김 · 다시 연결 눌러');
+    imuDev.addEventListener('gattserverdisconnected', () => $('kImu').textContent = '끊김 · 다시 연결해 주세요');
     imuConn++; imuResetRef();
-    $('kImu').textContent = '연결됨 · 컵 세워서 가만히';
+    $('kImu').textContent = '연결됨 · 컵을 세워 가만히 두세요';
   }catch(e){ $('kImu').textContent = '연결 실패: ' + e.message; }
 };
 $('btnImuRef').onclick = () => { imuResetRef(); $('kTilt').textContent = '기준 잡는 중'; };
@@ -742,7 +788,7 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-E.init(HandLandmarker, FilesetResolver, video).catch(e => E.onStatus('카메라나 손 인식 모델을 열지 못했어: ' + e.message, 'warn', 0));
+E.init(HandLandmarker, FilesetResolver, video).catch(e => E.onStatus('카메라나 손 인식 모델을 열지 못했습니다: ' + e.message, 'warn', 0));
 </script>
 </body>
 </html>

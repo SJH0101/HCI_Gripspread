@@ -1,4 +1,6 @@
-// GripSpread engine: webcam hand landmarks -> V spread angle (deg) -> IDLE/HOLD/ACTIVE state -> scroll velocity.
+// GripSpread engine: webcam hand landmarks -> V spread angle (deg) -> IDLE/HOLD/ACTIVE/PAUSE state -> scroll velocity.
+// The neutral (r0) is captured once and kept: losing the hand only pauses input (PAUSE), and input comes back
+// when the spread returns inside the dead zone. Only resetNeutral() or a new calibration replaces r0.
 // No DOM besides the <video>. The host page renders status through the callbacks.
 const GripEngine = (() => {
   // ---------- tunable parameters (pilot values) ----------
@@ -9,13 +11,15 @@ const GripEngine = (() => {
   const JUMP_MAX = 20;     // deg per frame; bigger jumps are dropped unless they persist 3 frames
   const FACING_MIN = 0.35; // |palm normal . camera axis| below this = palm seen edge-on
   const HOLD_SD = 2.5;     // deg; neutral capture restarts when the spread moves more than this
+  const REARM_MS = 250;    // after a pause, the spread must sit in the dead zone this long before input resumes
   const CALIB_MS = 1500, COUNT_MS = 3000;
   const RANGE_KEY = 'gripspread_range_deg_v1';
 
   const E = {
     P, dirSign:-1, state:'IDLE', r0:null, range:null, theta:null, reliable:false, reason:null,
     feat:null, lm:null, world:null, velocity:0, holdProgress:0, calibStep:null, fps:0,
-    onStatus:()=>{}, onBeep:()=>{}, onState:()=>{},
+    onStatus:()=>{}, onBeep:()=>{}, onState:()=>{}, onNeutral:()=>{}, onRange:()=>{},
+    freezeRange:false,   // true in the study: the normalization stays exactly as calibrated
   };
   try{ const v = JSON.parse(localStorage.getItem(RANGE_KEY)); if(v && v.max > v.min) E.range = v; }catch(e){}
 
@@ -42,9 +46,9 @@ const GripEngine = (() => {
   }
 
   // ---------- state machine ----------
-  const STATE_TEXT = { IDLE:'컵을 쥔 손을 카메라 앞에 올려줘', HOLD:'편한 V로 잠깐 멈춰', ACTIVE:'켜짐' };
-  const WARN_TEXT = { facing:'손등을 카메라 쪽으로 돌려줘 (입력 멈춤)', folded:'손가락 접힘 (입력 멈춤)', lost:'손 인식이 불안정해 (입력 멈춤)' };
-  let holdStart = 0, holdBuf = [], lastSeen = 0, needHandDown = false, jumpCount = 0, foldFrames = 0;
+  const STATE_TEXT = { IDLE:'컵을 쥔 손을 카메라 앞에 올려 주세요', HOLD:'편한 V로 잠깐 멈춰 주세요', ACTIVE:'켜짐', PAUSE:'편한 V로 돌아오면 다시 켜집니다' };
+  const WARN_TEXT = { facing:'손등을 카메라 쪽으로 돌려 주세요 (입력 멈춤)', folded:'손가락 접힘 (입력 멈춤)', lost:'손 인식이 불안정합니다 (입력 멈춤)' };
+  let holdStart = 0, holdBuf = [], lastSeen = 0, needHandDown = false, jumpCount = 0, foldFrames = 0, rearmStart = 0;
   function status(){
     if(E.calibStep) return;
     const warn = E.lm && !E.reliable;
@@ -56,19 +60,20 @@ const GripEngine = (() => {
     E.state = s; E.velocity = 0; E.holdProgress = 0;
     if(s === 'IDLE'){ E.r0 = null; holdBuf = []; }
     if(s === 'HOLD'){ holdBuf = []; holdStart = performance.now(); }
+    if(s === 'PAUSE') rearmStart = 0;
     E.onState(s);
   }
   E.resetNeutral = () => setState('IDLE');
 
   // ---------- hand range calibration (max open -> max close) ----------
-  const STEP_TEXT = { max:'① 최대로 벌려', min:'② 최대로 오므려' };
+  const STEP_TEXT = { max:'① 최대로 벌려 주세요', min:'② 최대로 오므려 주세요' };
   let calib = null;
   const pct = (arr, q) => { const a = [...arr].sort((x,y)=>x-y); return a[Math.min(a.length-1, Math.max(0, Math.round(q*(a.length-1))))]; };
   function startStep(step, got){ calib = { step, phase:'wait', start:0, lastTick:0, buf:[], got }; E.calibStep = step;
-    E.onStatus(STEP_TEXT[step] + '. 손을 올리면 카운트다운 시작', 'hold', 0); }
+    E.onStatus(STEP_TEXT[step] + '. 손을 올리면 카운트다운이 시작됩니다', 'hold', 0); }
   E.startRange = () => { setState('IDLE'); startStep('max', {}); };
   function calibTick(now, v){
-    if(v == null){ if(calib.phase !== 'wait'){ calib.phase = 'wait'; calib.buf = []; E.onStatus(STEP_TEXT[calib.step] + '. 손이 안 보여, 다시 올려줘', 'hold', 0); } return; }
+    if(v == null){ if(calib.phase !== 'wait'){ calib.phase = 'wait'; calib.buf = []; E.onStatus(STEP_TEXT[calib.step] + '. 손이 안 보입니다. 다시 올려 주세요', 'hold', 0); } return; }
     if(calib.phase === 'wait'){ calib.phase = 'count'; calib.start = now; calib.lastTick = 0; }
     if(calib.phase === 'count'){
       const left = Math.ceil((COUNT_MS - (now - calib.start)) / 1000);
@@ -79,16 +84,17 @@ const GripEngine = (() => {
     }
     calib.buf.push(v);
     const prog = Math.min(1, (now - calib.start) / CALIB_MS);
-    E.onStatus(STEP_TEXT[calib.step] + '. 측정 중, 그대로 유지', 'hold', prog);
+    E.onStatus(STEP_TEXT[calib.step] + '. 측정 중입니다. 그대로 유지해 주세요', 'hold', prog);
     if(prog < 1) return;
     if(calib.step === 'max'){ E.onBeep(660, 0.1); startStep('min', { max: pct(calib.buf, 0.9) }); return; }
     const got = { ...calib.got, min: pct(calib.buf, 0.1) };
     if(got.max - got.min > 8){
       E.range = { min:got.min, max:got.max };
       try{ localStorage.setItem(RANGE_KEY, JSON.stringify(E.range)); }catch(e){}
+      E.onRange(E.range);
       E.onBeep(990, 0.15); calib = null; E.calibStep = null; needHandDown = true; setState('IDLE');
-      E.onStatus('손 범위 저장됨. 손을 내렸다가 편한 V로 다시 올려줘', 'idle', 0);
-    } else { E.onBeep(220, 0.25); startStep('max', {}); E.onStatus('손 범위가 너무 좁게 나왔어. 다시 ' + STEP_TEXT.max, 'hold', 0); }
+      E.onStatus('손 범위를 저장했습니다. 손을 내렸다가 편한 V로 다시 올려 주세요', 'idle', 0);
+    } else { E.onBeep(220, 0.25); startStep('max', {}); E.onStatus('손 범위가 너무 좁게 나왔습니다. 다시 ' + STEP_TEXT.max, 'hold', 0); }
   }
 
   // ---------- mapping ----------
@@ -126,7 +132,7 @@ const GripEngine = (() => {
       else B = 1 + (B - 1) * Math.exp(-dtMs / P.boostDecayMs);
       cmd = dir * P.gain * Math.pow(mag, P.gamma) * B;
       // keep the calibrated range honest: angles beyond it widen it
-      if(E.range){ if(E.theta > E.range.max) E.range.max = E.theta; if(E.theta < E.range.min) E.range.min = E.theta; }
+      if(E.range && !E.freezeRange){ if(E.theta > E.range.max) E.range.max = E.theta; if(E.theta < E.range.min) E.range.min = E.theta; }
     } else { holdDir = 0; B = 1; }
     E.boost = B; E.command = cmd;
     const v = E.velocity || 0;
@@ -179,7 +185,17 @@ const GripEngine = (() => {
     if(E.calibStep){
       if(!lm) calibTick(now, null); else if(E.reliable) calibTick(now, E.theta);
     } else if(!lm){
-      if(now - lastSeen > 500){ setState('IDLE'); E.theta = null; needHandDown = false; }
+      if(now - lastSeen > 500){
+        if(E.r0 != null && (E.state === 'ACTIVE' || E.state === 'PAUSE')) setState('PAUSE');   // keep the neutral
+        else { setState('IDLE'); needHandDown = false; }
+        E.theta = null;
+      }
+    } else if(E.state === 'PAUSE'){
+      const band = E.deadBand();
+      const inBand = E.reliable && E.theta != null && band && E.theta >= band[0] && E.theta <= band[1];
+      if(!inBand) rearmStart = 0; else if(!rearmStart) rearmStart = now;
+      E.holdProgress = rearmStart ? Math.min(1, (now - rearmStart) / REARM_MS) : 0;
+      if(rearmStart && now - rearmStart >= REARM_MS) setState('ACTIVE');
     } else if(E.state === 'IDLE' && !needHandDown){
       setState('HOLD');
     } else if(E.state === 'HOLD' && E.theta != null && E.reliable){
@@ -188,7 +204,7 @@ const GripEngine = (() => {
       const sd = Math.sqrt(holdBuf.reduce((a,b)=>a+(b-mean)**2,0)/holdBuf.length);
       if(sd > HOLD_SD){ holdBuf = []; holdStart = now; }
       E.holdProgress = Math.min(1, (now - holdStart) / P.holdMs);
-      if(E.holdProgress >= 1 && holdBuf.length >= 5){ E.r0 = mean; setState('ACTIVE'); }
+      if(E.holdProgress >= 1 && holdBuf.length >= 5){ E.r0 = mean; setState('ACTIVE'); E.onNeutral(E.r0); }
     }
     E.velocity = computeVelocity(now);
     status();

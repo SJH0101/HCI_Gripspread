@@ -116,8 +116,9 @@ a  = proj(p₈ − M),  b = proj(p₁₂ − M)    M에서 두 손가락 끝을 
 - 한 프레임만 그렇게 나오면 잡음일 수 있으니, **6프레임(약 0.1초) 연속**일 때만 멈춘다. 그보다 짧으면 바로 앞 각도를 그대로 쓴다.
 
 **③ 손이 안 보일 때**
-- 손이 화면에서 **0.5초 넘게** 안 보이면 처음 상태로 돌아간다.
-- 다시 손을 올리고 편한 V로 0.7초 멈춰야 켜진다. 그래서 손을 내렸다 올릴 때 갑자기 스크롤되는 일이 없다.
+- 손이 화면에서 **0.5초 넘게** 안 보이면 입력을 **일시정지**한다. 이때 편한 V(중립) 값은 **그대로 둔다.**
+- 손이 다시 들어와서 벌림 각도가 멈춤 구간 안에 **0.25초** 머물면 다시 켜진다. 그래서 손을 내렸다 올릴 때 갑자기 스크롤되지도 않고, 들어올 때마다 중립이 바뀌지도 않는다.
+- 중립을 새로 잡는 건 `편한 V 다시 잡기`를 누르거나 보정을 다시 할 때뿐이다.
 
 **정확한 식**
 
@@ -127,7 +128,7 @@ a  = proj(p₈ − M),  b = proj(p₁₂ − M)    M에서 두 손가락 끝을 
 마디 굽힘 합    = ∠(p₆−p₅, p₇−p₆) + ∠(p₇−p₆, p₈−p₇)   가운데 마디(PIP)와 끝 마디(DIP)에서 뼈 방향이 꺾인 각도 (중지는 9~12번)
 ```
 
-### 4. 손 범위 재기 (처음 한 번)와 5. 편한 V 잡기 (쓸 때마다)
+### 4. 손 범위 재기와 5. 편한 V 잡기 (보정 단계에서 한 번)
 
 ![손 범위 재기와 편한 V 잡기](docs/calib_neutral.svg)
 
@@ -135,13 +136,17 @@ a  = proj(p₈ − M),  b = proj(p₁₂ − M)    M에서 두 손가락 끝을 
 1. "최대로 벌려" → 3초 카운트다운(삑삑삑) → 1.5초 동안 잰 값 중 위에서 10% 지점(90번째 백분위수)을 **최대 벌림**으로 저장한다. 맨 끝값 대신 이걸 쓰는 건 한두 프레임 튄 값에 끌려가지 않기 위해서다.
 2. "최대로 오므려" → 같은 방식으로 아래에서 10% 지점(10번째 백분위수)을 **최대 오므림**으로 저장한다.
 3. 두 값 차이가 8°도 안 되면 잘못 잰 걸로 보고 다시 잰다. 결과는 브라우저에 남아서 다음에 열어도 그대로 쓴다.
-4. 쓰다가 저장한 범위 밖까지 벌리거나 오므리면 범위가 그만큼 알아서 넓어진다.
+4. 데모 프로토타입에서는 쓰다가 저장한 범위 밖까지 벌리거나 오므리면 범위가 그만큼 알아서 넓어진다. 실험 프로그램에서는 넓히지 않고 보정한 값 그대로 고정한다.
 
 **편한 V 잡기**
 - 손이 카메라에 들어오면 "편한 V로 잠깐 멈춰" 상태가 된다.
 - **0.7초 동안** 흔들림(표준편차)이 2.5° 이하로 버티면, 그동안의 평균 각도를 **중립**으로 잡고 입력이 켜진다(삑).
 - 중간에 2.5° 넘게 흔들리면 0.7초를 처음부터 다시 센다.
 - 예시 사람은 편한 V로 멈췄을 때 25°가 나왔다고 하자.
+
+**실험에서는 보정을 따로 뺀다**
+- GripSpread 조건마다 컵이 바뀌면 그 앞에 **보정 단계**가 들어간다(컵 없음, 60, 75, 90mm 각각). 컵 크기에 따라 쥐는 모양이 달라서 편한 V랑 벌릴 수 있는 범위도 달라지기 때문이다.
+- 보정 단계에서 ① 손 범위 → ② 편한 V 순서로 재고, 그 값은 그 컵 조건이 끝날 때까지 고정한다. 결과는 `P01_session.json`의 `calibration`에 컵별로 남는다.
 
 ### 6. 벌림 정도 계산 (단위 없음, 0~1)
 
@@ -350,13 +355,13 @@ a  = proj(p₈ − M),  b = proj(p₁₂ − M)
 **3. Freeze input when the reading can't be trusted.** In these cases MediaPipe guesses hidden finger positions, so we stop scrolling. Most regrips of the cup fall into one of them.
 - *Palm turned sideways:* |cos| between the palm normal and the camera axis < 0.35 (roughly more than 70° of rotation).
 - *Fingers folded:* extension ratio (projected base→tip length ÷ palm length, wrist→middle base) < 0.55, or the summed bend of the middle and end joints > 80°, for 6 consecutive frames (~0.1 s). Shorter blips keep the last angle.
-- *Hand lost:* more than 0.5 s → back to the start state; the user must hold a comfortable V again.
+- *Hand lost:* more than 0.5 s → input pauses but the neutral is kept. When the hand returns, input resumes once the spread stays inside the dead zone for 0.25 s. The neutral only changes on an explicit reset or a new calibration.
 
 Exact formulas: facing = |n_z| (the camera-axis component of the palm normal); extension (index) = |a| / |p₉ − p₀| (middle uses |b|); joint bend = ∠(p₆−p₅, p₇−p₆) + ∠(p₇−p₆, p₈−p₇), i.e. the bend at the PIP and DIP joints (middle uses 9–12).
 
-**4. Hand range (once).** "Open fully": 3 s countdown, 1.5 s capture, the 90th percentile becomes *max open*. "Close fully": same, the 10th percentile becomes *max closed*. Percentiles instead of the extremes keep one noisy frame from setting the range. A range under 8° is rejected. The result is stored in the browser, and it widens on its own if the user later goes past it.
+**4. Hand range (calibration step).** "Open fully": 3 s countdown, 1.5 s capture, the 90th percentile becomes *max open*. "Close fully": same, the 10th percentile becomes *max closed*. Percentiles instead of the extremes keep one noisy frame from setting the range. A range under 8° is rejected. The result is stored in the browser. In the demo it widens if the user later goes past it; the study program keeps it fixed.
 
-**5. Neutral (every time).** When the hand appears, hold a comfortable V. If it stays within 2.5° (standard deviation) for **0.7 s**, the mean angle becomes *neutral* and input turns on with a beep. More wobble restarts the 0.7 s.
+**5. Neutral (calibration step).** Hold a comfortable V. If it stays within 2.5° (standard deviation) for **0.7 s**, the mean angle becomes *neutral* and input turns on with a beep. More wobble restarts the 0.7 s. In the study, a calibration step (range, then neutral) runs before every GripSpread condition with a new cup, because cup size changes the grip; the values stay fixed for that condition and are saved per cup in `calibration` of the session JSON.
 
 **6. Deflection (unitless, 0–1).**
 

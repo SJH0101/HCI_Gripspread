@@ -36,6 +36,7 @@
   .status{display:flex;align-items:center;gap:8px;padding:5px 12px 5px 8px;border-radius:999px;background:#fff;border:1px solid var(--hair);position:relative;overflow:hidden;min-width:300px}
   .status .lamp{width:10px;height:10px;border-radius:50%;background:#B9BDC2;flex:none}
   .status.hold .lamp{background:transparent;border:2px solid var(--ink)}
+  .status.pause .lamp{background:transparent;border:2px dashed var(--ink)}
   .status.active{background:var(--mark);border-color:var(--mark)}
   .status.active .lamp{background:var(--ink)}
   .status.warn{background:#fff;border-color:var(--alert)}
@@ -148,7 +149,7 @@
       <canvas id="graph"></canvas>
     </div>
     <div class="foot">
-      처음 쓰는 사람은 <b>손 범위 재기</b>로 최대로 벌린 폭과 오므린 폭을 먼저 재. 그다음 컵을 쥔 손을 올리고 편한 V로 잠깐 멈추면 켜져. 오므리면 아래로, 벌리면 위로 스크롤되고, 노란 멈춤 구간 안에서는 멈춰. 손을 내리면 꺼져.
+      처음 쓰는 분은 <b>손 범위 재기</b>로 최대로 벌린 폭과 오므린 폭을 먼저 재 주세요. 그다음 컵을 쥔 손을 올리고 편한 V로 잠깐 멈추면 켜집니다. 오므리면 아래로, 벌리면 위로 스크롤되고, 노란 멈춤 구간 안에서는 멈춥니다. 손을 내리면 잠시 멈추고, 다시 올려서 편한 V로 돌아오면 이어집니다.
       <div id="err" class="err"></div>
     </div>
   </aside>
@@ -213,10 +214,11 @@ document.addEventListener('click', () => { try{ actx = actx || new AudioContext(
 
 // ---------- state machine ----------
 // IDLE: no hand / waiting. HOLD: hand visible, waiting for stable spread. ACTIVE: scrolling.
-let state = 'IDLE', holdStart = 0, r0 = null, lastSeen = 0, rSmooth = null, velocity = 0;
+// PAUSE: hand left the camera; the neutral r0 is kept and input resumes once the spread is back in the dead zone.
+let state = 'IDLE', holdStart = 0, rearmStart = 0, r0 = null, lastSeen = 0, rSmooth = null, velocity = 0;
 const holdBuf = [];
 const stateText = document.getElementById('stateText'), holdFill = document.getElementById('holdFill');
-const STATE_TEXT = {IDLE:'컵을 쥔 손을 카메라 앞에 올려줘', HOLD:'편한 V로 잠깐 멈춰', ACTIVE:'켜짐. 오므리면 아래로, 벌리면 위로'};
+const STATE_TEXT = {IDLE:'컵을 쥔 손을 카메라 앞에 올려 주세요', HOLD:'편한 V로 잠깐 멈춰 주세요', ACTIVE:'켜짐. 오므리면 아래로, 벌리면 위로', PAUSE:'편한 V로 돌아오면 다시 켜집니다'};
 function setStatusClass(c){ statusEl.className = 'status ' + c; }
 function setState(s){
   if(s === state) return;
@@ -226,10 +228,11 @@ function setState(s){
   if(s !== 'ACTIVE'){ velocity = 0; }
   if(s === 'IDLE'){ r0 = null; holdBuf.length = 0; holdFill.style.width = '0%'; }
   if(s === 'HOLD'){ holdBuf.length = 0; holdStart = performance.now(); }
+  if(s === 'PAUSE') rearmStart = 0;
 }
 setState('HOLD'); setState('IDLE'); stateText.textContent = '카메라 준비 중';
 let reliable = false, warnShown = false, unreliableReason = null, jumpCount = 0, foldFrames = 0;
-const WARN_TEXT = { facing:'손등을 카메라 쪽으로 돌려줘 (입력 멈춤)', folded:'손가락 접힘 (입력 멈춤)', lost:'손 인식이 불안정해 (입력 멈춤)' };
+const WARN_TEXT = { facing:'손등을 카메라 쪽으로 돌려 주세요 (입력 멈춤)', folded:'손가락 접힘 (입력 멈춤)', lost:'손 인식이 불안정합니다 (입력 멈춤)' };
 // While the palm is seen edge-on, input freezes (no scrolling) and the status says why.
 function showReliability(lm){
   const warn = !!lm && !reliable;
@@ -249,20 +252,20 @@ showRange();
 // calib.step: 'max' -> 'min' -> null.
 // Each step: wait for hand -> 3 s countdown (tick each second) -> start tone -> collect 1.5 s -> end tone.
 const CALIB_MS = 1500, COUNT_MS = 3000;
-const STEP_TEXT = { max:'① 최대로 벌려', min:'② 최대로 오므려' };
+const STEP_TEXT = { max:'① 최대로 벌려 주세요', min:'② 최대로 오므려 주세요' };
 let calib = { step:null, phase:'wait', start:0, lastTick:0, buf:[], got:{} };
 let needHandDown = false; // after range calibration, wait for the hand to drop before taking a new neutral
 const pct = (arr, q) => { const a = [...arr].sort((x,y)=>x-y); return a[Math.min(a.length-1, Math.max(0, Math.round(q*(a.length-1))))]; };
 document.getElementById('btnRange').onclick = () => { setState('IDLE'); startStep('max', {}); };
 function startStep(step, got){
   calib = { step, phase:'wait', start:0, lastTick:0, buf:[], got };
-  stateText.textContent = STEP_TEXT[step] + '. 손을 올리면 카운트다운 시작';
+  stateText.textContent = STEP_TEXT[step] + '. 손을 올리면 카운트다운이 시작됩니다';
   setStatusClass('hold'); holdFill.style.width = '0%';
 }
 function calibTick(now, sv){
   if(sv == null){
     if(calib.phase !== 'wait'){ calib.phase = 'wait'; calib.buf.length = 0; holdFill.style.width = '0%';
-      stateText.textContent = STEP_TEXT[calib.step] + '. 손이 안 보여, 다시 올려줘'; }
+      stateText.textContent = STEP_TEXT[calib.step] + '. 손이 안 보입니다. 다시 올려 주세요'; }
     return;
   }
   if(calib.phase === 'wait'){ calib.phase = 'count'; calib.start = now; calib.lastTick = 0; }
@@ -272,7 +275,7 @@ function calibTick(now, sv){
     stateText.textContent = `${STEP_TEXT[calib.step]}  ${left > 0 ? left : ''}`;
     holdFill.style.width = '0%';
     if(now - calib.start >= COUNT_MS){ calib.phase = 'capture'; calib.start = now; calib.buf.length = 0; beep(880, 0.12);
-      stateText.textContent = STEP_TEXT[calib.step] + '. 측정 중, 그대로 유지'; }
+      stateText.textContent = STEP_TEXT[calib.step] + '. 측정 중입니다. 그대로 유지해 주세요'; }
     return;
   }
   calib.buf.push(sv);
@@ -290,11 +293,11 @@ function calibTick(now, sv){
       showRange(); beep(990, 0.15);
       calib = { step:null, phase:'wait', start:0, lastTick:0, buf:[], got:{} };
       setState('HOLD'); setState('IDLE'); needHandDown = true;
-      stateText.textContent = '손 범위 저장됨. 손을 내렸다가 편한 V로 다시 올려줘';
+      stateText.textContent = '손 범위를 저장했습니다. 손을 내렸다가 편한 V로 다시 올려 주세요';
     } else {
       beep(220, 0.25);
       startStep('max', {});
-      stateText.textContent = '손 범위가 너무 좁게 나왔어. 다시 ' + STEP_TEXT.max;
+      stateText.textContent = '손 범위가 너무 좁게 나왔습니다. 다시 ' + STEP_TEXT.max;
     }
   }
   holdFill.style.width = '0%';
@@ -420,7 +423,7 @@ function drawGauge(){
       parts.push(`<line x1="${PIV.x}" y1="${PIV.y}" x2="${t.x}" y2="${t.y}" stroke="var(--ink)" stroke-width="12" stroke-linecap="round"/>`);
     }
   } else {
-    parts.push(`<text x="${PIV.x}" y="${PIV.y-60}" font-size="12" fill="var(--muted)" text-anchor="middle">손이 보이면 여기에 표시돼</text>`);
+    parts.push(`<text x="${PIV.x}" y="${PIV.y-60}" font-size="12" fill="var(--muted)" text-anchor="middle">손이 보이면 여기에 표시됩니다</text>`);
   }
   parts.push(`<circle cx="${PIV.x}" cy="${PIV.y}" r="7" fill="var(--ink)"/>`);
   gaugeEl.innerHTML = parts.join('');
@@ -487,7 +490,7 @@ function showDiag(f){
     <span>펴짐 2D</span><b>${f2(f.ext2I)} / ${f2(f.ext2M)}</b>
     <span>마디 굽힘</span><b style="color:${Math.max(f.curlI,f.curlM) > P.curlMax ? 'var(--alert)' : 'inherit'}">${f2(f.curlI,0)}° / ${f2(f.curlM,0)}° (한계 ${P.curlMax}°)</b>
     <span>손바닥 방향</span><b>${f2(f.facing)}</b>
-    <span>인식 점수</span><b>${f2(f.score)}</b>` : '<span>손이 보이면 표시돼</span>';
+    <span>인식 점수</span><b>${f2(f.score)}</b>` : '<span>손이 보이면 표시됩니다</span>';
 }
 showDiag(null);
 const LABELS = ['V자로 쥠','감싸 쥠','펴고 쥠','기타'];
@@ -570,7 +573,16 @@ function loop(){
     if(calib.step){
       if(!lm) calibTick(now, null); else if(reliable) calibTick(now, rSmooth);
     } else if(!lm){
-      if(now - lastSeen > 500){ setState('IDLE'); rSmooth = null; needHandDown = false; }
+      if(now - lastSeen > 500){
+        if(r0 != null && (state === 'ACTIVE' || state === 'PAUSE')) setState('PAUSE');   // keep the neutral
+        else { setState('IDLE'); needHandDown = false; }
+        rSmooth = null;
+      }
+    } else if(state === 'PAUSE'){
+      const band = deadBand(), inBand = reliable && rSmooth != null && band && rSmooth >= band[0] && rSmooth <= band[1];
+      if(!inBand) rearmStart = 0; else if(!rearmStart) rearmStart = now;
+      holdFill.style.width = (rearmStart ? Math.min(1, (now - rearmStart) / 250) * 100 : 0) + '%';
+      if(rearmStart && now - rearmStart >= 250){ setState('ACTIVE'); holdFill.style.width = '0%'; }
     } else if(state === 'IDLE' && !needHandDown){
       setState('HOLD');
     } else if(state === 'HOLD' && rSmooth != null && reliable){
@@ -595,7 +607,7 @@ async function init(){
   try{
     const stream = await navigator.mediaDevices.getUserMedia({video:{width:640, height:480, frameRate:{ideal:60}}, audio:false});
     video.srcObject = stream; await video.play();
-  }catch(e){ document.getElementById('err').textContent = '카메라를 열 수 없어. 브라우저 카메라 권한을 확인해줘. (' + e.message + ')'; return; }
+  }catch(e){ document.getElementById('err').textContent = '카메라를 열 수 없습니다. 브라우저 카메라 권한을 확인해 주세요. (' + e.message + ')'; return; }
   stateText.textContent = '손 인식 모델 불러오는 중';
   try{
     const fileset = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
@@ -606,7 +618,7 @@ async function init(){
     try{ landmarker = await HandLandmarker.createFromOptions(fileset, opts("GPU")); }
     catch(e){ landmarker = await HandLandmarker.createFromOptions(fileset, opts("CPU")); }
     setState('HOLD'); setState('IDLE');
-  }catch(e){ document.getElementById('err').textContent = '손 인식 모델을 받지 못했어. 인터넷 연결을 확인해줘. (' + e.message + ')'; }
+  }catch(e){ document.getElementById('err').textContent = '손 인식 모델을 받지 못했습니다. 인터넷 연결을 확인해 주세요. (' + e.message + ')'; }
 }
 requestAnimationFrame(loop);
 init();
