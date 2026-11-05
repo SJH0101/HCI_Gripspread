@@ -62,7 +62,7 @@ CSE333 HCI개론 (UNIST, 2026 가을) Team 10 프로젝트.
 
 참가자 한 명당 zip 파일 하나가 저장된다 (`P01_trials.csv`, `P01_frames.csv`, `P01_tlx.csv`, `P01_session.json`, IMU를 연결했으면 `P01_imu.csv`).
 조건이 하나 끝날 때마다 브라우저(IndexedDB)에도 백업되고, 설정 화면에서 되살릴 수 있다.
-`session.json`에는 손 크기(손 길이·span 각각 두 번 잰 값과 평균), 배경 설문(나이, 성별, 트랙패드 사용 빈도, 제스처 입력 경험, 노트북 쓰며 음료 드는 빈도), 컵별 보정값이 같이 들어간다. 손 측정법은 시작 화면의 "측정 방법 보기"에 있다.
+`session.json`에는 손 크기(손 길이·span 각각 두 번 잰 값과 평균), 배경 설문(나이, 성별, 트랙패드 사용 빈도, 제스처 입력 경험), 컵별 보정값이 같이 들어간다. 손 측정법은 시작 화면의 "측정 방법 보기"에 있다.
 참가자 데이터는 git에 올리지 않는다 (`.gitignore`).
 
 ---
@@ -326,7 +326,7 @@ Connecting the cup IMU over Bluetooth needs Chrome or Edge (Safari and Firefox h
 
 **Cup IMU.** ESP32-C3 + MPU6050 (firmware `GS-MPU-C3-34-v4`; SDA GPIO3, SCL GPIO4, 3.3 V). It advertises as `GripSpread-C3-MPU` and streams 20-byte packets at about 100 Hz on service `FFE0`, characteristic `FFE3` (magic, flags, u16 seq, u32 t_us, six i16 raw axes, little endian). In the study program, press `컵 IMU 연결`, then stand the cup still for about a second to set the vertical reference; press `컵 수직 기준 다시 잡기` after moving the sensor to another cup. Tilt is the angle between the cup's current up axis and that reference, tracked with a complementary filter (gyro integration corrected by gravity). Unit conversion is nominal because the sensor ID is not verified, so analyses use raw counts and treat tilt as an estimate. `imu/GripSpread_Portable.html` is a standalone monitor for checking the sensor and saving raw CSV; open only one of the two pages at a time.
 
-The session JSON also holds hand size (two readings each of hand length and span, plus their mean), a short background survey (age, gender, trackpad use, gesture-input experience, how often they hold a drink at a laptop) and the per-cup calibration. Participant data is saved as one zip per participant, backed up in the browser (IndexedDB) after each condition, and never committed (`.gitignore`).
+The session JSON also holds hand size (two readings each of hand length and span, plus their mean), a short background survey (age, gender, trackpad use, gesture-input experience) and the per-cup calibration. Participant data is saved as one zip per participant, backed up in the browser (IndexedDB) after each condition, and never committed (`.gitignore`).
 
 ### How it works
 
