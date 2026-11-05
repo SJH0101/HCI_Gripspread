@@ -37,7 +37,7 @@ CSE333 HCI개론 (UNIST, 2026 가을) Team 10 프로젝트.
    on storage.objects for insert to anon
    with check ( bucket_id = 'gripspread' );
    ```
-3. 실험 프로그램 시작 화면 **클라우드 자동 저장**에 프로젝트 URL과 **anon(public) 키**를 넣고 **연결 테스트** → **자동 업로드 켜기**. 값은 그 브라우저에만 저장되고 레포에는 안 들어간다. service_role 키는 넣으면 거부한다.
+3. 실험 프로그램 시작 화면 **클라우드 자동 저장**에 프로젝트 URL과 **publishable 키**(`sb_publishable_…`, 예전 이름 anon)를 넣고 **연결 테스트** → **자동 업로드 켜기**. 값은 그 브라우저에만 저장되고 레포에는 안 들어간다. secret(`sb_secret_…`)·service_role 키는 넣으면 거부한다.
 
 받은 파일은 대시보드 Storage에서 내려받는다. 무료 프로젝트는 일주일 넘게 안 쓰면 일시정지되니까 실험 기간 전에 대시보드에서 깨워 둔다.
 

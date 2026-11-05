@@ -195,10 +195,10 @@
         </div>
 
         <h2>클라우드 자동 저장 (Supabase, 선택)</h2>
-        <p class="muted" style="color:var(--muted)">켜 두면 조건이 끝날 때마다, 그리고 실험이 끝날 때 지금까지의 데이터 zip이 Supabase Storage에 자동으로 올라갑니다. 로컬 zip 저장과 브라우저 백업은 그대로 됩니다. 값은 이 브라우저에만 저장되고 코드(깃허브)에는 들어가지 않습니다. <b>anon(public) 키만</b> 넣어 주세요.</p>
+        <p class="muted" style="color:var(--muted)">켜 두면 조건이 끝날 때마다, 그리고 실험이 끝날 때 지금까지의 데이터 zip이 Supabase Storage에 자동으로 올라갑니다. 로컬 zip 저장과 브라우저 백업은 그대로 됩니다. 값은 이 브라우저에만 저장되고 코드(깃허브)에는 들어가지 않습니다. <b>publishable 키(예전 이름 anon)만</b> 넣어 주세요. secret 키는 넣으면 거부합니다.</p>
         <div class="form">
           <label for="cUrl">프로젝트 URL</label><input id="cUrl" placeholder="https://xxxx.supabase.co">
-          <label for="cKey">anon 키</label><input id="cKey" type="password" placeholder="eyJ... (Project Settings › API › anon public)" autocomplete="off">
+          <label for="cKey">publishable 키</label><input id="cKey" type="password" placeholder="sb_publishable_… (또는 예전 anon 키 eyJ…)" autocomplete="off">
           <label for="cBucket">버킷</label><input id="cBucket" value="gripspread">
           <label>사용</label><span><label style="color:var(--ink)"><input id="cOn" type="checkbox"> 자동 업로드 켜기</label> <button id="cTest" type="button" style="margin-left:8px">연결 테스트</button> <span id="cMsg" class="check"></span></span>
         </div>
@@ -857,8 +857,8 @@ $('cUrl').value = CLOUD.url; $('cKey').value = CLOUD.key; $('cBucket').value = C
 function jwtRole(k){ try{ return JSON.parse(atob(k.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).role; }catch(e){ return null; } }
 function readCloudForm(){
   CLOUD.url = $('cUrl').value.trim().replace(/\/+$/,''); CLOUD.key = $('cKey').value.trim(); CLOUD.bucket = $('cBucket').value.trim() || 'gripspread'; CLOUD.on = $('cOn').checked;
-  if(jwtRole(CLOUD.key) === 'service_role'){ CLOUD.on = false; $('cOn').checked = false; CLOUD.key = ''; $('cKey').value = '';
-    $('cMsg').className = 'check bad'; $('cMsg').textContent = 'service_role 키입니다. 절대 쓰면 안 됩니다. anon(public) 키를 넣어 주세요'; }
+  if(jwtRole(CLOUD.key) === 'service_role' || /^sb_secret_/.test(CLOUD.key)){ CLOUD.on = false; $('cOn').checked = false; CLOUD.key = ''; $('cKey').value = '';
+    $('cMsg').className = 'check bad'; $('cMsg').textContent = '비밀 키(secret/service_role)입니다. 절대 쓰면 안 됩니다. publishable(또는 anon) 키를 넣어 주세요'; }
   try{ localStorage.setItem(CLOUD_KEY, JSON.stringify({ url:CLOUD.url, key:CLOUD.key, bucket:CLOUD.bucket, on:CLOUD.on })); }catch(e){}
   $('kCloud').textContent = CLOUD.on ? '켜짐' : '꺼짐';
 }
@@ -866,7 +866,8 @@ function readCloudForm(){
 $('kCloud').textContent = CLOUD.on ? '켜짐' : '꺼짐';
 async function cloudPut(path, blob, type){
   const r = await fetch(`${CLOUD.url}/storage/v1/object/${encodeURIComponent(CLOUD.bucket)}/${path}`, {
-    method:'POST', headers:{ Authorization:`Bearer ${CLOUD.key}`, apikey:CLOUD.key, 'Content-Type':type, 'x-upsert':'false' }, body:blob });
+    // new publishable keys (sb_publishable_…) go only in apikey; legacy anon JWTs also go in Authorization
+    method:'POST', headers:{ apikey:CLOUD.key, ...(CLOUD.key.startsWith('sb_') ? {} : { Authorization:`Bearer ${CLOUD.key}` }), 'Content-Type':type, 'x-upsert':'false' }, body:blob });
   if(!r.ok){ let m = ''; try{ m = (await r.json()).message || ''; }catch(e){} throw new Error(`${r.status} ${m}`.trim()); }
 }
 $('cTest').onclick = async () => {
