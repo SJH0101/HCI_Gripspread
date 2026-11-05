@@ -447,10 +447,19 @@ $('btnImuCheck').onclick = () => {
     const drift = IMU_CAL && IMU_CAL.gyro_bias ? Math.hypot(...bias.map((b,i) => b - IMU_CAL.gyro_bias[i])) / IMU_CPD : null;
     IMU_CHECK = { at:new Date().toISOString(), samples:rows.length, gyro_bias:bias.map(x => +x.toFixed(2)), gyro_sd_dps:+gSd.toFixed(3), accel_sd_g:+aSd.toFixed(4),
       bias_drift_from_calib_dps: drift == null ? null : +drift.toFixed(3) };
-    const warn = (IMU_CAL && gSd > 3 * IMU_CAL.still_noise.gyro_sd_dps) || (drift != null && drift > 1);
+    // has the sensor moved inside the taped mount? compare the upright gravity direction (sensor axes)
+    const am = ak.map(k => mean(col(k))), aCal = IMU_CAL ? am.map((v,i) => (v - IMU_CAL.accel_offset[i]) / IMU_CAL.accel_counts_per_g[i]) : am;
+    const nA = Math.hypot(...aCal), up = aCal.map(v => v / nA);
+    let ref = IMU_CAL && IMU_CAL.upright_gravity_dir, refSrc = '보정 파일';
+    if(!ref){ try{ ref = JSON.parse(localStorage.getItem('gripspread_imu_up_v1')); refSrc = '지난 세션'; }catch(e){} }
+    const shift = ref ? Math.acos(Math.max(-1, Math.min(1, up.reduce((s,v,i)=>s+v*ref[i],0)))) * 180/Math.PI : null;
+    try{ localStorage.setItem('gripspread_imu_up_v1', JSON.stringify(up)); }catch(e){}
+    Object.assign(IMU_CHECK, { upright_gravity_dir:up.map(x => +x.toFixed(4)), mount_shift_deg: shift == null ? null : +shift.toFixed(2), mount_shift_ref: shift == null ? null : refSrc });
+    const warn = (IMU_CAL && gSd > 3 * IMU_CAL.still_noise.gyro_sd_dps) || (drift != null && drift > 1) || (shift != null && shift > 3);
     $('imuChkMsg').className = 'check' + (warn ? ' bad' : '');
-    $('imuChkMsg').textContent = `완료 · 자이로 잡음 ${gSd.toFixed(2)}°/s · 가속 잡음 ${(aSd*1000).toFixed(1)} mg` + (drift != null ? ` · 영점 변화 ${drift.toFixed(2)}°/s` : '') +
-      (warn ? ' · 보정 때보다 많이 다릅니다. 센서가 흔들리거나 받침에서 빠졌는지 확인해 주세요' : ' · 정상');
+    $('imuChkMsg').textContent = `완료 · 자이로 잡음 ${gSd.toFixed(2)}°/s · 가속 잡음 ${(aSd*1000).toFixed(1)} mg` + (drift != null ? ` · 영점 변화 ${drift.toFixed(2)}°/s` : '') + (shift != null ? ` · 센서 자세 변화 ${shift.toFixed(1)}° (${refSrc} 대비)` : ' · 센서 자세 기준 저장') +
+      (warn ? (shift != null && shift > 3 ? ' · 센서가 받침 안에서 움직였습니다. 테이프를 다시 고정하고, 크게(10° 이상) 틀어졌으면 IMU 보정 페이지에서 다시 보정해 주세요'
+                                         : ' · 보정 때보다 많이 다릅니다. 센서가 흔들리거나 받침에서 빠졌는지 확인해 주세요') : ' · 정상');
   };
 };
 
@@ -538,6 +547,7 @@ function showBrief(st){
   if(st.cup !== 'none') checks.push(`${CUPS[st.cup]} 준비, 비즈가 입구 1cm 아래까지 차 있는지 확인`);
   else checks.push('컵 없이 빈손');
   checks.push('반대손은 손목 스트랩으로 고정');
+  if(imuConn) checks.push('컵 IMU: 컵을 바꿨으면 왼쪽 <b>컵 수직 기준 다시 잡기</b>를 누르고 컵을 세워 1초 가만히 두세요');
   if(st.tech === 'gs' && E.r0 != null) checks.push(`보정값: 편한 V ${E.r0.toFixed(1)}°, 범위 ${E.range.min.toFixed(0)}~${E.range.max.toFixed(0)}° (이 조건 동안 고정)`);
   $('bCheck').innerHTML = checks.map(c=>'· '+c).join('<br>');
   show('sBrief');

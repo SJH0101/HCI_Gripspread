@@ -234,6 +234,7 @@ function imuResult(){
       accel_sd_g: CAL.fit ? +(CAL.still.aSdCounts / (CAL.fit.scale.reduce((a,b)=>a+b,0)/3)).toFixed(4) : null,
       accel_sd_counts: +CAL.still.aSdCounts.toFixed(1),
       tilt_sd_deg: +CAL.still.tiltSd.toFixed(3), seconds: CAL.still.seconds } : null,
+    upright_gravity_dir: CAL.still ? CAL.still.up.map(x => +x.toFixed(4)) : null,   // sensor axes, cup upright on the table: detects the sensor shifting in its mount
     sample_rate_hz: imuHz || null,
   };
 }
