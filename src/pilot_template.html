@@ -380,14 +380,23 @@ function nextTrial(){
   run.trial = { ...t, line, T:Tt, S0, startT:null, dwellStart:null, switchbacks:0, lastDir:0, minRem:t.D, prevTop:S0, sgn: t.dir === 'down' ? 1 : -1, lastTick:null };
   track.scrollTop = S0; target.style.top = Tt + 'px';
   frameEl.style.height = W + 'px'; frameEl.style.top = (fc - W/2) + 'px'; frameEl.classList.remove('in'); dwellBar.style.width = '0';
-  lineCue.textContent = `${line}번 줄을 회색 영역 안에`; popCue(lineCue);
-  run.phase = E.state === 'ACTIVE' ? 'running' : 'waitActive'; if(run.phase === 'running') run.trial.startT = performance.now();   // participant-paced, same as the study
-  taskMsg.textContent = run.phase === 'waitActive' ? '편한 V로 돌아와 주세요' : '';
+  lineCue.textContent = ''; lineCue.style.visibility = 'hidden';
+  run.phase = 'waitActive'; run.trial.restSince = null; run.trial.shownAt = performance.now(); taskMsg.textContent = '';
 }
 function tickTask(now){
   if(!run || !run.trial) return;
   const tr = run.trial, fc = track.clientHeight / 2;
-  if(run.phase === 'waitActive'){ track.scrollTop = tr.S0; if(E.state === 'ACTIVE'){ run.phase = 'running'; tr.startT = now; taskMsg.textContent = ''; } }
+// GripSpread: the next target is shown only after the hand has been back at the comfortable V (dead zone, no motion)
+// for E.REARM_MS. Without this, a hand still spread from the last trial moves the content before the participant
+// has read the new line number. Trackpad needs no gate: the trial only ends after the fingers stop.
+  if(run.phase === 'waitActive'){
+    track.scrollTop = tr.S0;
+    if(E.atRest()){ if(tr.restSince == null) tr.restSince = now; } else tr.restSince = null;
+    if(tr.restSince != null && now - tr.restSince >= E.REARM_MS){
+      run.phase = 'running'; tr.startT = now; taskMsg.textContent = '';
+      lineCue.textContent = `${tr.line}번 줄을 회색 영역 안에`; lineCue.style.visibility = ''; popCue(lineCue);
+    } else taskMsg.textContent = now - tr.shownAt > 300 ? '편한 V로 돌아와 주세요' : '';
+  }
   else if(run.phase === 'running'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); track.scrollTop += E.velocity * dt; }
   tr.lastTick = now;
   if(run.phase !== 'running'){ tr.prevTop = track.scrollTop; return; }
@@ -406,15 +415,15 @@ function tickTask(now){
 
 // After-trial feedback (outside the timed part, so MT is unaffected): a short "done" badge and tick,
 // and the next line cue pops in, so the participant notices the switch to a new trial.
-function showDone(success){
+function trialDoneCue(success){
   const m = document.getElementById('doneMark'); m.textContent = success ? '✓ 완료' : '시간 초과 · 다음으로'; m.className = success ? 'show' : 'show miss';
   beep(success ? 1320 : 330, success ? 0.05 : 0.15, 0.07);
-  clearTimeout(showDone.t); showDone.t = setTimeout(() => { m.className = success ? '' : 'miss'; }, 420);
+  clearTimeout(trialDoneCue.t); trialDoneCue.t = setTimeout(() => { m.className = success ? '' : 'miss'; }, 420);
 }
 function popCue(el){ el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
 function endTrial(now, success){
   const tr = run.trial, cmp = run.practice ? null : T.cur.cmp; run.trial = null; run.phase = 'iti';
-  showDone(success);
+  trialDoneCue(success);
   T.trials.push({ ...(cmp ? { cmp:cmp.idx, param:cmp.param, version:run.vi + 1, replay:run.replay ? 1 : 0, value:cmp.versions[run.vi], is_changed: cmp.versions[run.vi] === cmp.cand ? 1 : 0 }
                           : { practice:1 }),
     D:tr.D, W, direction:tr.dir, success, mt_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '', switchbacks:tr.switchbacks,

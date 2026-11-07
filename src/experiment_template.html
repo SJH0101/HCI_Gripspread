@@ -950,8 +950,8 @@ function nextTrial(){
   frameEl.classList.remove('in'); dwellBar.style.width = '0';
   // Participant-paced start (no fixed delay, no go signal): the target is shown and input is live at once;
   // the participant reads the line number and starts when ready. MT runs from their first movement.
-  run.phase = (st.tech === 'gs' && E.state !== 'ACTIVE') ? 'waitActive' : 'running';
-  taskMsg.textContent = run.phase === 'waitActive' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '';
+  run.phase = st.tech === 'gs' ? 'waitActive' : 'running'; run.trial.restSince = null;
+  taskMsg.textContent = '';
   if(run.phase === 'running') run.trial.startT = performance.now();
 }
 
@@ -992,9 +992,14 @@ document.addEventListener('keydown', e => {
 function tickTask(now){
   if(!run || !run.trial) return;
   const tr = run.trial, st = run.st, fc = frameCenter();
+  // GripSpread: the next target is shown only after the hand has been back at the comfortable V (dead zone, no motion)
+  // for E.REARM_MS. Without this, a hand still spread from the last trial moves the content before the participant
+  // has read the new line number. Trackpad needs no gate: the trial only ends after the fingers stop.
   if(run.phase === 'waitActive'){
     track.scrollTop = tr.S0;
-    if(E.state === 'ACTIVE'){ run.phase = 'running'; tr.startT = now; taskMsg.textContent = ''; }
+    if(E.atRest()){ if(tr.restSince == null) tr.restSince = now; } else tr.restSince = null;
+    if(tr.restSince != null && now - tr.restSince >= E.REARM_MS){ run.phase = 'running'; tr.startT = now; tr.rearm_ms = Math.round(now - tr.shownAt); taskMsg.textContent = ''; }
+    else taskMsg.textContent = E.state !== 'ACTIVE' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : (now - tr.shownAt > 300 ? '편한 V로 돌아와 주세요' : '');
   } else if(run.phase === 'running'){
     if(st.tech === 'gs'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); track.scrollTop += E.velocity * dt; }
   }
@@ -1036,7 +1041,7 @@ function tickTask(now){
 const lineCue = $('lineCue');
 function updateCues(top, visible){
   const tr = run && run.trial;
-  if(!tr || !visible){ lineCue.classList.remove('on'); return; }
+  if(!tr || !visible || run.phase === 'waitActive'){ lineCue.classList.remove('on'); lineCue.textContent = ''; return; }   // target hidden until input is at rest
   const txt = `${tr.line}번 줄을 회색 영역 안에`;
   if(lineCue.textContent !== txt){ lineCue.textContent = txt; popCue(lineCue); }
   lineCue.classList.add('on');
@@ -1045,21 +1050,22 @@ function updateCues(top, visible){
 
 // After-trial feedback (outside the timed part, so MT is unaffected): a short "done" badge and tick,
 // and the next line cue pops in, so the participant notices the switch to a new trial.
-function showDone(success){
+function trialDoneCue(success){
   const m = document.getElementById('doneMark'); m.textContent = success ? '✓ 완료' : '시간 초과 · 다음으로'; m.className = success ? 'show' : 'show miss';
   beep(success ? 1320 : 330, success ? 0.05 : 0.15, 0.07);
-  clearTimeout(showDone.t); showDone.t = setTimeout(() => { m.className = success ? '' : 'miss'; }, 420);
+  clearTimeout(trialDoneCue.t); trialDoneCue.t = setTimeout(() => { m.className = success ? '' : 'miss'; }, 420);
 }
 function popCue(el){ el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
 function finishTrial(now, success){
   const tr = run.trial, st = run.st;
   if(tr.startT == null) tr.startT = now;
   tr.endT = now; tr.success = success; run.phase = 'iti';
-  if(!tr.skipped) showDone(success);
+  if(!tr.skipped) trialDoneCue(success);
   const r = {
     pid:S.pid, technique:st.tech, cup:st.cup, step:st.type, cond_index:st.condIndex || 0, trial_index:run.i, trial_uid:tr.uid,
     warmup:tr.warm, D:tr.D, W:tr.W, ID:+Math.log2(tr.D/tr.W + 1).toFixed(4), direction:tr.dir, target_line:tr.line,
     start_ms:Math.round(tr.startT), first_move_ms: tr.firstMoveT ? Math.round(tr.firstMoveT) : '', end_ms:Math.round(now),
+    rearm_ms: tr.rearm_ms != null ? tr.rearm_ms : '',                                       // GS: trial end -> hand back at rest (target shown)
     plan_ms: tr.firstMoveT ? Math.round(tr.firstMoveT - tr.startT) : '',                  // target shown (input live) -> first movement
     mt_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '',     // first movement -> scrolling stopped inside the frame
     total_ms: success ? Math.round(tr.dwellStart - tr.startT) : '',
@@ -1082,7 +1088,7 @@ function endStep(){
 // ---------- files ----------
 // Data stays in memory, is backed up to IndexedDB after every step, and leaves the browser as ONE zip per participant.
 function toCSV(head, rows){ return [head.join(',')].concat(rows.map(r => (Array.isArray(r) ? r : head.map(h=>r[h])).map(v => v == null ? '' : String(v).includes(',') ? `"${v}"` : v).join(','))).join('\n'); }
-const TRIAL_HEAD = ['pid','technique','cup','step','cond_index','trial_index','trial_uid','warmup','D','W','ID','direction','target_line','start_ms','first_move_ms','end_ms','plan_ms','mt_ms','total_ms','success','skipped','switchbacks','overshoot_px','gs_r0','gs_range_min','gs_range_max','gs_dead','gs_gain','gs_gamma','gs_boost_max','gs_boost_ms','gs_acc_ms','gs_brake_ms','gs_dir','tech_order','latin_row'];
+const TRIAL_HEAD = ['pid','technique','cup','step','cond_index','trial_index','trial_uid','warmup','D','W','ID','direction','target_line','start_ms','first_move_ms','end_ms','rearm_ms','plan_ms','mt_ms','total_ms','success','skipped','switchbacks','overshoot_px','gs_r0','gs_range_min','gs_range_max','gs_dead','gs_gain','gs_gamma','gs_boost_max','gs_boost_ms','gs_acc_ms','gs_brake_ms','gs_dir','tech_order','latin_row'];
 function frameHead(cfgFrames){ const h = ['t_ms','technique','cup','step','trial_uid','phase','scroll_top','target_offset_px','in_frame','wheel_dy','gs_state','gs_theta','gs_velocity','gs_command','gs_boost','gs_reliable','gs_reason'];
   if(cfgFrames === 2) for(let i=0;i<21;i++) h.push(`w${i}_x`,`w${i}_y`,`w${i}_z`); return h; }
 const IMU_HEAD = ['t_ms','technique','cup','step','trial_uid','phase','seq','t_us','ax_raw','ay_raw','az_raw','gx_raw','gy_raw','gz_raw','tilt_deg','ref_ready','connection_id'];
