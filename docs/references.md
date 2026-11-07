@@ -22,14 +22,13 @@ GripSpread 기획, 실험 설계, 파일럿 절차에서 근거로 쓴 자료. �
 
 - **Zhai, S. (1998).** User performance in relation to 3D input device design. *Computer Graphics*, 32(4), 50–54. https://www.dgp.toronto.edu/public_user/BillBuxton/SIGGRAPHQ/shumin
   - 쓴 곳: 속도 조작은 놓으면 제자리로 돌아오는(self-centering) 입력에서 잘 맞는다는 근거와 그 한계. 편한 V를 중립으로 두고 멈춤 구간을 둔 이유.
-- **Teather, R. J., & MacKenzie, I. S. (2014).** Position vs. velocity control for tilt-based interaction. *Proc. Graphics Interface 2014*. https://www.csit.carleton.ca/~rteather/pdfs/GI2014.pdf
-  - 쓴 곳: 게인을 이전 연구와 파일럿 테스트로 정하고 모든 참가자에게 고정한 사례.
 - **Lee, B., Nancel, M., & Oulasvirta, A. (2017).** AutoGain: Gain function adaptation with submovement efficiency optimization. *Proc. CHI 2017*. https://arxiv.org/abs/1611.08154
   - 쓴 곳: 게인 함수는 보통 연구자의 시행착오로 정해지고, 최적값이 사람마다 다르다는 근거. 연구자끼리만 정하면 안 되는 이유.
 
 ## 파일럿으로 값 정하기, 사람별 보정
 
 - **Fashimpaur, J., Karlson, A., Jonker, T. R., Benko, H., & Gupta, A. (2023).** Investigating wrist deflection scrolling techniques for extended reality. *Proc. CHI 2023*. https://research.facebook.com/file/763903402014643/Investigating_Wrist_Deflection_Scrolling_Techniques_for_Extended_Reality.pdf
+  - 쓴 곳 (시행 시작 클러치, 원문 3.1절·4.4절 확인): 손목 조이스틱은 집기로 켜고 떼서 끄는 클러치를 둔다. "선택하려고 집을 때 의도치 않은 스크롤을 막으려고" 맨손 기법에만 집기 시작 → 목록 움직임 사이 0.15초 지연을 넣었다(컨트롤러 조이스틱에는 없음). 선택은 두 번 집기 클릭. 우리는 집기를 쓸 수 없어 "편한 V에 150ms 머물기"를 클러치로 쓰고 GripSpread에만 건다.
   - 쓴 곳: 우리 파일럿 절차의 기준. 연구자 반복 → 파일럿 1(5명, 방향 고르기) → 파일럿 2(4명, 상수를 하나씩 바꿔 나은지 묻고 사람별 최적값을 평균해 고정) → 본 실험 24명 고정값. 사람별로는 편한 가동 범위와 중립 각도만 보정하고, 조건이나 자세가 바뀌면 다시 보정. 속도 0 구간(neutral zone)이 정밀 조작을 돕고, 시작 위치 기준의 중립은 사람들이 잊어버려서 고정 중립을 씀.
 
 ## 참가자 수

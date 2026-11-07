@@ -385,11 +385,12 @@ function nextTrial(){
 }
 // Clutch at each trial start. A trackpad has a natural clutch (fingers off = no input); GripSpread does not, so any
 // spread at the moment the next target appears would move the content before it is read. The target is shown at
-// once, but input is engaged only after the input has been at rest for ARM_MS: GS = spread in the dead zone and no
-// motion (as in the pause re-arm), trackpad = no wheel events. A reflexive spread at the switch just delays engaging.
-// ARM_MS = 250 ms, the engine's REARM_MS, which is also below typical visual reaction time, so a movement that early
-// could not be a response to the new target anyway. Applied to both techniques so plan_ms has the same floor.
-const ARM_MS = 250;
+// once, but GS input is engaged only after the spread has been in the dead zone with no motion for ARM_MS.
+// A reflexive spread at the switch just delays engaging.
+// ARM_MS = 150 ms, following Fashimpaur et al. (CHI 2023), who added a 0.15 s delay between activating a freehand
+// scroll technique (pinch) and list movement, for freehand techniques only. Likewise only GripSpread gets this clutch;
+// the trackpad is live as soon as the target appears (its fingers-off state is already a clutch).
+const ARM_MS = 150;
 function tickTask(now){
   if(!run || !run.trial) return;
   const tr = run.trial, fc = track.clientHeight / 2;
