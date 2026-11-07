@@ -210,9 +210,9 @@
           <label for="eDevice">노트북 모델 (칩은 자동)</label><input id="eDevice" placeholder="실험에 쓰는 맥북 한 대 (예: MacBook Pro 14 M3, 2023)">
           <label for="eOS">macOS 버전 (자동)</label><span><input id="eOS" placeholder="크롬에서 자동으로 읽습니다" style="width:100%"> <span id="osMsg" class="check"></span></span>
           <label for="eScroll">트랙패드 설정 (슬라이더 눈금 위치)</label><input id="eScroll" placeholder="스크롤 속도 5/8 (0.3125) · 이동 속도 4/10">
-          <label for="eAngle">화면 각도 목표 (°)</label><span><input id="eAngle" type="number" min="90" max="140" value="110" style="width:90px"> <button id="btnLid" type="button">맥북 각도 센서 연결</button>
+          <label for="eAngle">화면 각도 목표 (°)</label><span><input id="eAngle" type="number" min="90" max="140" value="105" style="width:90px"> <button id="btnLid" type="button">맥북 각도 센서 연결</button>
             <span id="lidLive" class="lidlive">센서 없음</span>
-            <span class="check" style="display:block;margin-top:4px">맥북 힌지의 각도 센서를 크롬으로 바로 읽습니다(창에서 <b>Apple 기기</b>를 고르면 됨). 목표 ±2° 안이면 초록. 센서가 없는 모델이면 아이폰 측정 앱 수평계를 화면 뒷면에 대고 <b id="eAngleTilt">20</b>°가 나오게 맞춥니다.</span></span>
+            <span class="check" style="display:block;margin-top:4px">맥북 힌지의 각도 센서를 크롬으로 바로 읽습니다(창에서 <b>Apple 기기</b>를 고르면 됨). 목표 ±2° 안이면 초록. 센서가 없는 모델이면 아이폰 측정 앱 수평계를 화면 뒷면에 대고 <b id="eAngleTilt">15</b>°가 나오게 맞춥니다.</span></span>
           <label>카메라 (자동)</label><span id="camInfo" class="check">카메라 준비 중…</span>
           <label>확인</label><span class="checks" id="eChecks">
             <label><input type="checkbox" value="natural_scroll_on"> 자연스러운 스크롤 켜짐 (트랙패드 › 스크롤 및 확대/축소)</label>
@@ -223,7 +223,7 @@
             <label><input type="checkbox" value="power_plugged"> 전원 연결 (저전력 모드 꺼짐)</label>
             <label><input type="checkbox" value="auto_update_off"> 실험 기간 동안 자동 업데이트 꺼짐 (일반 › 소프트웨어 업데이트 › 자동 업데이트)</label>
             <label><input type="checkbox" value="laptop_on_mark"> 노트북이 책상 위 테이프 표시 자리에 있음</label>
-            <label><input type="checkbox" value="screen_angle_mark"> 화면 각도를 위 값으로 맞춤 (수평계로 확인)</label>
+            <label><input type="checkbox" value="screen_angle_mark"> 화면 각도를 위 값으로 맞춤 (센서 또는 수평계로 확인)</label>
             <label><input type="checkbox" value="stand_on_mark"> 참여자가 설 자리 바닥 테이프 표시 그대로</label>
             <label><input type="checkbox" value="lighting_same"> 외부광 없는 실내 (창 없음 또는 블라인드 닫음), 천장 조명 켬</label>
           </span>
@@ -527,7 +527,7 @@ function paramSummary(){
 }
 // a soft check per step: returns a warning (shown once; the next click goes on anyway) or ''
 const WZ_CHECK = [
-  () => { const n = [...document.querySelectorAll('#eChecks input')].filter(i => !i.checked).length, tgt = +$('eAngle').value || 110;
+  () => { const n = [...document.querySelectorAll('#eChecks input')].filter(i => !i.checked).length, tgt = +$('eAngle').value || 105;
     return !$('eDevice').value.trim() ? '노트북 모델을 적어 주세요' : (E.camera && !/facetime|macbook|built-?in/i.test(E.camera.label || '')) ? '내장 카메라가 아닌 카메라가 잡혀 있습니다' : (LID.angle != null && Math.abs(LID.angle - tgt) > 2) ? `화면 각도가 ${LID.angle}°입니다 (목표 ${tgt}°)` : n ? `체크 안 된 장비 항목이 ${n}개 있습니다` : ''; },
   () => paramsSource ? '' : '파일럿 결과 값을 아직 안 불러왔습니다 (기본값으로 진행)',
   () => !imuConn ? '컵 IMU가 연결되지 않았습니다' : !IMU_CAL ? '센서 보정이 없습니다' : !IMU_CHECK ? '정지 확인 10초를 아직 안 했습니다' : '',
@@ -695,7 +695,7 @@ try{ ENV_PREV = JSON.parse(localStorage.getItem(ENV_KEY)); if(ENV_PREV){ $('eDev
 // during the session is noticed and logged.
 let LID = { dev:null, angle:null, startAngle:null, log:[] };
 function lidShow(){
-  const a = LID.angle, tgt = +$('eAngle').value || 110, ok = a != null && Math.abs(a - tgt) <= 2;
+  const a = LID.angle, tgt = +$('eAngle').value || 105, ok = a != null && Math.abs(a - tgt) <= 2;
   $('lidLive').textContent = a == null ? (LID.dev ? '읽는 중…' : '센서 없음') : `${a}° (목표 ${tgt}° ${ok ? '맞음' : (a > tgt ? '−' + (a - tgt) : '+' + (tgt - a)) + '°'})`;
   $('lidLive').className = 'lidlive' + (a == null ? '' : ok ? ' ok' : ' off');
   $('kLid').textContent = a == null ? '–' : a + '°'; $('kLid').style.color = a == null || ok ? '' : 'var(--alert)';
@@ -731,7 +731,7 @@ function camShow(){
 }
 const camTimer = setInterval(() => { if(E.camera){ camShow(); clearInterval(camTimer); } }, 500);
 
-const syncAngle = () => { $('eAngleTilt').textContent = Math.max(0, (+$('eAngle').value || 110) - 90); };
+const syncAngle = () => { $('eAngleTilt').textContent = Math.max(0, (+$('eAngle').value || 105) - 90); };
 $('eAngle').addEventListener('input', syncAngle); syncAngle();
 // macOS version: Chrome reports the real version through User-Agent Client Hints (the UA string is frozen at 10.15.7).
 // Compared with the last session so an OS update in the middle of the study gets noticed and logged.
