@@ -299,7 +299,7 @@ $('tAgain').onclick = () => { T = null; $('tuneDone').style.display = 'none'; $(
 // ---------- short scroll trials (same task and stop rule as the study program) ----------
 const track = $('track'), content = $('content'), target = $('target'), frameEl = $('frame'), dwellBar = $('dwellBar'), taskMsg = $('taskMsg'), lineCue = $('lineCue');
 const CONTENT_H = 12000, PITCH = 36, LINE_Y = 26, N_LINES = Math.floor((CONTENT_H - LINE_Y) / PITCH) + 1, TARGET_HALF = 4;
-const STOP_MS = 66, PRE_MS = 800, TIMEOUT = 15000, ITI = 500, W = 80;
+const STOP_MS = 66, TIMEOUT = 15000, ITI = 500, W = 80;
 const lineY = k => (k - 1) * PITCH + LINE_Y;
 content.style.height = CONTENT_H + 'px';
 const lnEls = [null];
@@ -329,14 +329,13 @@ function nextTrial(){
   track.scrollTop = S0; target.style.top = Tt + 'px';
   frameEl.style.height = W + 'px'; frameEl.style.top = (fc - W/2) + 'px'; frameEl.classList.remove('in'); dwellBar.style.width = '0';
   lineCue.textContent = `${line}번 줄을 네모 안에`;
-  run.phase = E.state === 'ACTIVE' ? 'pre' : 'waitActive'; run.trial.preAt = performance.now();
+  run.phase = E.state === 'ACTIVE' ? 'running' : 'waitActive'; if(run.phase === 'running') run.trial.startT = performance.now();   // participant-paced, same as the study
   taskMsg.textContent = run.phase === 'waitActive' ? '편한 V로 돌아와 주세요' : '';
 }
 function tickTask(now){
   if(!run || !run.trial) return;
   const tr = run.trial, fc = track.clientHeight / 2;
-  if(run.phase === 'waitActive'){ track.scrollTop = tr.S0; if(E.state === 'ACTIVE'){ run.phase = 'pre'; tr.preAt = now; taskMsg.textContent = ''; } }
-  else if(run.phase === 'pre'){ track.scrollTop = tr.S0; if(now - tr.preAt >= PRE_MS){ run.phase = 'running'; tr.startT = now; beep(1046, 0.05, 0.08); } }
+  if(run.phase === 'waitActive'){ track.scrollTop = tr.S0; if(E.state === 'ACTIVE'){ run.phase = 'running'; tr.startT = now; taskMsg.textContent = ''; } }
   else if(run.phase === 'running'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); track.scrollTop += E.velocity * dt; }
   tr.lastTick = now;
   if(run.phase !== 'running'){ tr.prevTop = track.scrollTop; return; }

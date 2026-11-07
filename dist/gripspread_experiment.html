@@ -1280,7 +1280,7 @@ $('btnStart').onclick = () => {
   const [pMin, pMax] = parseList($('fPrac').value);
   S.cfg = { D:parseList($('fD').value), W:parseList($('fW').value), reps:+$('fReps').value, warmup:+$('fWarm').value,
     stopMs:+$('fDwell').value, timeout:+$('fTimeout').value*1000, pracMin:pMin||10, pracMax:pMax||30, frames:+$('fFrames').value, save:+$('fSave').value,
-    preMs:1000, itiMs:500 };
+    itiMs:500 };
   Object.assign(E.P, { dead:+$('gDead').value, gain:+$('gGain').value, gamma:+$('gGamma').value, curlMax:+$('gCurl').value, holdMs:+$('gHold').value,
     boostMax:+$('gBoost').value, boostMs:+$('gBoostMs').value, boostOn:+$('gBoostOn').value, minSide:+$('gMinSide').value, accMs:+$('gAcc').value, brakeMs:+$('gBrake').value });
   S.steps = buildSteps(); S.stepIdx = -1; S.startedAt = new Date().toISOString();
@@ -1440,9 +1440,11 @@ function nextTrial(){
   target.style.top = T + 'px';
   frameEl.style.height = t.W + 'px'; frameEl.style.top = (fc - t.W/2) + 'px';
   frameEl.classList.remove('in'); dwellBar.style.width = '0';
-  run.phase = (st.tech === 'gs' && E.state !== 'ACTIVE') ? 'waitActive' : 'pre';
+  // Participant-paced start (no fixed delay, no go signal): the target is shown and input is live at once;
+  // the participant reads the line number and starts when ready. MT runs from their first movement.
+  run.phase = (st.tech === 'gs' && E.state !== 'ACTIVE') ? 'waitActive' : 'running';
   taskMsg.textContent = run.phase === 'waitActive' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '';
-  if(run.phase === 'pre') run.trial.preAt = performance.now();
+  if(run.phase === 'running') run.trial.startT = performance.now();
 }
 
 function practiceCriterion(){
@@ -1470,7 +1472,7 @@ document.addEventListener('keydown', e => {
   if((e.key === 'p' || e.key === 'P') && run){ pauseRequested = true; taskMsg.textContent = '이번 시행 끝나면 일시정지'; }
   const testMode = $('fSave').value === '0';      // skipping is for testing only: it would leave holes in real data
   if(testMode && (e.key === 'n' || e.key === 'N')){
-    if(run && run.trial && ['waitActive','pre','running'].includes(run.phase)){ run.trial.skipped = 1; finishTrial(performance.now(), 0); }
+    if(run && run.trial && ['waitActive','running'].includes(run.phase)){ run.trial.skipped = 1; finishTrial(performance.now(), 0); }
   }
   if(testMode && (e.key === 'k' || e.key === 'K')){
     if(run){ if(run.trial) run.trial = null; endStep(); }
@@ -1484,10 +1486,7 @@ function tickTask(now){
   const tr = run.trial, st = run.st, fc = frameCenter();
   if(run.phase === 'waitActive'){
     track.scrollTop = tr.S0;
-    if(E.state === 'ACTIVE'){ run.phase = 'pre'; tr.preAt = now; taskMsg.textContent = ''; }
-  } else if(run.phase === 'pre'){
-    track.scrollTop = tr.S0;  // locked until the start cue
-    if(now - tr.preAt >= S.cfg.preMs){ run.phase = 'running'; tr.startT = now; beep(1046, 0.05, 0.08); }
+    if(E.state === 'ACTIVE'){ run.phase = 'running'; tr.startT = now; taskMsg.textContent = ''; }
   } else if(run.phase === 'running'){
     if(st.tech === 'gs'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); track.scrollTop += E.velocity * dt; }
   }
@@ -1544,9 +1543,9 @@ function finishTrial(now, success){
     pid:S.pid, technique:st.tech, cup:st.cup, step:st.type, cond_index:st.condIndex || 0, trial_index:run.i, trial_uid:tr.uid,
     warmup:tr.warm, D:tr.D, W:tr.W, ID:+Math.log2(tr.D/tr.W + 1).toFixed(4), direction:tr.dir, target_line:tr.line,
     start_ms:Math.round(tr.startT), first_move_ms: tr.firstMoveT ? Math.round(tr.firstMoveT) : '', end_ms:Math.round(now),
-    rt_ms: tr.firstMoveT ? Math.round(tr.firstMoveT - tr.startT) : '',
-    mt_ms: success ? Math.round(tr.dwellStart - tr.startT) : '',      // start cue -> scrolling stopped inside the frame
-    move_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '',
+    plan_ms: tr.firstMoveT ? Math.round(tr.firstMoveT - tr.startT) : '',                  // target shown (input live) -> first movement
+    mt_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '',     // first movement -> scrolling stopped inside the frame
+    total_ms: success ? Math.round(tr.dwellStart - tr.startT) : '',
     success, skipped: tr.skipped || 0, switchbacks: tr.switchbacks, overshoot_px: Math.max(0, Math.round(-tr.minRem - tr.W/2)),
     gs_r0: E.r0 == null ? '' : E.r0.toFixed(2), gs_range_min: E.range ? E.range.min.toFixed(1) : '', gs_range_max: E.range ? E.range.max.toFixed(1) : '',
     gs_dead:E.P.dead, gs_gain:E.P.gain, gs_gamma:E.P.gamma, gs_boost_max:E.P.boostMax, gs_boost_ms:E.P.boostMs, gs_acc_ms:E.P.accMs, gs_brake_ms:E.P.brakeMs, gs_dir:E.dirSign, tech_order:S.techOrder.join('>'), latin_row:S.latinRow,
@@ -1566,7 +1565,7 @@ function endStep(){
 // ---------- files ----------
 // Data stays in memory, is backed up to IndexedDB after every step, and leaves the browser as ONE zip per participant.
 function toCSV(head, rows){ return [head.join(',')].concat(rows.map(r => (Array.isArray(r) ? r : head.map(h=>r[h])).map(v => v == null ? '' : String(v).includes(',') ? `"${v}"` : v).join(','))).join('\n'); }
-const TRIAL_HEAD = ['pid','technique','cup','step','cond_index','trial_index','trial_uid','warmup','D','W','ID','direction','target_line','start_ms','first_move_ms','end_ms','rt_ms','mt_ms','move_ms','success','skipped','switchbacks','overshoot_px','gs_r0','gs_range_min','gs_range_max','gs_dead','gs_gain','gs_gamma','gs_boost_max','gs_boost_ms','gs_acc_ms','gs_brake_ms','gs_dir','tech_order','latin_row'];
+const TRIAL_HEAD = ['pid','technique','cup','step','cond_index','trial_index','trial_uid','warmup','D','W','ID','direction','target_line','start_ms','first_move_ms','end_ms','plan_ms','mt_ms','total_ms','success','skipped','switchbacks','overshoot_px','gs_r0','gs_range_min','gs_range_max','gs_dead','gs_gain','gs_gamma','gs_boost_max','gs_boost_ms','gs_acc_ms','gs_brake_ms','gs_dir','tech_order','latin_row'];
 function frameHead(cfgFrames){ const h = ['t_ms','technique','cup','step','trial_uid','phase','scroll_top','target_offset_px','in_frame','wheel_dy','gs_state','gs_theta','gs_velocity','gs_command','gs_boost','gs_reliable','gs_reason'];
   if(cfgFrames === 2) for(let i=0;i<21;i++) h.push(`w${i}_x`,`w${i}_y`,`w${i}_z`); return h; }
 const IMU_HEAD = ['t_ms','technique','cup','step','trial_uid','phase','seq','t_us','ax_raw','ay_raw','az_raw','gx_raw','gy_raw','gz_raw','tilt_deg','ref_ready','connection_id'];
