@@ -210,15 +210,15 @@
         <div class="form">
           <label for="eDevice">노트북 모델 (칩은 자동)</label><input id="eDevice" placeholder="실험에 쓰는 맥북 한 대 (예: MacBook Pro 14 M3, 2023)">
           <label for="eOS">macOS 버전 (자동)</label><span><input id="eOS" placeholder="크롬에서 자동으로 읽습니다" style="width:100%"> <span id="osMsg" class="check"></span></span>
-          <label for="eScroll">트랙패드 설정 (슬라이더 눈금 위치)</label><input id="eScroll" placeholder="스크롤 속도 5/8 (0.3125) · 이동 속도 4/10">
+          <label>트랙패드</label><span class="check">macOS <b>기본값 그대로</b> 씁니다. 아래 세 항목만 확인하세요. 터미널 <code>defaults read -g com.apple.trackpad.scrolling</code> → <b>0.3125</b> 또는 "does not exist"면 기본값.</span>
           <label for="eAngle">화면 각도 목표 (°)</label><span><input id="eAngle" type="number" min="90" max="140" value="105" style="width:90px"> <button id="btnLid" type="button">맥북 각도 센서 연결</button>
             <span id="lidLive" class="lidlive">센서 없음</span>
             <span class="check" style="display:block;margin-top:4px">맥북 힌지의 각도 센서를 크롬으로 바로 읽습니다(창에서 <b>Apple 기기</b>를 고르면 됨). 목표 ±2° 안이면 초록. 센서가 없는 모델이면 아이폰 측정 앱 수평계를 화면 뒷면에 대고 <b id="eAngleTilt">15</b>°가 나오게 맞춥니다.</span></span>
           <label>카메라 (자동)</label><span id="camInfo" class="check">카메라 준비 중…</span>
           <label>확인</label><span class="checks" id="eChecks">
-            <label><input type="checkbox" value="natural_scroll_on"> 자연스러운 스크롤 켜짐 (트랙패드 › 스크롤 및 확대/축소)</label>
-            <label><input type="checkbox" value="inertia_on"> 스크롤할 때 관성 사용 켜짐 (트랙패드 옵션)</label>
-            <label><input type="checkbox" value="scroll_speed_same"> 스크롤 속도가 위에 적은 값 그대로</label>
+            <label><input type="checkbox" value="natural_scroll_on"> 트랙패드 기본값: 자연스러운 스크롤 켬 (트랙패드 › 스크롤 및 확대/축소)</label>
+            <label><input type="checkbox" value="inertia_on"> 트랙패드 기본값: 스크롤할 때 관성 사용 켬 (손쉬운 사용 › 포인터 제어 › 트랙패드 옵션)</label>
+            <label><input type="checkbox" value="scroll_speed_default"> 트랙패드 기본값: 스크롤 속도 왼쪽에서 5번째 눈금 (같은 창)</label>
             <label><input type="checkbox" value="chrome_zoom_100"> 크롬 확대/축소 100%, 창 최대화</label>
             <label><input type="checkbox" value="camera_effects_off"> <span>카메라 비디오 효과 모두 끔: 제어 센터 › 비디오 효과에서 인물 사진, 스튜디오 조명, <b>반응(손동작 효과)</b>, 센터 스테이지, 배경 끄기 (카메라가 켜져 있을 때만 메뉴가 보임)</span></label>
             <label><input type="checkbox" value="power_plugged"> 전원 연결 (저전력 모드 꺼짐)</label>
@@ -690,7 +690,7 @@ $('btnImuCalApply').onclick = () => {
 // apparatus: device fields are remembered in this browser; checks are per session
 const ENV_KEY = 'gripspread_env_v1';
 let ENV_PREV = null;
-try{ ENV_PREV = JSON.parse(localStorage.getItem(ENV_KEY)); if(ENV_PREV){ $('eDevice').value = ENV_PREV.device || ''; $('eOS').value = ENV_PREV.os || ''; $('eScroll').value = ENV_PREV.scroll || ''; if(ENV_PREV.angle) $('eAngle').value = ENV_PREV.angle; } }catch(e){}
+try{ ENV_PREV = JSON.parse(localStorage.getItem(ENV_KEY)); if(ENV_PREV){ $('eDevice').value = ENV_PREV.device || ''; $('eOS').value = ENV_PREV.os || '';  if(ENV_PREV.angle) $('eAngle').value = ENV_PREV.angle; } }catch(e){}
 // ---------- MacBook lid angle sensor over WebHID (Apple sensor hub 05AC:8104, usage page 0x20, usage 0x8A) ----------
 // Reports the hinge angle in degrees (0 = closed) as a little-endian uint16. Read continuously so a lid bumped
 // during the session is noticed and logged.
@@ -757,7 +757,7 @@ try{ const gl = document.createElement('canvas').getContext('webgl'), ext = gl &
 })();
 function envInfo(){
   const checks = [...document.querySelectorAll('#eChecks input')];
-  return { device:$('eDevice').value.trim() || null, macos:$('eOS').value.trim() || null, macos_changed:OS_CHANGED, gpu_chip:CHIP, trackpad_scroll_speed:$('eScroll').value.trim() || null, screen_angle_deg:+$('eAngle').value || null, screen_angle_measured_deg:LID.angle, screen_angle_source:LID.angle != null ? 'lid_sensor' : 'phone_level',
+  return { device:$('eDevice').value.trim() || null, macos:$('eOS').value.trim() || null, macos_changed:OS_CHANGED, gpu_chip:CHIP, trackpad:'macOS default (scroll speed 5/8 = 0.3125, natural scrolling on, inertia on)', screen_angle_deg:+$('eAngle').value || null, screen_angle_measured_deg:LID.angle, screen_angle_source:LID.angle != null ? 'lid_sensor' : 'phone_level',
     checked:checks.filter(i => i.checked).map(i => i.value), unchecked:checks.filter(i => !i.checked).map(i => i.value),
     screen:{ w:screen.width, h:screen.height, dpr:window.devicePixelRatio }, window:{ w:window.innerWidth, h:window.innerHeight },
     camera:E.camera || null, user_agent:navigator.userAgent };
@@ -768,7 +768,7 @@ $('btnStart').onclick = () => {
   if(!pid){ $('fPid').focus(); return; }
   const env = envInfo();
   S.imu = { calib:IMU_CAL, session_check:IMU_CHECK, counts_per_dps_used:IMU_CPD };
-  try{ localStorage.setItem(ENV_KEY, JSON.stringify({ device:env.device, os:env.macos, scroll:env.trackpad_scroll_speed, angle:env.screen_angle_deg })); }catch(e){}
+  try{ localStorage.setItem(ENV_KEY, JSON.stringify({ device:env.device, os:env.macos, angle:env.screen_angle_deg })); }catch(e){}
   S.env = env; LID.startAngle = LID.angle;
   const hm = handMeas();
   Object.assign(S, { pid, hand:$('fHand').value, stature_cm:+$('fStature').value || null, handLen:hm.len.mean, span:hm.span.mean,
