@@ -138,6 +138,11 @@
   .calwrap .screen{position:static;display:block}
   .calback{position:sticky;bottom:0;display:flex;gap:8px;justify-content:center;padding:12px;background:var(--rail);border-top:1px solid var(--hair)}
 {{IMUCAL_CSS}}
+  /* Measured trials: no camera mirror or angle readouts (the trackpad condition has no such channel, and real use has
+     none); only the on/off/hand-lost status stays so a tracking loss is not mistaken for the technique failing.
+     Setup, calibration and practice keep the camera so the participant can find the posture. */
+  body.trialView aside > :not(#status){visibility:hidden}
+  body.trialView.tp aside > #status{visibility:hidden}
 </style>
 </head>
 <body>
@@ -1330,6 +1335,8 @@ window.GS_DEBUG.imu = { feed:onImu, markConnected:() => { imuConn = Math.max(imu
 function loop(now){
   if(E.update(now)) drawOverlay();
   tickTask(now);
+  const tv = !!(run && run.st && run.st.type !== 'practice' && $('sTask').classList.contains('on'));
+  document.body.classList.toggle('trialView', tv); document.body.classList.toggle('tp', tv && run.st.tech === 'trackpad');
   $('kTheta').textContent = E.theta == null ? '–' : E.theta.toFixed(1) + '°';
   $('kR0').textContent = E.r0 == null ? '–' : E.r0.toFixed(1) + '°';
   $('kRange').textContent = E.range ? `${E.range.min.toFixed(0)}–${E.range.max.toFixed(0)}°` : '안 잼';

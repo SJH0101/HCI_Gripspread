@@ -99,6 +99,11 @@
   .actions button.v1{color:#2367da;border-color:#2367da} .actions button.v2{color:#d9661f;border-color:#d9661f}
   #taskMsg{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:999px;padding:6px 14px;font-size:13px;pointer-events:none}
   #taskMsg:empty{display:none}
+  /* Measured trials: no camera mirror or angle readouts (the trackpad condition has no such channel, and real use has
+     none); only the on/off/hand-lost status stays so a tracking loss is not mistaken for the technique failing.
+     Setup, calibration and practice keep the camera so the participant can find the posture. */
+  body.trialView aside > :not(#status){visibility:hidden}
+  body.trialView.tp aside > #status{visibility:hidden}
 </style>
 </head>
 <body>
@@ -467,6 +472,7 @@ $('sumSave').onclick = () => merged && download('gripspread_params.json', merged
 function loop(now){
   if(E.update(now)) drawOverlay();
   tickTask(now);
+  document.body.classList.toggle('trialView', !!(run && !run.practice && $('sTask').classList.contains('on')));
   $('kTheta').textContent = E.theta == null ? '–' : E.theta.toFixed(1) + '°';
   $('kR0').textContent = E.r0 == null ? '–' : E.r0.toFixed(1) + '°';
   $('kRange').textContent = E.range ? `${E.range.min.toFixed(0)}–${E.range.max.toFixed(0)}°` : '안 잼';
