@@ -87,7 +87,11 @@
   .ln{position:absolute;left:4px;width:44px;height:14px;margin-top:-7px;text-align:right;font:12px/14px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8A9099;pointer-events:none}
   .ln.tgt{color:var(--ink);font-weight:700;font-size:13px}
   #lineCue{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:var(--ink);color:#fff;font-weight:600;border-radius:999px;padding:7px 18px;font-size:15px;pointer-events:none}
-  #verTag{position:absolute;right:20px;top:16px;background:#fff;border:2px solid var(--ink);border-radius:8px;padding:4px 12px;font-weight:700;font-size:18px;pointer-events:none}
+  #verTag{position:absolute;right:20px;top:12px;border-radius:10px;padding:8px 16px;font-weight:700;font-size:22px;pointer-events:none;color:#fff}
+  #verTag.v1,.verbig.v1{background:#2367da} #verTag.v2,.verbig.v2{background:#d9661f}
+  .verbig{display:inline-block;color:#fff;border-radius:12px;padding:10px 26px;font-size:40px;font-weight:700;margin:6px 0 14px}
+  .choice button.v1{border:2px solid #2367da} .choice button.v2{border:2px solid #d9661f}
+  .actions button.v1{color:#2367da;border-color:#2367da} .actions button.v2{color:#d9661f;border-color:#d9661f}
   #taskMsg{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:#fff;border-radius:999px;padding:6px 14px;font-size:13px;pointer-events:none}
   #taskMsg:empty{display:none}
 </style>
@@ -131,11 +135,19 @@
         <div class="actions"><button id="tStart" class="primary" disabled>값 맞추기 시작</button></div>
       </div>
 
+      <div class="sheet" id="tuneVer" style="display:none">
+        <p id="verKind" class="muted"></p>
+        <div class="verbig" id="verBig"></div>
+        <p id="verText"></p>
+        <div class="actions"><button id="verGo" class="primary">시작 (Space)</button></div>
+      </div>
+
       <div class="sheet" id="tuneAsk" style="display:none">
         <p id="askKind" class="muted"></p>
-        <div class="big">어느 쪽이 더 나았나요?</div>
-        <p>목표 줄에 맞추기 쉬웠는지, 속도가 자연스러웠는지, 원하지 않을 때 움직이지 않았는지를 같이 생각해 주세요.</p>
-        <div class="choice"><button data-pick="1">1이 나음</button><button data-pick="0">비슷함</button><button data-pick="2">2가 나음</button></div>
+        <div class="big">방금 해 본 두 버전 중 어느 쪽이 더 나았나요?</div>
+        <p>목표 줄에 맞추기 쉬웠는지, 속도가 자연스러웠는지, 원하지 않을 때 움직이지 않았는지를 같이 생각해 주세요. 헷갈리면 다시 해 볼 수 있습니다.</p>
+        <div class="choice"><button data-pick="1" class="v1"><b>버전 1</b><br><small>먼저 한 것</small></button><button data-pick="0">비슷함</button><button data-pick="2" class="v2"><b>버전 2</b><br><small>나중에 한 것</small></button></div>
+        <div class="actions" style="justify-content:center"><button id="again1" class="v1">버전 1 다시 해 보기</button><button id="again2" class="v2">버전 2 다시 해 보기</button></div>
         <div class="form" style="margin-top:16px"><label for="askNote">한마디 (선택)</label><input id="askNote" placeholder="예: 2는 너무 빨라서 지나침"></div>
       </div>
 
@@ -471,22 +483,39 @@ function nextComparison(){
   c.n++;
   const changedFirst = Math.random() < 0.5;
   c.cmp = { param:p.k, base, cand, versions: changedFirst ? [cand, base] : [base, cand], idx:T.comparisons.length + 1 };
-  runBlock(0);
+  verIntro(0);
 }
-function runBlock(vi){
+// a full-screen card before each version so the participant knows which one they are trying
+let verNext = null;
+function verIntro(vi, replay){
+  run = null; tabs.forEach(t => t.disabled = true);
+  const c = T.cur, p = c.p;
+  show('sTune'); ['tuneSetup','tuneDone','tuneAsk'].forEach(id => $(id).style.display = 'none'); $('tuneVer').style.display = '';
+  $('verKind').textContent = `${T.ki + 1}/${T.keys.length} · ${p.name} · 비교 ${c.n}` + (replay ? ' · 다시 해 보기' : '');
+  $('verBig').textContent = `버전 ${vi + 1}`; $('verBig').className = 'verbig v' + (vi + 1);
+  $('verText').textContent = replay ? `버전 ${vi + 1}을 한 번 더 2번 해 봅니다.` : vi === 0
+    ? `먼저 버전 1을 ${T.n}번 해 봅니다. 그다음 버전 2를 ${T.n}번 하고, 어느 쪽이 나았는지 고릅니다.`
+    : `이제 버전 2를 ${T.n}번 해 봅니다. 버전 1과 비교해 보세요.`;
+  if(vi === 0 && !replay) $('askNote').value = '';
+  verNext = () => runBlock(vi, replay);
+}
+$('verGo').onclick = () => { const f = verNext; verNext = null; if(f) f(); };
+document.addEventListener('keydown', e => { if((e.key === ' ' || e.code === 'Space') && verNext && $('tuneVer').offsetParent){ e.preventDefault(); $('verGo').click(); } });
+$('again1').onclick = () => verIntro(0, true);
+$('again2').onclick = () => verIntro(1, true);
+function runBlock(vi, replay){
   const c = T.cur.cmp;
   Object.assign(E.P, T.values); E.P[c.param] = c.versions[vi];
-  run = { vi, i:-1, trials:makeTrials(T.n), trial:null, phase:'idle' };
+  run = { vi, replay:!!replay, i:-1, trials:makeTrials(replay ? 2 : T.n), trial:null, phase:'idle' };
   tabs.forEach(t => t.disabled = true);
-  show('sTask'); $('verTag').textContent = `버전 ${vi + 1}`;
+  show('sTask'); $('verTag').className = 'v' + (vi + 1);
   nextTrial();
 }
 function askPreference(){
   run = null; tabs.forEach(t => t.disabled = false);
   const c = T.cur, p = c.p;
-  show('sTune'); $('tuneSetup').style.display = 'none'; $('tuneDone').style.display = 'none'; $('tuneAsk').style.display = '';
+  show('sTune'); ['tuneSetup','tuneDone','tuneVer'].forEach(id => $(id).style.display = 'none'); $('tuneAsk').style.display = '';
   $('askKind').textContent = `${T.ki + 1}/${T.keys.length} · ${p.name} · 비교 ${c.n}`;
-  $('askNote').value = '';
 }
 document.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
   const pick = +b.dataset.pick, c = T.cur, cmp = c.cmp;
@@ -500,7 +529,7 @@ document.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
 });
 function finishTuning(){
   Object.assign(E.P, BASE);
-  show('sTune'); $('tuneSetup').style.display = 'none'; $('tuneAsk').style.display = 'none'; $('tuneDone').style.display = '';
+  show('sTune'); ['tuneSetup','tuneAsk','tuneVer'].forEach(id => $(id).style.display = 'none'); $('tuneDone').style.display = '';
   $('doneTable').innerHTML = '<table><tr><th>값</th><th>시작</th><th>최종</th><th>비교 횟수</th></tr>' +
     T.keys.map(k => { const p = PARAMS.find(x=>x.k===k); return `<tr><td>${p.name}</td><td>${BASE[k]}</td><td><b>${T.values[k]}</b></td><td>${T.comparisons.filter(c=>c.param===k).length}</td></tr>`; }).join('') + '</table>';
   T.finished = new Date().toISOString();
@@ -529,9 +558,10 @@ function makeTrials(n){
 function nextTrial(){
   run.i++;
   if(run.i >= run.trials.length){
-    if(run.vi === 0){ taskMsg.textContent = '버전 2로 바뀝니다'; const r = run; r.phase = 'gap'; setTimeout(() => runBlock(1), 1200); return; }
+    if(run.vi === 0 && !run.replay) return verIntro(1);
     return askPreference();
   }
+  $('verTag').textContent = `버전 ${run.vi + 1} · ${run.i + 1}/${run.trials.length}`;
   const t = run.trials[run.i], fc = track.clientHeight / 2, viewH = track.clientHeight;
   let lo, hi;
   if(t.dir === 'down'){ lo = 0; hi = Math.min(CONTENT_H - viewH - t.D, CONTENT_H - 300 - fc - t.D); }
@@ -568,7 +598,7 @@ function tickTask(now){
 function endTrial(now, success){
   const tr = run.trial, cmp = T.cur.cmp; run.trial = null; run.phase = 'iti';
   beep(success ? 880 : 220, success ? 0.06 : 0.2, 0.08);
-  T.trials.push({ cmp:cmp.idx, param:cmp.param, version:run.vi + 1, value:cmp.versions[run.vi], is_changed: cmp.versions[run.vi] === cmp.cand ? 1 : 0,
+  T.trials.push({ cmp:cmp.idx, param:cmp.param, version:run.vi + 1, replay:run.replay ? 1 : 0, value:cmp.versions[run.vi], is_changed: cmp.versions[run.vi] === cmp.cand ? 1 : 0,
     D:tr.D, W, direction:tr.dir, success, mt_ms: success ? Math.round(tr.dwellStart - tr.startT) : '', switchbacks:tr.switchbacks,
     overshoot_px: Math.max(0, Math.round(-tr.minRem - W/2)) });
   setTimeout(() => { if(run) nextTrial(); }, ITI);
