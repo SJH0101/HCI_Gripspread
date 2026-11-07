@@ -248,6 +248,7 @@
             <label><input type="checkbox" value="screen_angle_mark"> 화면 각도를 위 값으로 맞춤 (센서 또는 수평계로 확인)</label>
             <label><input type="checkbox" value="stand_on_mark"> 참여자가 설 자리 바닥 테이프 표시 그대로</label>
             <label><input type="checkbox" value="lighting_same"> 외부광 없는 실내 (창 없음 또는 블라인드 닫음), 천장 조명 켬</label>
+            <label><input type="checkbox" value="record_phone"> <span>기록용 폰: 테이프 표시 자리에 거치, 줌 1×·가로, 화면 길게 눌러 <b>AE/AF 잠금</b>, 방해금지 켬, <b>녹화 시작</b> (조건마다 화면이 번쩍이고 삐 소리가 나면 영상과 로그를 맞추는 신호)</span></label>
           </span>
           <span></span><span id="envCheck" class="check"></span>
         </div>
@@ -1398,12 +1399,20 @@ let tgtLn = null;
 let run = null; // current step runtime
 let pauseRequested = false;
 
+// sync marker for the phone recording: a white flash + beep at every condition start, logged with both clocks
+const SYNC = [];
+function syncMark(label){
+  const d = document.createElement('div'); d.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:9999;pointer-events:none';
+  document.body.appendChild(d); setTimeout(() => d.remove(), 250);
+  beep(1500, 0.25, 0.3);
+  SYNC.push({ label, t_ms:Math.round(performance.now()), iso:new Date().toISOString() });
+}
 function startStep(){
   const st = S.steps[S.stepIdx];
   frames = []; imuRows = []; stepTrials = [];
   run = { st, trials: buildTrials(st), i: -1, trial: null, phase:'idle', pracDone:false };
   track.style.overflowY = st.tech === 'trackpad' ? 'scroll' : 'hidden';
-  show('sTask'); nextTrial();
+  show('sTask'); syncMark(`${pTag(S.pid)} ${st.type} ${st.tech} ${st.cup} (step ${S.stepIdx})`); nextTrial();
 }
 function frameCenter(){ return track.clientHeight / 2; }
 
@@ -1659,7 +1668,7 @@ function sessionObj(){
   return { pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
-    tlx:S.tlx, calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
+    tlx:S.tlx, calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
 }
 $('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
 // recovery list on the setup screen
