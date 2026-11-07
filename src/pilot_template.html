@@ -214,7 +214,7 @@ tabs.forEach(t => t.onclick = () => { if(run) return; tabs.forEach(x => x.classL
 // ---------- engine ----------
 const E = GripEngine;
 E.freezeRange = true;
-window.GS_DEBUG = { E };
+window.GS_DEBUG = { E, run:() => run };   // console/testing
 const statusEl = $('status');
 E.onBeep = (f,d) => beep(f,d);
 E.onStatus = (text, cls, prog) => { $('stateText').textContent = text; statusEl.className = 'status ' + cls; $('holdBar').style.width = (prog*100)+'%'; };
@@ -396,24 +396,27 @@ function nextTrial(){
 // scroll technique (pinch) and list movement, for freehand techniques only. Likewise only GripSpread gets this clutch;
 // the trackpad is live as soon as the target appears (its fingers-off state is already a clutch).
 const ARM_MS = 150;
-// Stop rule, translated from ScrollTest (Chen et al. 2022): "no scrolling for 66 ms" = the content's position
-// changes by less than one device pixel (the smallest visible step; 0.5 CSS px on a 2x Retina screen) for STOP_MS.
-// Same rule for both techniques; no velocity threshold needed. A creep slower than that is not visible, so it is a stop.
-// "At rest" for the GS trial-start clutch uses the same yardstick: speed that would move < 1 device px in STOP_MS.
-const PX = 1 / (window.devicePixelRatio || 1);
-const gsRest = () => { const vmax = PX / (STOP_MS / 1000); return Math.abs(E.command) < vmax && Math.abs(E.velocity) < vmax; };
+// Stop rule, translated from ScrollTest (Chen et al. 2022): target inside the frame and "no scrolling for 66 ms".
+//  - no scrolling = the rendered position does not change by 1 px (scrollTop is whole CSS px in Chrome, so 1 px is the
+//    smallest visible scroll step) for STOP_MS. Same for both techniques.
+//  - GS also needs no scroll *input*: command exactly 0 (spread in the dead zone). The engine's minSpeed floor makes
+//    every non-zero command visibly move, so "input" and "visible motion" agree. Without the input check, a reversal
+//    passes through speed 0 and a slow sweep through the frame could count as a stop.
+// The GS trial-start clutch uses the same "at rest" test.
+const PX = 1;
+const gsRest = () => E.command === 0 && Math.abs(E.velocity) < PX / (STOP_MS / 1000);
 function movedPx(tr, top){ if(tr.anchorTop == null) tr.anchorTop = top; if(Math.abs(top - tr.anchorTop) >= PX){ tr.anchorTop = top; return true; } return false; }
 
 function tickTask(now){
   if(!run || !run.trial) return;
   const tr = run.trial, fc = track.clientHeight / 2;
   if(run.phase === 'arming'){
-    track.scrollTop = tr.S0;
+    track.scrollTop = tr.S0; tr.pos = tr.S0;
     if(E.state === 'ACTIVE' && gsRest()){ if(tr.armSince == null) tr.armSince = now; } else tr.armSince = null;
     if(tr.armSince != null && now - tr.armSince >= ARM_MS){ run.phase = 'running'; tr.startT = now; taskMsg.textContent = ''; }
     else taskMsg.textContent = E.state !== 'ACTIVE' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '';
   }
-  else if(run.phase === 'running'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); track.scrollTop += E.velocity * dt; }
+  else if(run.phase === 'running'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); tr.pos += E.velocity * dt; track.scrollTop = tr.pos; tr.pos = Math.max(0, Math.min(track.scrollHeight - track.clientHeight, tr.pos)); }   // float position: scrollTop rounds to whole px and would swallow slow motion
   tr.lastTick = now;
   if(run.phase !== 'running'){ tr.prevTop = track.scrollTop; return; }
   if(tr.firstMoveT == null && Math.abs(track.scrollTop - tr.S0) > 2) tr.firstMoveT = now;
@@ -421,7 +424,7 @@ function tickTask(now){
   frameEl.classList.toggle('in', inFrame);
   if(Math.abs(delta) > 0.5){ const s = Math.sign(delta); if(tr.lastDir && s !== tr.lastDir) tr.switchbacks++; tr.lastDir = s; }
   tr.minRem = Math.min(tr.minRem, rem);
-  const moving = movedPx(tr, top);   // same rule as the study
+  const moving = movedPx(tr, top) || !gsRest();   // same rule as the study (no position change and no input)
   if(inFrame && !moving){ if(tr.dwellStart == null) tr.dwellStart = now; } else tr.dwellStart = null;
   dwellBar.style.width = tr.dwellStart != null ? Math.min(100, (now - tr.dwellStart) / STOP_MS * 100) + '%' : '0';
   if(tr.dwellStart != null && now - tr.dwellStart >= STOP_MS) endTrial(now, 1);

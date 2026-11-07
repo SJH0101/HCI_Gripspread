@@ -5,7 +5,7 @@
 const GripEngine = (() => {
   // ---------- tunable parameters (pilot values) ----------
   const P = { dead:0.15, gain:800, gamma:2.2, holdMs:700, smooth:0.35, curlMax:80,
-    boostMax:2.5, boostMs:1200, boostOn:0.6, boostDecayMs:200, accMs:250, brakeMs:60, minSide:10 };
+    boostMax:2.5, boostMs:1200, boostOn:0.6, boostDecayMs:200, accMs:250, brakeMs:60, minSide:10, minSpeed:15 };
   const FOLD_PERSIST = 6; // frames (~0.1 s) a 'folded' reading must last before input freezes
   const EXT_MIN = 0.55;    // in-plane knuckle->tip length / palm length below this = fingers folded
   const JUMP_MAX = 20;     // deg per frame; bigger jumps are dropped unless they persist 3 frames
@@ -131,6 +131,9 @@ const GripEngine = (() => {
       if(dir && mag >= P.boostOn) B = Math.min(P.boostMax, B + (P.boostMax - 1) * dtMs / P.boostMs);
       else B = 1 + (B - 1) * Math.exp(-dtMs / P.boostDecayMs);
       cmd = dir * P.gain * Math.pow(mag, P.gamma) * B;
+      // Any input outside the dead zone moves at least minSpeed px/s (1 px per 66 ms), so it is always visible.
+      // Without it, a hand a hair outside the band gives a sub-pixel creep: the content looks stopped but is not.
+      if(cmd !== 0 && Math.abs(cmd) < P.minSpeed) cmd = Math.sign(cmd) * P.minSpeed;
       // keep the calibrated range honest: angles beyond it widen it
       if(E.range && !E.freezeRange){ if(E.theta > E.range.max) E.range.max = E.theta; if(E.theta < E.range.min) E.range.min = E.theta; }
     } else { holdDir = 0; B = 1; }
