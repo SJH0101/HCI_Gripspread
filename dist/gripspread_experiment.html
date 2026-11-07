@@ -1493,12 +1493,18 @@ document.addEventListener('keydown', e => {
 // scroll technique (pinch) and list movement, for freehand techniques only. Likewise only GripSpread gets this clutch;
 // the trackpad is live as soon as the target appears (its fingers-off state is already a clutch).
 const ARM_MS = 150;
+// "At rest" for GripSpread = commanded and actual speed both under REST_V px/s. Requiring the command to be exactly 0
+// (spread inside the dead zone) was too strict: a hand a hair outside the band creeps at <1 px/s, invisible on screen,
+// and the trial would not end. Under 5 px/s the target needs >10 s to drift out of a 50 px frame, so it is a stop.
+const REST_V = 5;
+const gsRest = () => Math.abs(E.command) < REST_V && Math.abs(E.velocity) < REST_V;
+
 function tickTask(now){
   if(!run || !run.trial) return;
   const tr = run.trial, st = run.st, fc = frameCenter();
   if(run.phase === 'arming'){
     track.scrollTop = tr.S0;
-    const rest = st.tech !== 'gs' || (E.state === 'ACTIVE' && E.command === 0 && Math.abs(E.velocity) < 5);
+    const rest = st.tech !== 'gs' || (E.state === 'ACTIVE' && gsRest());
     if(rest){ if(tr.armSince == null) tr.armSince = now; } else tr.armSince = null;
     if(tr.armSince != null && (st.tech !== 'gs' || now - tr.armSince >= ARM_MS)){ run.phase = 'running'; tr.startT = now; taskMsg.textContent = ''; }
     else taskMsg.textContent = st.tech === 'gs' && E.state !== 'ACTIVE' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '';
@@ -1523,7 +1529,7 @@ function tickTask(now){
     // GS: "no scrolling" means no scroll input, i.e. the spread is back in the dead zone (command 0) and the content has
     // stopped. A hand left slightly spread keeps a slow creep going, so the trial cannot end with the hand off-neutral
     // and the next trial always starts from rest, like lifted trackpad fingers.
-    const moving = Math.abs(delta) > 0.5 || (st.tech === 'gs' && (E.command !== 0 || Math.abs(E.velocity) > 5));
+    const moving = Math.abs(delta) > 0.5 || (st.tech === 'gs' && !gsRest());
     if(inFrame && !moving){ if(tr.dwellStart == null) tr.dwellStart = now; }
     else tr.dwellStart = null;
     dwellBar.style.width = tr.dwellStart != null ? Math.min(100, (now - tr.dwellStart) / S.cfg.stopMs * 100) + '%' : '0';
