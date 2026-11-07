@@ -163,6 +163,7 @@
       <div id="frame"><span class="dw" id="dwellBar"></span></div>
       <div id="lineCue"></div>
       <div id="verTag"></div>
+      <button id="pracDone" class="primary" style="display:none;position:absolute;right:20px;bottom:20px;padding:12px 18px">연습 끝, 값 맞추기 시작 (Enter)</button>
       <div id="taskMsg"></div>
     </section>
 
@@ -466,8 +467,23 @@ $('tStart').onclick = () => {
   T = { id:$('tId').value.trim() || 'T?', cup:$('tCup').value, n:Math.max(2, +$('tN').value || 4), keys, ki:0,
         values:{ ...BASE }, calib:{ range:{ ...E.range }, r0:E.r0 }, comparisons:[], trials:[], started:new Date().toISOString() };
   $('hInfo').textContent = `${T.id} · ${$('tCup').selectedOptions[0].textContent}`;
-  startParam();
+  startPractice();
 };
+// free practice with the starting values until the participant feels at home (limits learning effects during the A/B part)
+function startPractice(){
+  Object.assign(E.P, T.values);
+  run = { practice:true, vi:-1, i:-1, trials:makeTrials(999), trial:null, phase:'idle' };
+  tabs.forEach(t => t.disabled = true);
+  show('sTask'); $('verTag').className = ''; $('verTag').style.background = '#1F2328'; $('pracDone').style.display = '';
+  nextTrial();
+}
+function endPractice(){
+  if(!run || !run.practice) return;
+  T.practice_trials = run.i + (run.trial ? 0 : 0); run.trial = null; run = null;
+  $('pracDone').style.display = 'none'; $('verTag').style.background = '';
+  startParam();
+}
+$('pracDone').onclick = endPractice;
 function startParam(){
   if(T.ki >= T.keys.length) return finishTuning();
   const p = PARAMS.find(x => x.k === T.keys[T.ki]);
@@ -535,7 +551,7 @@ function finishTuning(){
   T.finished = new Date().toISOString();
 }
 $('tSave').onclick = () => download(`pilot_${T.id}_${T.started.slice(0,10)}.json`, {
-  pilot_id:T.id, cup:T.cup, trials_per_version:T.n, started:T.started, finished:T.finished, calibration:T.calib,
+  pilot_id:T.id, cup:T.cup, trials_per_version:T.n, practice_trials:T.practice_trials || 0, started:T.started, finished:T.finished, calibration:T.calib,
   start_values:Object.fromEntries(T.keys.map(k => [k, BASE[k]])), final_values:Object.fromEntries(T.keys.map(k => [k, T.values[k]])),
   all_engine_values:T.values, comparisons:T.comparisons, trials:T.trials });
 $('tAgain').onclick = () => { T = null; $('tuneDone').style.display = 'none'; $('tuneSetup').style.display = ''; $('hInfo').textContent = ''; updCalib(); };
@@ -561,7 +577,7 @@ function nextTrial(){
     if(run.vi === 0 && !run.replay) return verIntro(1);
     return askPreference();
   }
-  $('verTag').textContent = `버전 ${run.vi + 1} · ${run.i + 1}/${run.trials.length}`;
+  $('verTag').textContent = run.practice ? `연습 · ${run.i + 1}번째` : `버전 ${run.vi + 1} · ${run.i + 1}/${run.trials.length}`;
   const t = run.trials[run.i], fc = track.clientHeight / 2, viewH = track.clientHeight;
   let lo, hi;
   if(t.dir === 'down'){ lo = 0; hi = Math.min(CONTENT_H - viewH - t.D, CONTENT_H - 300 - fc - t.D); }
@@ -584,6 +600,7 @@ function tickTask(now){
   else if(run.phase === 'running'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); track.scrollTop += E.velocity * dt; }
   tr.lastTick = now;
   if(run.phase !== 'running'){ tr.prevTop = track.scrollTop; return; }
+  if(tr.firstMoveT == null && Math.abs(track.scrollTop - tr.S0) > 2) tr.firstMoveT = now;
   const top = track.scrollTop, d = (tr.T - top) - fc, rem = d * tr.sgn, inFrame = Math.abs(d) <= W/2 - TARGET_HALF, delta = top - tr.prevTop;
   frameEl.classList.toggle('in', inFrame);
   if(Math.abs(delta) > 0.5){ const s = Math.sign(delta); if(tr.lastDir && s !== tr.lastDir) tr.switchbacks++; tr.lastDir = s; }
@@ -596,15 +613,17 @@ function tickTask(now){
   tr.prevTop = top;
 }
 function endTrial(now, success){
-  const tr = run.trial, cmp = T.cur.cmp; run.trial = null; run.phase = 'iti';
+  const tr = run.trial, cmp = run.practice ? null : T.cur.cmp; run.trial = null; run.phase = 'iti';
   beep(success ? 880 : 220, success ? 0.06 : 0.2, 0.08);
-  T.trials.push({ cmp:cmp.idx, param:cmp.param, version:run.vi + 1, replay:run.replay ? 1 : 0, value:cmp.versions[run.vi], is_changed: cmp.versions[run.vi] === cmp.cand ? 1 : 0,
-    D:tr.D, W, direction:tr.dir, success, mt_ms: success ? Math.round(tr.dwellStart - tr.startT) : '', switchbacks:tr.switchbacks,
+  T.trials.push({ ...(cmp ? { cmp:cmp.idx, param:cmp.param, version:run.vi + 1, replay:run.replay ? 1 : 0, value:cmp.versions[run.vi], is_changed: cmp.versions[run.vi] === cmp.cand ? 1 : 0 }
+                          : { practice:1 }),
+    D:tr.D, W, direction:tr.dir, success, mt_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '', switchbacks:tr.switchbacks,
     overshoot_px: Math.max(0, Math.round(-tr.minRem - W/2)) });
   setTimeout(() => { if(run) nextTrial(); }, ITI);
 }
 document.addEventListener('keydown', e => {
   if((e.key === 'n' || e.key === 'N') && run && run.trial && run.phase === 'running') endTrial(performance.now(), 0);
+  if(e.key === 'Enter' && run && run.practice){ e.preventDefault(); endPractice(); }
 });
 
 // ======================================================================
