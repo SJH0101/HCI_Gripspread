@@ -39,8 +39,8 @@
   .status .lamp{width:10px;height:10px;border-radius:50%;background:#B9BDC2;flex:none}
   .status.hold .lamp{background:transparent;border:2px solid var(--ink)}
   .status.pause .lamp{background:transparent;border:2px dashed var(--ink)}
-  .status.active{background:var(--mark);border-color:var(--mark)}
-  .status.active .lamp{background:var(--ink)}
+  .status.active{background:#fff;border-color:var(--hair)}
+  .status.active .lamp{background:var(--ok)}
   .status.warn{border-color:var(--alert)} .status.warn .lamp{background:var(--alert)}
   .status .bar{position:absolute;left:0;bottom:0;height:2px;width:0;background:var(--ink)}
   .kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;padding:12px 16px;font-size:13px}
@@ -87,6 +87,10 @@
   .ln{position:absolute;left:2px;width:50px;height:30px;margin-top:-15px;text-align:right;font:500 24px/30px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8E949B;pointer-events:none}   /* big grey numbers on both sides, as in ScrollTest */
   .ln.r{left:auto;right:2px;text-align:left}
   .ln.tgt{}
+  #doneMark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.9);background:#2F7D4F;color:#fff;font-weight:600;font-size:14px;border-radius:8px;padding:5px 12px;opacity:0;pointer-events:none;transition:opacity .12s, transform .12s;z-index:5}
+  #doneMark.show{opacity:1;transform:translate(-50%,-50%) scale(1)} #doneMark.miss{background:#6B7178}
+  @keyframes cuepop{0%{transform:translateX(-50%) scale(1.18)}100%{transform:translateX(-50%) scale(1)}}
+  #lineCue.pop{animation:cuepop .35s ease-out}
   #lineCue{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:var(--ink);color:#fff;font-weight:600;border-radius:999px;padding:7px 18px;font-size:15px;pointer-events:none}
   #verTag{position:absolute;right:20px;top:12px;border-radius:10px;padding:8px 16px;font-weight:700;font-size:22px;pointer-events:none;color:#fff}
   #verTag.v1,.verbig.v1{background:#2367da} #verTag.v2,.verbig.v2{background:#d9661f}
@@ -162,9 +166,10 @@
     <section id="sTask" class="screen">
       <div id="track"><div id="content"><div id="target"></div></div></div>
       <div id="frame"><span class="dw" id="dwellBar"></span></div>
+      <div id="doneMark" aria-live="polite"></div>
       <div id="lineCue"></div>
       <div id="verTag"></div>
-      <button id="pracDone" class="primary" style="display:none;position:absolute;right:20px;bottom:20px;padding:12px 18px">연습 끝, 값 맞추기 시작 (Enter)</button>
+      <button id="pracDone" class="primary" style="display:none;position:absolute;right:10px;bottom:10px;padding:4px 9px;font-size:11px;font-weight:500;opacity:.55;background:#6B7178;border-color:#6B7178">연습 끝 (Enter)</button>
       <div id="taskMsg"></div>
     </section>
 
@@ -590,7 +595,7 @@ function nextTrial(){
   run.trial = { ...t, line, T:Tt, S0, startT:null, dwellStart:null, switchbacks:0, lastDir:0, minRem:t.D, prevTop:S0, sgn: t.dir === 'down' ? 1 : -1, lastTick:null };
   track.scrollTop = S0; target.style.top = Tt + 'px';
   frameEl.style.height = W + 'px'; frameEl.style.top = (fc - W/2) + 'px'; frameEl.classList.remove('in'); dwellBar.style.width = '0';
-  lineCue.textContent = `${line}번 줄을 회색 영역 안에`;
+  lineCue.textContent = `${line}번 줄을 회색 영역 안에`; popCue(lineCue);
   run.phase = E.state === 'ACTIVE' ? 'running' : 'waitActive'; if(run.phase === 'running') run.trial.startT = performance.now();   // participant-paced, same as the study
   taskMsg.textContent = run.phase === 'waitActive' ? '편한 V로 돌아와 주세요' : '';
 }
@@ -613,8 +618,18 @@ function tickTask(now){
   else if(now - tr.startT > TIMEOUT) endTrial(now, 0);
   tr.prevTop = top;
 }
+
+// After-trial feedback (outside the timed part, so MT is unaffected): a short "done" badge and tick,
+// and the next line cue pops in, so the participant notices the switch to a new trial.
+function showDone(success){
+  const m = document.getElementById('doneMark'); m.textContent = success ? '✓ 완료' : '시간 초과 · 다음으로'; m.className = success ? 'show' : 'show miss';
+  beep(success ? 1320 : 330, success ? 0.05 : 0.15, 0.07);
+  clearTimeout(showDone.t); showDone.t = setTimeout(() => { m.className = success ? '' : 'miss'; }, 420);
+}
+function popCue(el){ el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
 function endTrial(now, success){
   const tr = run.trial, cmp = run.practice ? null : T.cur.cmp; run.trial = null; run.phase = 'iti';
+  showDone(success);
   T.trials.push({ ...(cmp ? { cmp:cmp.idx, param:cmp.param, version:run.vi + 1, replay:run.replay ? 1 : 0, value:cmp.versions[run.vi], is_changed: cmp.versions[run.vi] === cmp.cand ? 1 : 0 }
                           : { practice:1 }),
     D:tr.D, W, direction:tr.dir, success, mt_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '', switchbacks:tr.switchbacks,
