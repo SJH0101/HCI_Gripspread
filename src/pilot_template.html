@@ -135,7 +135,7 @@
         <div class="form">
           <label for="tId">파일럿 참가자</label><input id="tId" value="T1">
           <label for="tCup">컵</label><select id="tCup"><option value="75">75mm 컵</option><option value="60">60mm 컵</option><option value="90">90mm 컵</option><option value="none">컵 없음</option></select>
-          <label for="tN">버전당 시행 수</label><input id="tN" type="number" min="2" max="10" value="4">
+          <label for="tN">버전당 시행 수</label><input id="tN" type="number" min="2" max="12" value="6">
         </div>
         <h2>맞출 값 (순서대로)</h2>
         <div id="paramList" class="box"></div>
@@ -242,8 +242,11 @@ const PARAMS = [
   { k:'brakeMs', name:'감속 반응',        unit:'ms', step:40,   min:20,   max:200,  dec:0, why:'멈출 때 따라가는 시간상수' },
 ];
 const MAX_CMP = 4;
+// Checked by default: the values most likely to differ between people. The rest stay at the researchers' values
+// unless the experimenter ticks them (keeps one pilot session short).
+const DEFAULT_TUNE = ['dead', 'gain', 'gamma'];
 const BASE = { ...E.P };
-$('paramList').innerHTML = PARAMS.map((p,i) => `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-k="${p.k}" checked> ${i+1}. ${p.name} <span class="muted">· 지금 ${BASE[p.k]}${p.unit} · 한 칸 ${p.step}${p.unit} · ${p.why}</span></label>`).join('');
+$('paramList').innerHTML = PARAMS.map((p,i) => `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-k="${p.k}" ${DEFAULT_TUNE.includes(p.k) ? 'checked' : ''}> ${i+1}. ${p.name} <span class="muted">· 지금 ${BASE[p.k]}${p.unit} · 한 칸 ${p.step}${p.unit} · ${p.why}</span></label>`).join('');
 
 let T = null;      // tuning session
 let run = null;    // block of trials
@@ -333,7 +336,11 @@ document.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => {
   const pick = +b.dataset.pick, c = T.cur, cmp = c.cmp;
   const chose = pick === 0 ? null : cmp.versions[pick - 1];
   const verdict = chose == null ? 'same' : chose === cmp.cand ? 'changed' : 'current';
-  T.comparisons.push({ ...cmp, pick, verdict, note:$('askNote').value.trim(), at:new Date().toISOString() });
+  // performance of each version in this comparison, for the log only (the participant's choice decides)
+  const perf = v => { const r = T.trials.filter(t => t.cmp === cmp.idx && t.version === v), ok = r.filter(t => t.success);
+    const mt = ok.map(t => t.mt_ms).filter(x => x !== ''); return { n:r.length, success:ok.length, mean_mt_ms: mt.length ? Math.round(mt.reduce((a,b)=>a+b,0)/mt.length) : null,
+      mean_overshoot_px: r.length ? Math.round(r.reduce((a,t)=>a+t.overshoot_px,0)/r.length) : null }; };
+  T.comparisons.push({ ...cmp, pick, verdict, v1:perf(1), v2:perf(2), note:$('askNote').value.trim(), at:new Date().toISOString() });
   $('tuneAsk').style.display = 'none';
   if(verdict === 'changed'){ T.values[cmp.param] = cmp.cand; return nextComparison(); }                // keep going this way
   if(verdict === 'current' && !c.triedOther && c.n === 1){ c.triedOther = true; c.dir = -c.dir; return nextComparison(); }  // try the other way once
@@ -355,15 +362,16 @@ $('tAgain').onclick = () => { T = null; $('tuneDone').style.display = 'none'; $(
 // ---------- short scroll trials (same task and stop rule as the study program) ----------
 const track = $('track'), content = $('content'), target = $('target'), frameEl = $('frame'), dwellBar = $('dwellBar'), taskMsg = $('taskMsg'), lineCue = $('lineCue');
 const CONTENT_H = 12000, PITCH = 36, LINE_Y = 26, N_LINES = Math.floor((CONTENT_H - LINE_Y) / PITCH) + 1, TARGET_HALF = 4;
-const STOP_MS = 66, TIMEOUT = 15000, ITI = 500, W = 80;
+const STOP_MS = 66, TIMEOUT = 15000, ITI = 500;
 const lineY = k => (k - 1) * PITCH + LINE_Y;
 content.style.height = CONTENT_H + 'px';
 const lnEls = [null];
 { const f = document.createDocumentFragment(); for(let k=1;k<=N_LINES;k++){ const s = document.createElement('span'); s.className = 'ln'; s.style.top = lineY(k)+'px'; s.textContent = k; f.appendChild(s); lnEls.push(s); const r = s.cloneNode(true); r.className = 'ln r'; f.appendChild(r); } content.appendChild(f); }
 let tgtLn = null;
+// Same D and W as the study (D 400/1200/3600 px x W 40/120 px). n = 6 covers every D x W pair once per version.
 function makeTrials(n){
-  const D = [400, 1200, 3600], out = [];
-  for(let i=0;i<n;i++) out.push({ D:D[i % D.length], dir: i % 2 ? 'up' : 'down' });
+  const D = [400, 1200, 3600], W = [40, 120], out = [];
+  for(let i=0;i<n;i++) out.push({ D:D[i % D.length], W:W[Math.floor(i / D.length) % W.length], dir: i % 2 ? 'up' : 'down' });
   for(let i=out.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [out[i],out[j]] = [out[j],out[i]]; }
   return out;
 }
@@ -384,7 +392,7 @@ function nextTrial(){
   if(tgtLn) tgtLn.classList.remove('tgt'); tgtLn = lnEls[line]; if(tgtLn) tgtLn.classList.add('tgt');
   run.trial = { ...t, line, T:Tt, S0, startT:null, dwellStart:null, switchbacks:0, lastDir:0, minRem:t.D, prevTop:S0, sgn: t.dir === 'down' ? 1 : -1, lastTick:null };
   track.scrollTop = S0; target.style.top = Tt + 'px';
-  frameEl.style.height = W + 'px'; frameEl.style.top = (fc - W/2) + 'px'; frameEl.classList.remove('in'); dwellBar.style.width = '0';
+  frameEl.style.height = t.W + 'px'; frameEl.style.top = (fc - t.W/2) + 'px'; frameEl.classList.remove('in'); dwellBar.style.width = '0';
   lineCue.textContent = `${line}번 줄을 회색 영역 안에`; popCue(lineCue);
   run.phase = 'arming'; run.trial.armSince = null; taskMsg.textContent = '';   // same clutch as the study
 }
@@ -420,7 +428,7 @@ function tickTask(now){
   tr.lastTick = now;
   if(run.phase !== 'running'){ tr.prevTop = track.scrollTop; return; }
   if(tr.firstMoveT == null && Math.abs(track.scrollTop - tr.S0) > 2) tr.firstMoveT = now;
-  const top = track.scrollTop, d = (tr.T - top) - fc, rem = d * tr.sgn, inFrame = Math.abs(d) <= W/2 - TARGET_HALF, delta = top - tr.prevTop;
+  const top = track.scrollTop, d = (tr.T - top) - fc, rem = d * tr.sgn, inFrame = Math.abs(d) <= tr.W/2 - TARGET_HALF, delta = top - tr.prevTop;
   frameEl.classList.toggle('in', inFrame);
   if(Math.abs(delta) > 0.5){ const s = Math.sign(delta); if(tr.lastDir && s !== tr.lastDir) tr.switchbacks++; tr.lastDir = s; }
   tr.minRem = Math.min(tr.minRem, rem);
@@ -445,8 +453,8 @@ function endTrial(now, success){
   trialDoneCue(success);
   T.trials.push({ ...(cmp ? { cmp:cmp.idx, param:cmp.param, version:run.vi + 1, replay:run.replay ? 1 : 0, value:cmp.versions[run.vi], is_changed: cmp.versions[run.vi] === cmp.cand ? 1 : 0 }
                           : { practice:1 }),
-    D:tr.D, W, direction:tr.dir, success, mt_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '', switchbacks:tr.switchbacks,
-    overshoot_px: Math.max(0, Math.round(-tr.minRem - W/2)) });
+    D:tr.D, W:tr.W, direction:tr.dir, success, mt_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '', switchbacks:tr.switchbacks,
+    overshoot_px: Math.max(0, Math.round(-tr.minRem - tr.W/2)) });
   setTimeout(() => { if(run) nextTrial(); }, ITI);
 }
 document.addEventListener('keydown', e => {
