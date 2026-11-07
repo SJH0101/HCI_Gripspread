@@ -1000,11 +1000,13 @@ document.addEventListener('keydown', e => {
 // scroll technique (pinch) and list movement, for freehand techniques only. Likewise only GripSpread gets this clutch;
 // the trackpad is live as soon as the target appears (its fingers-off state is already a clutch).
 const ARM_MS = 150;
-// "At rest" for GripSpread = commanded and actual speed both under REST_V px/s. Requiring the command to be exactly 0
-// (spread inside the dead zone) was too strict: a hand a hair outside the band creeps at <1 px/s, invisible on screen,
-// and the trial would not end. Under 5 px/s the target needs >10 s to drift out of a 50 px frame, so it is a stop.
-const REST_V = 5;
-const gsRest = () => Math.abs(E.command) < REST_V && Math.abs(E.velocity) < REST_V;
+// Stop rule, translated from ScrollTest (Chen et al. 2022): "no scrolling for 66 ms" = the content's position
+// changes by less than one device pixel (the smallest visible step; 0.5 CSS px on a 2x Retina screen) for S.cfg.stopMs.
+// Same rule for both techniques; no velocity threshold needed. A creep slower than that is not visible, so it is a stop.
+// "At rest" for the GS trial-start clutch uses the same yardstick: speed that would move < 1 device px in S.cfg.stopMs.
+const PX = 1 / (window.devicePixelRatio || 1);
+const gsRest = () => { const vmax = PX / (S.cfg.stopMs / 1000); return Math.abs(E.command) < vmax && Math.abs(E.velocity) < vmax; };
+function movedPx(tr, top){ if(tr.anchorTop == null) tr.anchorTop = top; if(Math.abs(top - tr.anchorTop) >= PX){ tr.anchorTop = top; return true; } return false; }
 
 function tickTask(now){
   if(!run || !run.trial) return;
@@ -1036,7 +1038,7 @@ function tickTask(now){
     // GS: "no scrolling" means no scroll input, i.e. the spread is back in the dead zone (command 0) and the content has
     // stopped. A hand left slightly spread keeps a slow creep going, so the trial cannot end with the hand off-neutral
     // and the next trial always starts from rest, like lifted trackpad fingers.
-    const moving = Math.abs(delta) > 0.5 || (st.tech === 'gs' && !gsRest());
+    const moving = movedPx(tr, top);
     if(inFrame && !moving){ if(tr.dwellStart == null) tr.dwellStart = now; }
     else tr.dwellStart = null;
     dwellBar.style.width = tr.dwellStart != null ? Math.min(100, (now - tr.dwellStart) / S.cfg.stopMs * 100) + '%' : '0';

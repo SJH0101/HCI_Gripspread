@@ -611,11 +611,13 @@ function nextTrial(){
 // scroll technique (pinch) and list movement, for freehand techniques only. Likewise only GripSpread gets this clutch;
 // the trackpad is live as soon as the target appears (its fingers-off state is already a clutch).
 const ARM_MS = 150;
-// "At rest" for GripSpread = commanded and actual speed both under REST_V px/s. Requiring the command to be exactly 0
-// (spread inside the dead zone) was too strict: a hand a hair outside the band creeps at <1 px/s, invisible on screen,
-// and the trial would not end. Under 5 px/s the target needs >10 s to drift out of a 50 px frame, so it is a stop.
-const REST_V = 5;
-const gsRest = () => Math.abs(E.command) < REST_V && Math.abs(E.velocity) < REST_V;
+// Stop rule, translated from ScrollTest (Chen et al. 2022): "no scrolling for 66 ms" = the content's position
+// changes by less than one device pixel (the smallest visible step; 0.5 CSS px on a 2x Retina screen) for STOP_MS.
+// Same rule for both techniques; no velocity threshold needed. A creep slower than that is not visible, so it is a stop.
+// "At rest" for the GS trial-start clutch uses the same yardstick: speed that would move < 1 device px in STOP_MS.
+const PX = 1 / (window.devicePixelRatio || 1);
+const gsRest = () => { const vmax = PX / (STOP_MS / 1000); return Math.abs(E.command) < vmax && Math.abs(E.velocity) < vmax; };
+function movedPx(tr, top){ if(tr.anchorTop == null) tr.anchorTop = top; if(Math.abs(top - tr.anchorTop) >= PX){ tr.anchorTop = top; return true; } return false; }
 
 function tickTask(now){
   if(!run || !run.trial) return;
@@ -634,7 +636,7 @@ function tickTask(now){
   frameEl.classList.toggle('in', inFrame);
   if(Math.abs(delta) > 0.5){ const s = Math.sign(delta); if(tr.lastDir && s !== tr.lastDir) tr.switchbacks++; tr.lastDir = s; }
   tr.minRem = Math.min(tr.minRem, rem);
-  const moving = Math.abs(delta) > 0.5 || !gsRest();   // same rule as the study
+  const moving = movedPx(tr, top);   // same rule as the study
   if(inFrame && !moving){ if(tr.dwellStart == null) tr.dwellStart = now; } else tr.dwellStart = null;
   dwellBar.style.width = tr.dwellStart != null ? Math.min(100, (now - tr.dwellStart) / STOP_MS * 100) + '%' : '0';
   if(tr.dwellStart != null && now - tr.dwellStart >= STOP_MS) endTrial(now, 1);
