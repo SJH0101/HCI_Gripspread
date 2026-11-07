@@ -84,7 +84,8 @@
   #frame{position:absolute;left:50%;transform:translateX(-50%);width:min(820px, calc(100% - 24px));background:rgba(90,96,104,.18);border-radius:2px;pointer-events:none}   /* ScrollTest: grey target area */
   #frame.in{}
   #frame .dw{display:none}
-  .ln{position:absolute;left:0;width:48px;height:20px;margin-top:-10px;text-align:right;font:600 16px/20px ui-monospace,SFMono-Regular,Menlo,monospace;color:#2B3036;pointer-events:none}
+  .ln{position:absolute;left:2px;width:50px;height:30px;margin-top:-15px;text-align:right;font:500 24px/30px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8E949B;pointer-events:none}   /* big grey numbers on both sides, as in ScrollTest */
+  .ln.r{left:auto;right:2px;text-align:left}
   .ln.tgt{}
   #lineCue{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:var(--ink);color:#fff;font-weight:600;border-radius:999px;padding:7px 18px;font-size:15px;pointer-events:none}
   #verTag{position:absolute;right:20px;top:12px;border-radius:10px;padding:8px 16px;font-weight:700;font-size:22px;pointer-events:none;color:#fff}
@@ -348,7 +349,7 @@ const STOP_MS = 66, TIMEOUT = 15000, ITI = 500, W = 80;
 const lineY = k => (k - 1) * PITCH + LINE_Y;
 content.style.height = CONTENT_H + 'px';
 const lnEls = [null];
-{ const f = document.createDocumentFragment(); for(let k=1;k<=N_LINES;k++){ const s = document.createElement('span'); s.className = 'ln'; s.style.top = lineY(k)+'px'; s.textContent = k; f.appendChild(s); lnEls.push(s); } content.appendChild(f); }
+{ const f = document.createDocumentFragment(); for(let k=1;k<=N_LINES;k++){ const s = document.createElement('span'); s.className = 'ln'; s.style.top = lineY(k)+'px'; s.textContent = k; f.appendChild(s); lnEls.push(s); const r = s.cloneNode(true); r.className = 'ln r'; f.appendChild(r); } content.appendChild(f); }
 let tgtLn = null;
 function makeTrials(n){
   const D = [400, 1200, 3600], out = [];
