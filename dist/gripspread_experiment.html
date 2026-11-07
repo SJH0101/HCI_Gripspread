@@ -80,7 +80,7 @@
   #content{position:relative;width:min(760px, calc(100% - 64px));margin:0 auto;background:#fff;
     background-image:repeating-linear-gradient(to bottom, transparent 0 22px, #EEF0F2 22px 30px, transparent 30px 36px);
     background-size:100% 36px;background-origin:content-box;padding:0 56px}
-  #target{position:absolute;left:0;right:0;height:8px;margin-top:-4px;background:var(--mark);box-shadow:0 0 0 1px var(--ink)}
+  #target{position:absolute;left:54px;right:0;height:8px;margin-top:-4px;background:var(--mark);box-shadow:0 0 0 1px var(--ink)}   /* starts after the line-number gutter */
   #frame{position:absolute;left:50%;transform:translateX(-50%);width:min(820px, calc(100% - 24px));border:2px solid var(--ink);border-radius:2px;pointer-events:none}
   #frame.in{background:var(--mark-soft)}
   #frame .dw{position:absolute;left:0;bottom:-2px;height:4px;width:0;background:var(--ink)}
@@ -89,7 +89,7 @@
 
   /* known-target cue: line numbers in the gutter + the target line number (Hinckley et al. 2002, ScrollTest) */
   .ln{position:absolute;left:4px;width:44px;height:14px;margin-top:-7px;text-align:right;font:12px/14px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8A9099;pointer-events:none}
-  .ln.tgt{color:var(--ink);font-weight:700;background:var(--mark);border-radius:3px;padding-right:3px}
+  .ln.tgt{color:var(--ink);font-weight:700;font-size:13px}
   #lineCue{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:var(--ink);color:#fff;font-weight:600;
     border-radius:999px;padding:7px 18px;font-size:15px;pointer-events:none;display:none}
   #lineCue.on{display:block}
