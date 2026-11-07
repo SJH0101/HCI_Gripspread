@@ -380,23 +380,14 @@ function nextTrial(){
   run.trial = { ...t, line, T:Tt, S0, startT:null, dwellStart:null, switchbacks:0, lastDir:0, minRem:t.D, prevTop:S0, sgn: t.dir === 'down' ? 1 : -1, lastTick:null };
   track.scrollTop = S0; target.style.top = Tt + 'px';
   frameEl.style.height = W + 'px'; frameEl.style.top = (fc - W/2) + 'px'; frameEl.classList.remove('in'); dwellBar.style.width = '0';
-  lineCue.textContent = ''; lineCue.style.visibility = 'hidden';
-  run.phase = 'waitActive'; run.trial.restSince = null; run.trial.shownAt = performance.now(); taskMsg.textContent = '';
+  lineCue.textContent = `${line}번 줄을 회색 영역 안에`; popCue(lineCue);
+  run.phase = E.state === 'ACTIVE' ? 'running' : 'waitActive'; if(run.phase === 'running') run.trial.startT = performance.now();   // participant-paced, same as the study
+  taskMsg.textContent = run.phase === 'waitActive' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '';
 }
 function tickTask(now){
   if(!run || !run.trial) return;
   const tr = run.trial, fc = track.clientHeight / 2;
-// GripSpread: the next target is shown only after the hand has been back at the comfortable V (dead zone, no motion)
-// for E.REARM_MS. Without this, a hand still spread from the last trial moves the content before the participant
-// has read the new line number. Trackpad needs no gate: the trial only ends after the fingers stop.
-  if(run.phase === 'waitActive'){
-    track.scrollTop = tr.S0;
-    if(E.atRest()){ if(tr.restSince == null) tr.restSince = now; } else tr.restSince = null;
-    if(tr.restSince != null && now - tr.restSince >= E.REARM_MS){
-      run.phase = 'running'; tr.startT = now; taskMsg.textContent = '';
-      lineCue.textContent = `${tr.line}번 줄을 회색 영역 안에`; lineCue.style.visibility = ''; popCue(lineCue);
-    } else taskMsg.textContent = now - tr.shownAt > 300 ? '편한 V로 돌아와 주세요' : '';
-  }
+  if(run.phase === 'waitActive'){ track.scrollTop = tr.S0; if(E.state === 'ACTIVE'){ run.phase = 'running'; tr.startT = now; taskMsg.textContent = ''; } }
   else if(run.phase === 'running'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); track.scrollTop += E.velocity * dt; }
   tr.lastTick = now;
   if(run.phase !== 'running'){ tr.prevTop = track.scrollTop; return; }
@@ -405,7 +396,7 @@ function tickTask(now){
   frameEl.classList.toggle('in', inFrame);
   if(Math.abs(delta) > 0.5){ const s = Math.sign(delta); if(tr.lastDir && s !== tr.lastDir) tr.switchbacks++; tr.lastDir = s; }
   tr.minRem = Math.min(tr.minRem, rem);
-  const moving = Math.abs(delta) > 0.5 || Math.abs(E.velocity) > 5;
+  const moving = Math.abs(delta) > 0.5 || E.command !== 0 || Math.abs(E.velocity) > 5;   // ends only with the hand back in the dead zone (same rule as the study)
   if(inFrame && !moving){ if(tr.dwellStart == null) tr.dwellStart = now; } else tr.dwellStart = null;
   dwellBar.style.width = tr.dwellStart != null ? Math.min(100, (now - tr.dwellStart) / STOP_MS * 100) + '%' : '0';
   if(tr.dwellStart != null && now - tr.dwellStart >= STOP_MS) endTrial(now, 1);

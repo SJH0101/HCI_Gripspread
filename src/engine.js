@@ -211,12 +211,5 @@ const GripEngine = (() => {
     status();
     return true;
   };
-  // True while the spread sits in the dead zone and the content is not moving (input at rest).
-  // Used to hold the next trial until the hand is back at the comfortable V, like lifting fingers off a trackpad.
-  E.REARM_MS = REARM_MS;
-  E.atRest = () => {
-    const band = E.deadBand();
-    return E.state === 'ACTIVE' && E.reliable && E.theta != null && !!band && E.theta >= band[0] && E.theta <= band[1] && Math.abs(E.velocity || 0) < 5;
-  };
   return E;
 })();
