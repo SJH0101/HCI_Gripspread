@@ -218,7 +218,7 @@
           <h1>장비 확인</h1>
           <p>모든 참여자가 같은 기기, 같은 설정으로 해야 합니다. 기기 정보는 이 브라우저에 기억되고, 체크는 매 세션 새로 합니다.</p>
         <div class="form">
-          <label for="eDevice">노트북 모델 (칩은 자동)</label><input id="eDevice" placeholder="실험에 쓰는 맥북 한 대 (예: MacBook Pro 14 M3, 2023)">
+          <label for="eDevice">노트북 모델 (칩은 자동)</label><input id="eDevice" placeholder="MacBook Pro 14″">
           <label for="eOS">macOS 버전 (자동)</label><span><input id="eOS" placeholder="크롬에서 자동으로 읽습니다" style="width:100%"> <span id="osMsg" class="check"></span></span>
           <label>트랙패드</label><span class="check">macOS <b>기본값 그대로</b> 씁니다. 아래 세 항목만 확인하세요. 터미널 <code>defaults read -g com.apple.trackpad.scrolling</code> → <b>0.3125</b> 또는 "does not exist"면 기본값.</span>
           <label for="eAngle">화면 각도 목표 (°)</label><span><input id="eAngle" type="number" min="90" max="140" value="105" style="width:90px"> <button id="btnLid" type="button">맥북 각도 센서 연결</button>
@@ -753,7 +753,7 @@ let OS_CHANGED = null, CHIP = null;
 try{ const gl = document.createElement('canvas').getContext('webgl'), ext = gl && gl.getExtension('WEBGL_debug_renderer_info');
   const r = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : ''; const m = /Apple (M\d+(?: (?:Pro|Max|Ultra))?)/.exec(r || '');
   CHIP = m ? 'Apple ' + m[1] : (r || null);
-  if(m && !$('eDevice').value.trim()) $('eDevice').value = `MacBook (${CHIP}) · 모델명은 직접 보충`;
+  if(m && !$('eDevice').value.trim()) $('eDevice').value = `MacBook Pro 14″ (${CHIP})`;   // the study laptop
 }catch(e){}
 (async () => {
   try{
