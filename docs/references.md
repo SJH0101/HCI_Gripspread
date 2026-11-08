@@ -48,6 +48,15 @@ GripSpread 기획, 실험 설계, 파일럿 절차에서 근거로 쓴 자료. �
 - **Ruiz, J. R., España-Romero, V., Ortega, F. B., Sjöström, M., Castillo, M. J., & Gutierrez, A. (2006).** Hand span influences optimal grip span in male and female teenagers. *Journal of Hand Surgery (Am)*, 31(8), 1367–1372. https://doi.org/10.1016/j.jhsa.2006.06.014
   - 쓴 곳: **span 측정 정의의 출처.** 손을 최대한 벌린 상태에서 엄지 끝부터 소지 끝까지 잰다 (초록에 명시). 같은 그룹의 2002 연구를 잇는 후속 연구로, span이 최적 쥐기 폭과 남녀 모두에서 관련됨(13–18세 206명).
 
+## 통계 분석 (`gripspread_analysis.html`)
+
+- **Greenhouse, S. W., & Geisser, S. (1959).** On methods in the analysis of profile data. *Psychometrika*, 24, 95–112. https://doi.org/10.1007/BF02289823 — 구형성 보정.
+- **Olejnik, S., & Algina, J. (2003).** Generalized eta and omega squared statistics. *Psychological Methods*, 8(4), 434–447. https://doi.org/10.1037/1082-989X.8.4.434 · **Bakeman, R. (2005).** Recommended effect size statistics for repeated measures designs. *Behavior Research Methods*, 37(3), 379–384. https://doi.org/10.3758/BF03192707 — η²G.
+- **Wobbrock, J. O., Findlater, L., Gergle, D., & Higgins, J. J. (2011).** The aligned rank transform for nonparametric factorial analyses using only ANOVA procedures. *Proc. CHI 2011*, 143–146. https://doi.org/10.1145/1978942.1978963 — ART 확인 검정.
+- **Holm, S. (1979).** A simple sequentially rejective multiple test procedure. *Scandinavian Journal of Statistics*, 6(2), 65–70. — 사후 비교 보정.
+- **Cousineau, D. (2005).** Confidence intervals in within-subject designs. *Tutorials in Quantitative Methods for Psychology*, 1(1), 42–45. https://doi.org/10.20982/tqmp.01.1.p042 · **Morey, R. D. (2008).** Confidence intervals from normalized data: A correction to Cousineau (2005). *TQMP*, 4(2), 61–64. https://doi.org/10.20982/tqmp.04.2.p061 — 피험자 내 신뢰구간.
+- **Mahony, R., Hamel, T., & Pflimlin, J.-M. (2008).** Nonlinear complementary filters on the special orthogonal group. *IEEE Transactions on Automatic Control*, 53(5), 1203–1218. https://doi.org/10.1109/TAC.2008.923738 — 자이로·가속도 상보 필터.
+
 ## IMU
 
 - **Pedley, M. (2013).** Tilt sensing using a three-axis accelerometer. NXP (Freescale) Application Note AN3461. https://www.nxp.com/docs/en/application-note/AN3461.pdf
