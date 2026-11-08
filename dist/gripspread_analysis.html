@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GripSpread 분석</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  :root{
+    --bg:#F3F4F5; --card:#fff; --ink:#1F2328; --muted:#6B7178; --hair:#D9DCE0;
+    --tp:#5B6B7F; --gs:#D9622B; --ok:#2F7D4F; --warn:#B7791F; --bad:#C8372D;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}
+  main{max-width:1080px;margin:0 auto;padding:24px 16px 64px}
+  h1{font-size:22px;margin:0 0 4px} h2{font-size:17px;margin:28px 0 10px} h3{font-size:14px;margin:16px 0 6px}
+  p{margin:6px 0} .muted{color:var(--muted)} .num{font-variant-numeric:tabular-nums}
+  .card{background:var(--card);border:1px solid var(--hair);border-radius:10px;padding:16px;margin:12px 0}
+  #drop{border:2px dashed var(--hair);border-radius:10px;padding:28px;text-align:center;background:#fff;cursor:pointer}
+  #drop.over{border-color:var(--ink)}
+  button{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--hair);border-radius:6px;padding:6px 12px;cursor:pointer}
+  button:hover{border-color:var(--ink)} button.primary{background:var(--ink);color:#fff;border-color:var(--ink)}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{border-bottom:1px solid var(--hair);padding:5px 8px;text-align:right;white-space:nowrap}
+  th:first-child,td:first-child{text-align:left} th{color:var(--muted);font-weight:600}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+  .chart svg{width:100%;height:auto;display:block}
+  .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin:2px 0 0}
+  .legend i{display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:5px}
+  .sig{font-weight:700} .w{color:var(--warn)} .b{color:var(--bad)}
+  pre{white-space:pre-wrap;background:#F7F8F9;border:1px solid var(--hair);border-radius:8px;padding:12px;font-size:13px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .scroll{overflow-x:auto}
+</style>
+</head>
+<body>
+<main>
+  <h1>GripSpread 분석</h1>
+  <p class="muted">실험 프로그램이 저장한 참가자 zip(또는 그 안의 csv·json)을 한꺼번에 올리면, 가설 H1–H3 분석과 그림을 바로 보여 줍니다. 파일은 이 브라우저 밖으로 나가지 않습니다.</p>
+
+  <div id="drop" class="card">
+    <b>여기에 파일을 끌어 놓거나 눌러서 고르세요</b>
+    <p class="muted">P01.zip, P02.zip … 여러 개 한꺼번에. 같은 참가자 파일이 두 번 들어오면 시행이 더 많은 쪽을 씁니다.</p>
+    <input id="files" type="file" multiple accept=".zip,.csv,.json" hidden>
+  </div>
+  <div id="status" class="muted"></div>
+  <div id="out"></div>
+</main>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const TECHS = ['trackpad', 'gs'], TECH_NAME = { trackpad:'트랙패드', gs:'GripSpread' };
+const CUPS = ['none', '60', '75', '90'], CUP_NAME = { none:'컵 없음', 60:'60 mm', 75:'75 mm', 90:'90 mm' };
+const CUPS3 = ['60', '75', '90'];
+
+// ====================================================================== loading
+const drop = $('drop'), fileIn = $('files');
+drop.onclick = () => fileIn.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); load([...e.dataTransfer.files]); };
+fileIn.onchange = () => load([...fileIn.files]);
+
+// each experiment file is <tag>_trials.csv, <tag>_imu.csv, <tag>_tlx.csv, <tag>_session.json (frames are not needed)
+function kindOf(name){
+  const m = name.split('/').pop().match(/^(.*)_(trials|imu|tlx|session)\.(csv|json)$/);
+  return m ? { tag:m[1], kind:m[2] } : null;
+}
+async function load(files){
+  $('status').textContent = '읽는 중…'; $('out').innerHTML = '';
+  const parts = {};   // tag -> {trials, imu, tlx, session}
+  const put = (tag, kind, text) => { (parts[tag] = parts[tag] || {})[kind] = text; };
+  for(const f of files){
+    try{
+      if(/\.zip$/i.test(f.name)){
+        const z = await JSZip.loadAsync(f);
+        for(const e of Object.values(z.files)){ const k = kindOf(e.name); if(k && !e.dir) put(k.tag, k.kind, await e.async('string')); }
+      } else { const k = kindOf(f.name); if(k) put(k.tag, k.kind, await f.text()); }
+    }catch(err){ console.error(err); }
+  }
+  const people = buildPeople(parts);
+  if(!people.length){ $('status').textContent = '참가자 데이터를 찾지 못했습니다. 실험 프로그램이 저장한 zip인지 확인해 주세요.'; return; }
+  $('status').textContent = `참가자 ${people.length}명을 읽었습니다.`;
+  try{ render(analyze(people)); }catch(err){ console.error(err); $('status').textContent = '분석 중 오류: ' + err.message; }
+}
+
+function parseCSV(text){
+  const lines = text.replace(/\r/g, '').split('\n').filter(l => l.length);
+  if(!lines.length) return [];
+  const split = l => { if(!l.includes('"')) return l.split(','); const out = []; let cur = '', q = false;
+    for(const ch of l){ if(ch === '"') q = !q; else if(ch === ',' && !q){ out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out; };
+  const head = split(lines[0]);
+  return lines.slice(1).map(l => { const v = split(l), o = {}; head.forEach((h,i) => o[h] = v[i]); return o; });
+}
+const truthy = v => v === true || v === 'true' || v === '1' || v === 1;
+const numOr = (v, d = null) => (v === '' || v == null || isNaN(+v)) ? d : +v;
+
+function buildPeople(parts){
+  const byPid = {};
+  for(const [tag, p] of Object.entries(parts)){
+    if(!p.trials) continue;
+    const trials = parseCSV(p.trials);
+    if(!trials.length) continue;
+    let session = null; try{ session = p.session ? JSON.parse(p.session) : null; }catch(e){}
+    const pid = (session && session.pid) || trials[0].pid || tag;
+    const person = { tag, pid, session, trials, imuText:p.imu || null, tlx: p.tlx ? parseCSV(p.tlx) : [] };
+    const prev = byPid[pid];
+    if(!prev || person.trials.length > prev.trials.length) byPid[pid] = { ...person, dupes:(prev ? prev.dupes + 1 : 0) };
+    else prev.dupes++;
+  }
+  return Object.values(byPid).sort((a,b) => String(a.pid).localeCompare(String(b.pid), undefined, { numeric:true }));
+}
+
+// ====================================================================== per-trial IMU measures
+// gyro_dps = (raw - bias) / counts_per_dps; accel_g = (raw - offset) / counts_per_g  (from the IMU calibration file).
+// Bias: this session's 10 s still check if present, else the calibration file's.
+function imuCal(session, warn){
+  const imu = (session && session.imu) || {}, cal = imu.calib || {};
+  const cpd = imu.counts_per_dps_used || cal.gyro_counts_per_dps || 65.5;
+  let bias = (imu.session_check && imu.session_check.gyro_bias) || cal.gyro_bias;
+  if(!bias){ bias = [0,0,0]; warn.push('자이로 영점 없음(0으로 계산)'); }
+  const off = cal.accel_offset || [0,0,0], cpg = cal.accel_counts_per_g || [8192,8192,8192];
+  if(!cal.accel_offset) warn.push('가속도 보정값 없음');
+  return { cpd, bias, off, cpg };
+}
+function imuPerTrial(text, cal){
+  const lines = text.replace(/\r/g, '').split('\n'); const head = lines[0].split(',');
+  const ix = k => head.indexOf(k);
+  const I = { uid:ix('trial_uid'), ph:ix('phase'), seq:ix('seq'), ax:ix('ax_raw'), ay:ix('ay_raw'), az:ix('az_raw'), gx:ix('gx_raw'), gy:ix('gy_raw'), gz:ix('gz_raw') };
+  const byUid = new Map();
+  for(let i = 1; i < lines.length; i++){
+    const l = lines[i]; if(!l) continue; const v = l.split(',');
+    if(v[I.ph] !== 'running' || !v[I.uid]) continue;
+    let a = byUid.get(v[I.uid]); if(!a) byUid.set(v[I.uid], a = []);
+    a.push([+v[I.seq], +v[I.ax], +v[I.ay], +v[I.az], +v[I.gx], +v[I.gy], +v[I.gz]]);
+  }
+  const out = new Map();
+  for(const [uid, rows] of byUid){
+    if(rows.length < 10) continue;
+    rows.sort((p,q) => p[0] - q[0]);
+    // angular velocity RMS (deg/s)
+    let s2 = 0;
+    for(const r of rows){ const gx = (r[4]-cal.bias[0])/cal.cpd, gy = (r[5]-cal.bias[1])/cal.cpd, gz = (r[6]-cal.bias[2])/cal.cpd; s2 += gx*gx + gy*gy + gz*gz; }
+    const rms = Math.sqrt(s2 / rows.length);
+    // peak tilt change: angle between the gravity direction at trial start (first 5 samples) and each later sample,
+    // accel smoothed over 5 samples (~50 ms) so hand jerks are not read as tilt
+    const acc = rows.map(r => [0,1,2].map(k => (r[1+k] - cal.off[k]) / cal.cpg[k]));
+    const sm = acc.map((_, i) => { const lo = Math.max(0, i-2), hi = Math.min(acc.length, i+3), n = hi - lo;
+      return [0,1,2].map(k => { let s = 0; for(let j = lo; j < hi; j++) s += acc[j][k]; return s / n; }); });
+    const ref = [0,1,2].map(k => sm.slice(0,5).reduce((s,a) => s + a[k], 0) / 5), rn = Math.hypot(...ref);
+    let maxTilt = 0;
+    for(const a of sm){ const c = (a[0]*ref[0] + a[1]*ref[1] + a[2]*ref[2]) / (Math.hypot(...a) * rn); maxTilt = Math.max(maxTilt, Math.acos(Math.min(1, Math.max(-1, c))) * 180 / Math.PI); }
+    out.set(uid, { rms, tilt:maxTilt, n:rows.length });
+  }
+  return out;
+}
+
+// ====================================================================== condition summaries
+const mean = a => a.length ? a.reduce((s,x) => s + x, 0) / a.length : NaN;
+const sd = a => { if(a.length < 2) return NaN; const m = mean(a); return Math.sqrt(a.reduce((s,x) => s + (x-m)**2, 0) / (a.length - 1)); };
+
+function analyze(people){
+  const cells = [], trialsOut = [], roster = [];
+  for(const p of people){
+    const warn = [];
+    if(p.dupes) warn.push(`같은 참가자 파일 ${p.dupes + 1}개 중 시행이 많은 것 사용`);
+    let imu = null;
+    if(p.imuText){ const cal = imuCal(p.session, warn); imu = imuPerTrial(p.imuText, cal); }
+    else warn.push('IMU 파일 없음');
+    const meas = p.trials.filter(t => t.step === 'measure' && !truthy(t.warmup) && !truthy(t.skipped));
+    let outliers = 0, imuHit = 0;
+    for(const tech of TECHS) for(const cup of CUPS){
+      const rows = meas.filter(t => t.technique === tech && String(t.cup) === cup);
+      if(!rows.length) continue;
+      const ok = rows.filter(t => truthy(t.success) && numOr(t.mt_ms) > 0);
+      // drop movement times beyond mean +- 3 SD within this participant x condition (Fashimpaur et al. 2023)
+      const mts = ok.map(t => +t.mt_ms), m = mean(mts), s = sd(mts);
+      const kept = ok.filter(t => !(s > 0 && Math.abs(+t.mt_ms - m) > 3 * s));
+      outliers += ok.length - kept.length;
+      // throughput: mean over D x W cells of mean(ID) / mean(MT in s)
+      const groups = {};
+      for(const t of kept){ const k = t.D + 'x' + t.W; (groups[k] = groups[k] || []).push(t); }
+      const tps = Object.values(groups).map(g => mean(g.map(t => +t.ID)) / (mean(g.map(t => +t.mt_ms)) / 1000));
+      const im = imu ? kept.map(t => imu.get(t.trial_uid)).filter(Boolean) : [];
+      imuHit += im.length;
+      const cell = { pid:p.pid, tech, cup, n:rows.length, n_ok:ok.length, error_rate:1 - ok.length / rows.length,
+        mt_ms:mean(kept.map(t => +t.mt_ms)), plan_ms:mean(kept.map(t => numOr(t.plan_ms)).filter(x => x != null)),
+        tp:mean(tps), switchbacks:mean(kept.map(t => +t.switchbacks)), overshoot_px:mean(kept.map(t => +t.overshoot_px)),
+        imu_rms:cup === 'none' || !im.length ? NaN : mean(im.map(x => x.rms)), tilt_max:cup === 'none' || !im.length ? NaN : mean(im.map(x => x.tilt)) };
+      cells.push(cell);
+      for(const t of rows){ const x = imu && imu.get(t.trial_uid);
+        trialsOut.push({ pid:p.pid, technique:tech, cup, trial_uid:t.trial_uid, D:t.D, W:t.W, ID:t.ID, success:truthy(t.success) ? 1 : 0, mt_ms:t.mt_ms, plan_ms:t.plan_ms,
+          switchbacks:t.switchbacks, overshoot_px:t.overshoot_px, kept: kept.includes(t) ? 1 : 0, imu_rms_dps: x ? x.rms.toFixed(3) : '', imu_tilt_max_deg: x ? x.tilt.toFixed(2) : '' }); }
+    }
+    for(const tech of TECHS){ const tp0 = cells.find(c => c.pid === p.pid && c.tech === tech && c.cup === 'none');
+      for(const c of cells.filter(c => c.pid === p.pid && c.tech === tech && c.cup !== 'none')) c.tp_loss = tp0 ? 1 - c.tp / tp0.tp : NaN; }
+    const ss = p.session || {};
+    if(!p.session) warn.push('session.json 없음');
+    const nCond = new Set(meas.map(t => t.technique + t.cup)).size;
+    if(nCond < 8) warn.push(`조건 ${nCond}/8개만 있음`);
+    roster.push({ pid:p.pid, order:(ss.tech_order || []).join(' > ') || (p.trials[0] && p.trials[0].tech_order) || '', hand:ss.hand || '',
+      handLen:ss.hand_length_mm, span:ss.span_mm, stature:ss.stature_cm, demo:ss.demographics || {}, trials:meas.length,
+      success:meas.length ? meas.filter(t => truthy(t.success)).length / meas.length : NaN, outliers, imuTrials:imuHit, warn });
+  }
+  // NASA-TLX (per participant x technique)
+  const tlx = [];
+  for(const p of people) for(const r of p.tlx) tlx.push({ pid:p.pid, tech:r.technique, ...Object.fromEntries(TLX_KEYS.map(k => [k, numOr(r[k])])) });
+  return { cells, trialsOut, roster, tlx };
+}
+const TLX_KEYS = ['raw_tlx','mental','physical','temporal','performance','effort','frustration'];
+const TLX_NAME = { raw_tlx:'전체(Raw TLX)', mental:'정신적 부담', physical:'신체적 부담', temporal:'시간 압박', performance:'수행 만족(낮을수록 좋음)', effort:'노력', frustration:'좌절' };
+
+// ====================================================================== statistics
+// log-gamma (Lanczos) and regularized incomplete beta (continued fraction, Numerical Recipes)
+function lgamma(x){ const g = [676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if(x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI*x)) - lgamma(1-x);
+  x -= 1; let a = 0.99999999999980993; const t = x + 7.5; for(let i = 0; i < 8; i++) a += g[i] / (x + i + 1);
+  return 0.5*Math.log(2*Math.PI) + (x+0.5)*Math.log(t) - t + Math.log(a); }
+function betacf(a, b, x){ let qab = a+b, qap = a+1, qam = a-1, c = 1, d = 1 - qab*x/qap; if(Math.abs(d) < 1e-30) d = 1e-30; d = 1/d; let h = d;
+  for(let m = 1; m <= 300; m++){ const m2 = 2*m; let aa = m*(b-m)*x/((qam+m2)*(a+m2)); d = 1 + aa*d; if(Math.abs(d) < 1e-30) d = 1e-30; c = 1 + aa/c; if(Math.abs(c) < 1e-30) c = 1e-30; d = 1/d; h *= d*c;
+    aa = -(a+m)*(qab+m)*x/((a+m2)*(qap+m2)); d = 1 + aa*d; if(Math.abs(d) < 1e-30) d = 1e-30; c = 1 + aa/c; if(Math.abs(c) < 1e-30) c = 1e-30; d = 1/d; const del = d*c; h *= del; if(Math.abs(del-1) < 3e-14) break; }
+  return h; }
+function ibeta(x, a, b){ if(x <= 0) return 0; if(x >= 1) return 1;
+  const bt = Math.exp(lgamma(a+b) - lgamma(a) - lgamma(b) + a*Math.log(x) + b*Math.log(1-x));
+  return x < (a+1)/(a+b+2) ? bt*betacf(a,b,x)/a : 1 - bt*betacf(b,a,1-x)/b; }
+const pF = (F, d1, d2) => F <= 0 ? 1 : ibeta(d2/(d2 + d1*F), d2/2, d1/2);          // upper tail
+const pT2 = (t, df) => ibeta(df/(df + t*t), df/2, 0.5);                             // two-tailed
+function tCrit(df){ let lo = 0, hi = 50; for(let i = 0; i < 80; i++){ const m = (lo+hi)/2; if(pT2(m, df) > 0.05) lo = m; else hi = m; } return (lo+hi)/2; }
+
+// Two-way repeated-measures ANOVA (technique x cup), each effect tested on its orthonormal contrasts;
+// Greenhouse-Geisser correction for effects with more than one df (as in Fashimpaur et al. 2023).
+function helmert(k){ const C = []; for(let j = 1; j < k; j++){ const n = Math.sqrt(j*(j+1)); C.push(Array.from({length:k}, (_, i) => i < j ? 1/n : i === j ? -j/n : 0)); } return C; }
+const kron = (u, v) => u.flatMap(x => v.map(y => x*y));
+function rmAnova2(Y, a, b){   // Y: subjects x (a*b) cells, cell index = i*b + j
+  const n = Y.length, ones = k => Array(k).fill(1/Math.sqrt(k));
+  const effects = { [`기법`]:helmert(a).map(c => kron(c, ones(b))), [`컵`]:helmert(b).map(c => kron(ones(a), c)), [`기법 × 컵`]:helmert(a).flatMap(ca => helmert(b).map(cb => kron(ca, cb))) };
+  const res = {};
+  for(const [name, C] of Object.entries(effects)){
+    const df = C.length, Z = Y.map(y => C.map(c => c.reduce((s, w, i) => s + w*y[i], 0)));
+    const zm = C.map((_, j) => mean(Z.map(z => z[j])));
+    const S = C.map((_, j) => C.map((__, k) => Z.reduce((s, z) => s + (z[j]-zm[j])*(z[k]-zm[k]), 0) / (n-1)));
+    const trS = S.reduce((s, r, i) => s + r[i], 0), trS2 = S.reduce((s, r) => s + r.reduce((t, x) => t + x*x, 0), 0);
+    const ssE = n * zm.reduce((s, x) => s + x*x, 0), ssR = (n-1) * trS;
+    const F = (ssE/df) / (ssR/(df*(n-1)));
+    const eps = df === 1 ? 1 : Math.max(1/df, Math.min(1, trS*trS / (df*trS2)));
+    res[name] = { F, df1:df, df2:df*(n-1), eps, p:pF(F, df*eps, df*(n-1)*eps), eta:ssE/(ssE+ssR) };
+  }
+  return res;
+}
+function pairedT(x, y){ const d = x.map((v,i) => v - y[i]), n = d.length, m = mean(d), s = sd(d), t = m / (s/Math.sqrt(n)); return { t, df:n-1, p:pT2(Math.abs(t), n-1), d:m/s }; }
+// Wilcoxon signed-rank, exact (ties: average ranks, distribution over doubled ranks)
+function wilcoxon(x, y){
+  const d = x.map((v,i) => v - y[i]).filter(v => v !== 0 && !isNaN(v)), n = d.length; if(n < 2) return { n, p:NaN, W:NaN };
+  const ord = d.map((v,i) => [Math.abs(v), i]).sort((p,q) => p[0]-q[0]), r = Array(n);
+  for(let i = 0; i < n;){ let j = i; while(j+1 < n && ord[j+1][0] === ord[i][0]) j++; for(let k = i; k <= j; k++) r[ord[k][1]] = (i+j+2)/2; i = j+1; }
+  const r2 = r.map(v => Math.round(v*2)), W2 = d.reduce((s,v,i) => s + (v > 0 ? r2[i] : 0), 0), tot = r2.reduce((s,v) => s+v, 0);
+  let dist = new Float64Array(tot+1); dist[0] = 1;
+  for(const w of r2){ const nd = new Float64Array(tot+1); for(let s = 0; s <= tot; s++) if(dist[s]){ nd[s] += dist[s]/2; if(s+w <= tot) nd[s+w] += dist[s]/2; } dist = nd; }
+  let lo = 0, hi = 0; for(let s = 0; s <= tot; s++){ if(s <= W2) lo += dist[s]; if(s >= W2) hi += dist[s]; }
+  return { n, W:W2/2, p:Math.min(1, 2*Math.min(lo, hi)) };
+}
+
+// subjects x cells matrix for a measure, complete cases only
+function matrix(cells, key, cups){
+  const pids = [...new Set(cells.map(c => c.pid))], Y = [], used = [];
+  for(const pid of pids){
+    const row = TECHS.flatMap(t => cups.map(c => { const x = cells.find(e => e.pid === pid && e.tech === t && e.cup === c); return x ? x[key] : NaN; }));
+    if(row.every(v => isFinite(v))){ Y.push(row); used.push(pid); }
+  }
+  return { Y, used };
+}
+function describe(cells, key, cups){
+  const out = {};
+  for(const t of TECHS) for(const c of cups){ const v = cells.filter(e => e.tech === t && e.cup === c).map(e => e[key]).filter(isFinite);
+    const m = mean(v), s = sd(v), h = v.length > 1 ? tCrit(v.length-1) * s / Math.sqrt(v.length) : NaN; out[t + c] = { m, s, n:v.length, lo:m-h, hi:m+h }; }
+  return out;
+}
+
+// ====================================================================== rendering
+const fmt = (x, d = 2) => isFinite(x) ? (+x).toFixed(d) : '–';
+const fp = p => !isFinite(p) ? '–' : p < .001 ? '< .001' : p.toFixed(3).replace(/^0/, '');
+const stars = p => p < .05 ? ' sig' : '';
+function chart(desc, cups, { yLabel, pct = false, digits = 2 }){
+  const W = 440, H = 260, L = 52, R = 16, T = 16, B = 40;
+  const vals = Object.values(desc).flatMap(d => [d.lo, d.hi, d.m]).filter(isFinite);
+  if(!vals.length) return '<p class="muted">데이터 없음</p>';
+  let lo = Math.min(0, ...vals), hi = Math.max(...vals); if(hi === lo) hi = lo + 1;
+  const raw = (hi - lo) / 5, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 2.5, 5, 10].map(k => k*mag).find(k => k >= raw);
+  lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step; const ticks = Math.round((hi - lo) / step);
+  const x = i => L + (i + .5) * (W - L - R) / cups.length, y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  let g = '';
+  for(let i = 0; i <= ticks; i++){ const v = lo + step*i; g += `<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="#ECEEF0"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end" font-size="11" fill="#6B7178">${pct ? +(v*100).toFixed(1)+'%' : +v.toFixed(3)}</text>`; }
+  cups.forEach((c, i) => g += `<text x="${x(i)}" y="${H-B+18}" text-anchor="middle" font-size="12" fill="#1F2328">${CUP_NAME[c]}</text>`);
+  g += `<text x="14" y="${(T+H-B)/2}" transform="rotate(-90 14 ${(T+H-B)/2})" text-anchor="middle" font-size="11" fill="#6B7178">${yLabel}</text>`;
+  TECHS.forEach((t, k) => {
+    const col = t === 'gs' ? 'var(--gs)' : 'var(--tp)', dx = (k - .5) * 8;
+    const pts = cups.map((c, i) => desc[t + c]).map((d, i) => d && isFinite(d.m) ? [x(i)+dx, y(d.m), d] : null);
+    const path = pts.filter(Boolean).map((p, i) => (i ? 'L' : 'M') + p[0] + ',' + p[1]).join('');
+    g += `<path d="${path}" fill="none" stroke="${col}" stroke-width="2"/>`;
+    for(const p of pts.filter(Boolean)){ const d = p[2];
+      if(isFinite(d.lo)) g += `<line x1="${p[0]}" x2="${p[0]}" y1="${y(d.lo)}" y2="${y(d.hi)}" stroke="${col}" stroke-width="1.5"/>`;
+      g += `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${col}"><title>${TECH_NAME[t]} ${fmt(pct ? d.m*100 : d.m, digits)}${pct?'%':''} (n=${d.n})</title></circle>`; }
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`;
+}
+const legend = '<div class="legend"><span><i style="background:var(--tp)"></i>트랙패드</span><span><i style="background:var(--gs)"></i>GripSpread</span><span>점 = 평균, 막대 = 95% 신뢰구간</span></div>';
+function anovaTable(A, n){
+  return `<table><tr><th>효과</th><th>F</th><th>df</th><th>GG ε</th><th>p</th><th>부분 η²</th></tr>` + Object.entries(A).map(([k, r]) =>
+    `<tr><td>${k}</td><td class="num">${fmt(r.F)}</td><td class="num">${fmt(r.df1*r.eps,2)}, ${fmt(r.df2*r.eps,1)}</td><td class="num">${r.df1 > 1 ? fmt(r.eps) : '–'}</td><td class="num${stars(r.p)}">${fp(r.p)}</td><td class="num">${fmt(r.eta)}</td></tr>`).join('') +
+    `</table><p class="muted">반복측정 ANOVA, n = ${n}명(모든 조건이 있는 참가자). 자유도는 Greenhouse–Geisser 보정 후 값.</p>`;
+}
+function postHoc(cells, key, cups, digits, pct){
+  const rows = cups.map(c => { const pids = [...new Set(cells.map(e => e.pid))], x = [], y = [];
+    for(const pid of pids){ const a = cells.find(e => e.pid === pid && e.tech === 'trackpad' && e.cup === c), b = cells.find(e => e.pid === pid && e.tech === 'gs' && e.cup === c);
+      if(a && b && isFinite(a[key]) && isFinite(b[key])){ x.push(a[key]); y.push(b[key]); } }
+    if(x.length < 3) return `<tr><td>${CUP_NAME[c]}</td><td colspan="4" class="muted">참가자 부족</td></tr>`;
+    const r = pairedT(x, y), pb = Math.min(1, r.p * cups.length);
+    return `<tr><td>${CUP_NAME[c]}</td><td class="num">${pct ? fmt((mean(x)-mean(y))*100, digits) + '%p' : fmt(mean(x)-mean(y), digits)}</td><td class="num">t(${r.df}) = ${fmt(r.t)}</td><td class="num${stars(pb)}">${fp(pb)}</td><td class="num">${fmt(r.d)}</td></tr>`; });
+  return `<h3>컵별 기법 차이 (트랙패드 − GripSpread, 대응 t, Bonferroni ×${cups.length})</h3><table><tr><th>컵</th><th>평균 차</th><th>t</th><th>p (보정)</th><th>Cohen d</th></tr>${rows.join('')}</table>`;
+}
+function block(title, cells, key, cups, opt){
+  const desc = describe(cells, key, cups), { Y, used } = matrix(cells, key, cups);
+  const tbl = `<table><tr><th>기법</th>${cups.map(c => `<th>${CUP_NAME[c]}</th>`).join('')}</tr>` + TECHS.map(t => `<tr><td>${TECH_NAME[t]}</td>` +
+    cups.map(c => { const d = desc[t+c]; return `<td class="num">${opt.pct ? fmt(d.m*100,1)+'%' : fmt(d.m, opt.digits)} <span class="muted">± ${opt.pct ? fmt(d.s*100,1) : fmt(d.s, opt.digits)}</span></td>`; }).join('') + '</tr>').join('') + `</table><p class="muted">평균 ± 표준편차</p>`;
+  const A = Y.length >= 3 ? rmAnova2(Y, 2, cups.length) : null;
+  return { html:`<div class="card"><h3>${title}</h3><div class="grid"><div class="chart">${chart(desc, cups, opt)}${legend}</div><div class="scroll">${tbl}${A ? anovaTable(A, Y.length) : '<p class="muted">검정에는 모든 조건이 있는 참가자가 3명 이상 필요합니다.</p>'}</div></div>${A ? postHoc(cells, key, cups, opt.digits, opt.pct) : ''}</div>`, desc, A, n:Y.length };
+}
+
+let LAST = null;
+function render(R){
+  LAST = R; const { cells, roster, tlx } = R;
+  const tp = block('처리량 (bits/s)', cells, 'tp', CUPS, { yLabel:'처리량 (bits/s)', digits:2 });
+  const loss = block('컵 없음 대비 처리량 손실 (H1)', cells, 'tp_loss', CUPS3, { yLabel:'처리량 손실', pct:true, digits:1 });
+  const mt = block('이동 시간 (ms, 첫 움직임 → 멈춤)', cells, 'mt_ms', CUPS, { yLabel:'이동 시간 (ms)', digits:0 });
+  const er = block('실패율 (15초 초과)', cells, 'error_rate', CUPS, { yLabel:'실패율', pct:true, digits:1 });
+  const rms = block('컵 각속도 RMS (°/s, H2)', cells, 'imu_rms', CUPS3, { yLabel:'각속도 RMS (°/s)', digits:2 });
+  const tilt = block('컵 최대 기울기 변화 (°, H3)', cells, 'tilt_max', CUPS3, { yLabel:'최대 기울기 변화 (°)', digits:2 });
+  const sb = block('방향 전환 횟수', cells, 'switchbacks', CUPS, { yLabel:'방향 전환 (회)', digits:2 });
+
+  // TLX: technique only -> Wilcoxon signed-rank
+  const tlxRows = TLX_KEYS.map(k => { const pids = [...new Set(tlx.map(r => r.pid))], x = [], y = [];
+    for(const pid of pids){ const a = tlx.find(r => r.pid === pid && r.tech === 'trackpad'), b = tlx.find(r => r.pid === pid && r.tech === 'gs'); if(a && b && a[k] != null && b[k] != null){ x.push(a[k]); y.push(b[k]); } }
+    const w = wilcoxon(x, y), med = v => { const s = [...v].sort((p,q) => p-q); return s.length ? (s[(s.length-1)>>1] + s[s.length>>1]) / 2 : NaN; };
+    return { k, n:x.length, mx:med(x), my:med(y), w }; });
+
+  const people = roster.map(r => `<tr><td>${r.pid}</td><td>${r.order}</td><td>${r.hand}</td><td class="num">${fmt(r.handLen,0)}</td><td class="num">${fmt(r.span,0)}</td><td class="num">${r.stature ?? '–'}</td><td class="num">${r.trials}</td><td class="num">${fmt(r.success*100,1)}%</td><td class="num">${r.outliers}</td><td class="num">${r.imuTrials}</td><td class="${r.warn.length ? 'w' : 'muted'}" style="text-align:left;white-space:normal">${r.warn.join(' · ') || '없음'}</td></tr>`).join('');
+
+  $('out').innerHTML = `
+  <h2>참가자</h2>
+  <div class="card scroll"><table><tr><th>참가자</th><th>기법 순서</th><th>손</th><th>손 길이(mm)</th><th>손 뼘(mm)</th><th>키(cm)</th><th>본 시행</th><th>성공</th><th>제외(3SD)</th><th>IMU 시행</th><th style="text-align:left">확인할 것</th></tr>${people}</table>
+  <p class="muted">본 시행 = 연습·적응·건너뛴 시행을 뺀 시행. 이동 시간이 참가자 × 조건 안에서 평균 ± 3SD를 벗어난 시행은 뺐다(Fashimpaur et al. 2023).</p></div>
+
+  <h2>보고서용 문장</h2>
+  <div class="card"><pre id="sentences">${sentences({ tp, loss, rms, tilt, n:Math.min(tp.n, rms.n || tp.n), tlxRows })}</pre></div>
+
+  <h2>H1 · 성능 손실</h2>${loss.html}${tp.html}${mt.html}${er.html}
+  <h2>H2, H3 · 컵 흔들림</h2>${rms.html}${tilt.html}
+  <h2>주관 평가 (NASA-TLX)</h2>
+  <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
+  <p class="muted">기법별로 한 번씩 받았으므로 대응 Wilcoxon 부호순위 검정(정확 p). 0–100점, 낮을수록 부담이 적다.</p></div>
+  <h2>기타</h2>${sb.html}
+  <h2>내려받기</h2>
+  <div class="card"><div class="actions"><button class="primary" id="dlCells">조건 요약 CSV (참가자 × 기법 × 컵)</button><button id="dlTrials">시행별 CSV (IMU 지표 포함)</button><button id="dlText">보고서용 문장 TXT</button></div></div>`;
+  $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','tilt_max']));
+  $('dlTrials').onclick = () => download('gripspread_trials_all.csv', toCSV(R.trialsOut, Object.keys(R.trialsOut[0] || {})));
+  $('dlText').onclick = () => download('gripspread_results.txt', $('sentences').textContent);
+}
+function sentences({ tp, loss, rms, tilt, n, tlxRows }){
+  const d = (b, t, c, digits, pct) => { const x = b.desc[t + c]; return x && isFinite(x.m) ? (pct ? fmt(x.m*100, 1) + '%' : fmt(x.m, digits)) : '–'; };
+  const eff = (A, k) => A ? `F(${fmt(A[k].df1*A[k].eps,2)}, ${fmt(A[k].df2*A[k].eps,1)}) = ${fmt(A[k].F)}, p ${A[k].p < .001 ? '< .001' : '= ' + fp(A[k].p)}, ηp² = ${fmt(A[k].eta)}` : '(검정 불가)';
+  const raw = tlxRows[0];
+  return [
+    `참가자 ${tp.n}명의 자료를 분석했다(모든 조건이 있는 참가자 기준).`,
+    `컵이 없을 때 처리량은 트랙패드 ${d(tp,'trackpad','none',2)} bits/s, GripSpread ${d(tp,'gs','none',2)} bits/s였다.`,
+    `90 mm 컵에서 컵 없음 대비 처리량은 트랙패드가 ${d(loss,'trackpad','90',1,true)}, GripSpread가 ${d(loss,'gs','90',1,true)} 줄었다.`,
+    `처리량 손실에 대한 기법 × 컵 상호작용: ${eff(loss.A, '기법 × 컵')}. 기법 주효과: ${eff(loss.A, '기법')}.`,
+    `처리량(컵 4조건)에 대한 기법 × 컵 상호작용: ${eff(tp.A, '기법 × 컵')}.`,
+    `스크롤 중 컵 각속도 RMS 평균은 트랙패드 ${d(rms,'trackpad','90',2)}°/s, GripSpread ${d(rms,'gs','90',2)}°/s(90 mm 컵)였다. 기법 주효과: ${eff(rms.A, '기법')}.`,
+    `최대 기울기 변화에 대한 기법 × 컵 상호작용: ${eff(tilt.A, '기법 × 컵')}.`,
+    raw ? `Raw TLX 중앙값은 트랙패드 ${fmt(raw.mx,1)}, GripSpread ${fmt(raw.my,1)}였다(Wilcoxon W = ${fmt(raw.w.W,1)}, p ${raw.w.p < .001 ? '< .001' : '= ' + fp(raw.w.p)}, n = ${raw.n}).` : ''
+  ].filter(Boolean).join('\n');
+}
+function toCSV(rows, keys){ return [keys.join(',')].concat(rows.map(r => keys.map(k => { const v = r[k]; return v == null || (typeof v === 'number' && !isFinite(v)) ? '' : typeof v === 'number' ? +v.toFixed(5) : String(v).includes(',') ? `"${v}"` : v; }).join(','))).join('\n'); }
+function download(name, text){ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type:'text/plain;charset=utf-8' })); a.download = name; a.click(); }
+
+window.GS_ANALYSIS = { rmAnova2, wilcoxon, pairedT, pF, pT2 };   // console/testing
+</script>
+</body>
+</html>
