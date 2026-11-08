@@ -31,12 +31,28 @@
   pre{white-space:pre-wrap;background:#F7F8F9;border:1px solid var(--hair);border-radius:8px;padding:12px;font-size:13px}
   .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
   .scroll{overflow-x:auto}
+  .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:8px 0}
+  .form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+  input{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--hair);border-radius:6px;padding:6px 8px}
 </style>
 </head>
 <body>
 <main>
   <h1>GripSpread 분석</h1>
   <p class="muted">실험 프로그램이 저장한 참가자 zip(또는 그 안의 csv·json)을 한꺼번에 올리면, 가설 H1–H3 분석과 그림을 바로 보여 줍니다. 파일은 이 브라우저 밖으로 나가지 않습니다.</p>
+
+  <div class="card" id="cloudCard">
+    <b>클라우드에서 불러오기 (Supabase)</b>
+    <p class="muted">실험 프로그램이 올린 파일을 연구자 계정으로 가져옵니다. 참가자마다 마지막 전체 zip(…_final.zip), 없으면 가장 최근 중간 저장본을 씁니다. 비밀번호는 저장하지 않습니다.</p>
+    <div class="form">
+      <label>프로젝트 URL<input id="cUrl" placeholder="https://xxxx.supabase.co"></label>
+      <label>publishable 키<input id="cKey" placeholder="sb_publishable_…"></label>
+      <label>버킷<input id="cBucket" value="gripspread"></label>
+      <label>연구자 이메일<input id="cEmail" type="email" autocomplete="username"></label>
+      <label>비밀번호<input id="cPw" type="password" autocomplete="current-password"></label>
+    </div>
+    <div class="actions"><button class="primary" id="cLoad">불러와서 분석</button><span id="cMsg" class="muted"></span></div>
+  </div>
 
   <div id="drop" class="card">
     <b>여기에 파일을 끌어 놓거나 눌러서 고르세요</b>
@@ -62,6 +78,52 @@ drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); load([...e.dataTransfer.files]); };
 fileIn.onchange = () => load([...fileIn.files]);
 
+// ====================================================================== cloud (Supabase Storage)
+// Uploads stay anon insert-only; reading needs a signed-in researcher (select policy limited to their emails, see README).
+// URL, key and bucket are shared with the experiment program's settings in this browser; the password is never stored.
+const CLOUD_KEY = 'gripspread_cloud_v1';
+try{ const c = JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}; $('cUrl').value = c.url || ''; $('cKey').value = c.key || ''; $('cBucket').value = c.bucket || 'gripspread'; $('cEmail').value = c.email || ''; }catch(e){}
+$('cLoad').onclick = async () => {
+  const url = $('cUrl').value.trim().replace(/\/+$/, ''), key = $('cKey').value.trim(), bucket = $('cBucket').value.trim() || 'gripspread', email = $('cEmail').value.trim(), pw = $('cPw').value;
+  const msg = t => $('cMsg').textContent = t;
+  if(!url || !key || !email || !pw) return msg('URL, 키, 이메일, 비밀번호를 모두 넣어 주세요');
+  if(/^sb_secret_/.test(key)) return msg('secret 키는 쓰지 않습니다. publishable 키를 넣어 주세요');
+  try{ const c = JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}; localStorage.setItem(CLOUD_KEY, JSON.stringify({ ...c, url, key, bucket, email })); }catch(e){}
+  $('cLoad').disabled = true;
+  try{
+    msg('로그인 중…');
+    const a = await fetch(`${url}/auth/v1/token?grant_type=password`, { method:'POST', headers:{ apikey:key, 'Content-Type':'application/json' }, body:JSON.stringify({ email, password:pw }) });
+    const aj = await a.json().catch(() => ({}));
+    if(!a.ok) throw new Error('로그인 실패: ' + (aj.error_description || aj.msg || a.status));
+    const H = { apikey:key, Authorization:`Bearer ${aj.access_token}` };
+    const list = async prefix => { const r = await fetch(`${url}/storage/v1/object/list/${encodeURIComponent(bucket)}`, { method:'POST', headers:{ ...H, 'Content-Type':'application/json' },
+      body:JSON.stringify({ prefix, limit:1000, offset:0, sortBy:{ column:'name', order:'asc' } }) }); if(!r.ok) throw new Error('목록 실패 ' + r.status + ' (읽기 권한 SQL 확인)'); return r.json(); };
+    msg('파일 목록 읽는 중…');
+    const pick = [];
+    for(const p of (await list('')).filter(e => e.id == null && !e.name.startsWith('_'))){          // participant folders
+      const files = [];
+      for(const s of (await list(p.name + '/')).filter(e => e.id == null))                          // session folders
+        for(const f of await list(`${p.name}/${s.name}/`)) if(/\.zip$/.test(f.name)) files.push({ path:`${p.name}/${s.name}/${f.name}`, session:s.name, name:f.name });
+      if(!files.length) continue;
+      const finals = files.filter(f => /_final\.zip$/.test(f.name)).sort((x,y) => x.path.localeCompare(y.path));
+      const pool = finals.length ? finals : files.sort((x,y) => (x.session + x.name).localeCompare(y.session + y.name));
+      pick.push(pool[pool.length - 1]);
+    }
+    if(!pick.length) throw new Error('버킷에 참가자 파일이 없습니다');
+    const got = [];
+    for(const [i, f] of pick.entries()){
+      msg(`내려받는 중… ${i+1}/${pick.length} (${f.path})`);
+      const r = await fetch(`${url}/storage/v1/object/authenticated/${encodeURIComponent(bucket)}/${f.path}`, { headers:H });
+      if(!r.ok) throw new Error('내려받기 실패 ' + r.status + ' ' + f.path);
+      got.push({ name:f.name, blob:await r.blob() });
+    }
+    msg(`${pick.length}명 파일을 불러왔습니다 (${pick.filter(f => /_final/.test(f.name)).length}명은 최종본, 나머지는 중간 저장본)`);
+    $('cPw').value = '';
+    await load(got);
+  }catch(e){ msg(e.message); }
+  finally{ $('cLoad').disabled = false; }
+};
+
 // each experiment file is <tag>_trials.csv, <tag>_imu.csv, <tag>_tlx.csv, <tag>_session.json (frames are not needed)
 function kindOf(name){
   const m = name.split('/').pop().match(/^(.*)_(trials|imu|tlx|session)\.(csv|json)$/);
@@ -74,9 +136,9 @@ async function load(files){
   for(const f of files){
     try{
       if(/\.zip$/i.test(f.name)){
-        const z = await JSZip.loadAsync(f);
+        const z = await JSZip.loadAsync(f.blob || f);
         for(const e of Object.values(z.files)){ const k = kindOf(e.name); if(k && !e.dir) put(k.tag, k.kind, await e.async('string')); }
-      } else { const k = kindOf(f.name); if(k) put(k.tag, k.kind, await f.text()); }
+      } else { const k = kindOf(f.name); if(k) put(k.tag, k.kind, await (f.blob || f).text()); }
     }catch(err){ console.error(err); }
   }
   const people = buildPeople(parts);
