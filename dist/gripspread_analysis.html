@@ -99,8 +99,10 @@ $('cLoad').onclick = async () => {
     const list = async prefix => { const r = await fetch(`${url}/storage/v1/object/list/${encodeURIComponent(bucket)}`, { method:'POST', headers:{ ...H, 'Content-Type':'application/json' },
       body:JSON.stringify({ prefix, limit:1000, offset:0, sortBy:{ column:'name', order:'asc' } }) }); if(!r.ok) throw new Error('목록 실패 ' + r.status + ' (읽기 권한 SQL 확인)'); return r.json(); };
     msg('파일 목록 읽는 중…');
-    const pick = [];
-    for(const p of (await list('')).filter(e => e.id == null && !e.name.startsWith('_'))){          // participant folders
+    const pick = [], top = await list('');
+    // an empty listing can mean an empty bucket OR a read policy that does not match (RLS hides rows, no error)
+    if(!top.length) throw new Error('버킷에서 아무것도 안 보입니다. 정말 비었거나, 읽기 정책의 이메일이 로그인한 이메일과 다릅니다(대소문자 포함)');
+    for(const p of top.filter(e => e.id == null && !e.name.startsWith('_'))){          // participant folders
       const files = [];
       for(const s of (await list(p.name + '/')).filter(e => e.id == null))                          // session folders
         for(const f of await list(`${p.name}/${s.name}/`)) if(/\.zip$/.test(f.name)) files.push({ path:`${p.name}/${s.name}/${f.name}`, session:s.name, name:f.name });
@@ -109,7 +111,7 @@ $('cLoad').onclick = async () => {
       const pool = finals.length ? finals : files.sort((x,y) => (x.session + x.name).localeCompare(y.session + y.name));
       pick.push(pool[pool.length - 1]);
     }
-    if(!pick.length) throw new Error('버킷에 참가자 파일이 없습니다');
+    if(!pick.length) throw new Error(top.some(e => e.name === '_test') ? '로그인과 읽기 권한은 정상입니다(_test 폴더가 보임). 아직 참가자 파일이 없습니다' : '참가자 파일이 없습니다');
     const got = [];
     for(const [i, f] of pick.entries()){
       msg(`내려받는 중… ${i+1}/${pick.length} (${f.path})`);
