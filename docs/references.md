@@ -50,6 +50,8 @@ GripSpread 기획, 실험 설계, 파일럿 절차에서 근거로 쓴 자료. �
 
 ## 통계 분석 (`gripspread_analysis.html`)
 
+- **Leys, C., Ley, C., Klein, O., Bernard, P., & Licata, L. (2013).** Detecting outliers: Do not use standard deviation around the mean, use absolute deviation around the median. *Journal of Experimental Social Psychology*, 49(4), 764–766. https://doi.org/10.1016/j.jesp.2013.03.013 — MAD 기준 강건 z, 임계 3.
+- **Sen, P. K. (1968).** Estimates of the regression coefficient based on Kendall's tau. *JASA*, 63(324), 1379–1389. https://doi.org/10.1080/01621459.1968.10480934 — Theil–Sen 기울기.
 - **Greenhouse, S. W., & Geisser, S. (1959).** On methods in the analysis of profile data. *Psychometrika*, 24, 95–112. https://doi.org/10.1007/BF02289823 — 구형성 보정.
 - **Olejnik, S., & Algina, J. (2003).** Generalized eta and omega squared statistics. *Psychological Methods*, 8(4), 434–447. https://doi.org/10.1037/1082-989X.8.4.434 · **Bakeman, R. (2005).** Recommended effect size statistics for repeated measures designs. *Behavior Research Methods*, 37(3), 379–384. https://doi.org/10.3758/BF03192707 — η²G.
 - **Wobbrock, J. O., Findlater, L., Gergle, D., & Higgins, J. J. (2011).** The aligned rank transform for nonparametric factorial analyses using only ANOVA procedures. *Proc. CHI 2011*, 143–146. https://doi.org/10.1145/1978942.1978963 — ART 확인 검정.

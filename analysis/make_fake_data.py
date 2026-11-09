@@ -24,12 +24,13 @@ def person(i, rng):
         for cup in ['none', '60', '75', '90']:
             step += 1
             cupk = {'none': 0, '60': 1, '75': 2, '90': 3}[cup]
-            for k in range(2 + 12):
+            for k in range(2 + 36):          # 2 warm-up + 6 D x W cells x 6 reps (as in the study)
                 D, W = [400, 1200, 3600][k % 3], [40, 120][(k // 3) % 2]
                 ID = math.log2(D / W + 1)
                 base_tp = (3.2 if tech == 'trackpad' else 2.4) * skill
                 loss = (.07 * cupk if tech == 'trackpad' else .025 * cupk)
                 mt = ID / (base_tp * (1 - loss)) * 1000 * rng.lognormvariate(0, .18)
+                if rng.random() < .03: mt *= 3          # occasional lost-hand / regrip trial
                 ok = rng.random() > (.03 + .015 * cupk * (tech == 'trackpad'))
                 uid = f'm{step}-{k}'
                 trials.append(dict(pid=pid, technique=tech, cup=cup, step='measure', cond_index=step, trial_index=k, trial_uid=uid,

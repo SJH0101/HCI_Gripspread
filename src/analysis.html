@@ -31,6 +31,8 @@
   pre{white-space:pre-wrap;background:#F7F8F9;border:1px solid var(--hair);border-radius:8px;padding:12px;font-size:13px}
   .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
   .scroll{overflow-x:auto}
+  select{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--hair);border-radius:6px;padding:5px 8px}
+  .actions label{display:flex;align-items:center;gap:6px;font-size:13px}
   .form{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin:8px 0}
   .form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
   input{font:inherit;color:var(--ink);background:#fff;border:1px solid var(--hair);border-radius:6px;padding:6px 8px}
@@ -228,9 +230,11 @@ function imuPerTrial(text, cal){
   for(const [uid, rs] of byUid){
     if(rs.length < 10) continue;
     let s2 = 0, l2 = 0; for(const r of rs){ s2 += r.w[0]**2 + r.w[1]**2 + r.w[2]**2; l2 += r.lin**2; }
-    const g0 = rs[0].g; let maxTilt = 0;
+    const g0 = rs[0].g; let maxTilt = 0; const ser = { t:[], w:[], lin:[], tilt:[] }, t0 = rs[0].t;
+    for(const r of rs){ const c = g0[0]*r.g[0] + g0[1]*r.g[1] + g0[2]*r.g[2];
+      ser.t.push(((r.t - t0) >>> 0) / 1e6); ser.w.push(Math.hypot(...r.w)); ser.lin.push(r.lin); ser.tilt.push(Math.acos(Math.min(1, Math.max(-1, c))) * 180 / Math.PI); }
     for(const r of rs){ const c = g0[0]*r.g[0] + g0[1]*r.g[1] + g0[2]*r.g[2]; maxTilt = Math.max(maxTilt, Math.acos(Math.min(1, Math.max(-1, c))) * 180 / Math.PI); }
-    out.set(uid, { rms:Math.sqrt(s2 / rs.length), lin:Math.sqrt(l2 / rs.length), tilt:maxTilt, n:rs.length });
+    out.set(uid, { rms:Math.sqrt(s2 / rs.length), lin:Math.sqrt(l2 / rs.length), tilt:maxTilt, n:rs.length, ser });
   }
   out.agreeDeg = dN ? dSum / dN : NaN;
   return out;
@@ -238,10 +242,11 @@ function imuPerTrial(text, cal){
 
 // ====================================================================== condition summaries
 const mean = a => a.length ? a.reduce((s,x) => s + x, 0) / a.length : NaN;
+const median = a => { if(!a.length) return NaN; const s = [...a].sort((p,q) => p-q), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2; };
 const sd = a => { if(a.length < 2) return NaN; const m = mean(a); return Math.sqrt(a.reduce((s,x) => s + (x-m)**2, 0) / (a.length - 1)); };
 
 function analyze(people){
-  const cells = [], trialsOut = [], roster = [];
+  const cells = [], trialsOut = [], roster = [], imuView = {}, flagged = [];   // imuView[pid][tech][cup] = [{ uid, D, W, imu }]
   for(const p of people){
     const warn = [];
     if(p.dupes) warn.push(`같은 참가자 파일 ${p.dupes + 1}개 중 시행이 많은 것 사용`);
@@ -255,31 +260,44 @@ function analyze(people){
       const rows = meas.filter(t => t.technique === tech && String(t.cup) === cup);
       if(!rows.length) continue;
       const ok = rows.filter(t => truthy(t.success) && numOr(t.mt_ms) > 0);
-      // Outliers: residuals from this participant x condition's Fitts line (MT = a + b*ID, least squares), dropped beyond
-      // 3 SD. A plain mean +- 3 SD would mix short and long distances, and within one D x W cell (6 trials) 3 SD can never be
-      // reached, so the regression residual is the comparable quantity.
-      const xs = ok.map(t => +t.ID), ys = ok.map(t => +t.mt_ms), mx = mean(xs), my = mean(ys);
-      const sxx = xs.reduce((s,x) => s + (x-mx)**2, 0), slope = sxx > 0 ? xs.reduce((s,x,i) => s + (x-mx)*(ys[i]-my), 0) / sxx : 0;
-      const res = ys.map((y,i) => y - (my + slope*(xs[i]-mx))), rs = sd(res);
-      const kept = ok.filter((t,i) => !(rs > 0 && Math.abs(res[i]) > 3 * rs));
-      outliers += ok.length - kept.length;
-      // throughput: mean over D x W cells of mean(ID) / mean(MT in s)
-      const groups = {};
-      for(const t of kept){ const k = t.D + 'x' + t.W; (groups[k] = groups[k] || []).push(t); }
-      const tps = Object.values(groups).map(g => mean(g.map(t => +t.ID)) / (mean(g.map(t => +t.mt_ms)) / 1000));
-      const im = imu ? kept.map(t => imu.get(t.trial_uid)).filter(Boolean) : [];
-      imuHit += im.length;
-      const cell = { pid:p.pid, tech, cup, n:rows.length, n_ok:ok.length, error_rate:1 - ok.length / rows.length,
-        mt_ms:mean(kept.map(t => +t.mt_ms)), plan_ms:mean(kept.map(t => numOr(t.plan_ms)).filter(x => x != null)),
-        tp:mean(tps), switchbacks:mean(kept.map(t => +t.switchbacks)), overshoot_px:mean(kept.map(t => +t.overshoot_px)),
-        imu_rms:cup === 'none' || !im.length ? NaN : mean(im.map(x => x.rms)), lin_rms:cup === 'none' || !im.length ? NaN : mean(im.map(x => x.lin)), tilt_max:cup === 'none' || !im.length ? NaN : mean(im.map(x => x.tilt)) };
+      // Unusual trials are FLAGGED, not removed. Each participant x condition gets a robust Fitts line (Theil-Sen slope,
+      // median intercept) and a robust z of each residual (residual / (1.4826 * MAD)); |z| > 3 is flagged (Leys et al. 2013).
+      // Mean +- SD would be pulled by the very trials it should find, and pooling distances without the Fitts line would
+      // hide slow long-distance trials. The main analysis keeps every successful trial; flagged trials are listed for
+      // inspection and a sensitivity analysis drops them.
+      const xs = ok.map(t => +t.ID), ys = ok.map(t => +t.mt_ms), slopes = [];
+      for(let i = 0; i < xs.length; i++) for(let j = i+1; j < xs.length; j++) if(xs[j] !== xs[i]) slopes.push((ys[j]-ys[i]) / (xs[j]-xs[i]));
+      const slope = slopes.length ? median(slopes) : 0, icpt = median(ys.map((y,i) => y - slope*xs[i]));
+      // residuals on a log scale (log observed - log predicted): movement times are right-skewed with spread growing with
+      // their size, so a ratio residual treats a 2x slower short trial like a 2x slower long one
+      const res = ys.map((y,i) => Math.log(y) - Math.log(Math.max(1, icpt + slope*xs[i]))), mad = 1.4826 * median(res.map(r => Math.abs(r - median(res))));
+      const zOf = new Map(ok.map((t,i) => [t, mad > 0 ? (res[i] - median(res)) / mad : 0]));
+      const flaggedT = ok.filter(t => Math.abs(zOf.get(t)) > 3), clean = ok.filter(t => Math.abs(zOf.get(t)) <= 3);
+      outliers += flaggedT.length;
+      const summ = set => {
+        const groups = {}; for(const t of set){ const k = t.D + 'x' + t.W; (groups[k] = groups[k] || []).push(t); }
+        const tps = Object.values(groups).map(g => mean(g.map(t => +t.ID)) / (mean(g.map(t => +t.mt_ms)) / 1000));
+        const im = imu && cup !== 'none' ? set.map(t => imu.get(t.trial_uid)).filter(Boolean) : [];
+        return { mt_ms:mean(set.map(t => +t.mt_ms)), plan_ms:mean(set.map(t => numOr(t.plan_ms)).filter(x => x != null)), tp:mean(tps),
+          switchbacks:mean(set.map(t => +t.switchbacks)), overshoot_px:mean(set.map(t => +t.overshoot_px)), nImu:im.length,
+          imu_rms:im.length ? mean(im.map(x => x.rms)) : NaN, lin_rms:im.length ? mean(im.map(x => x.lin)) : NaN, tilt_max:im.length ? mean(im.map(x => x.tilt)) : NaN };
+      };
+      const all = summ(ok), ex = summ(clean);
+      if(imu && cup !== 'none') ((imuView[p.pid] = imuView[p.pid] || {})[tech] = imuView[p.pid][tech] || {})[cup] = ok.filter(t => imu.get(t.trial_uid)).map(t => ({ uid:t.trial_uid, D:+t.D, W:+t.W, imu:imu.get(t.trial_uid), z:zOf.get(t) }));
+      imuHit += all.nImu;
+      for(const t of flaggedT){ const x = imu && imu.get(t.trial_uid);
+        flagged.push({ pid:p.pid, tech, cup, uid:t.trial_uid, D:+t.D, W:+t.W, mt:+t.mt_ms, z:zOf.get(t), plan:numOr(t.plan_ms), sb:+t.switchbacks, os:+t.overshoot_px,
+          rms:x ? x.rms : NaN, tilt:x ? x.tilt : NaN, condMt:all.mt_ms, condRms:all.imu_rms }); }
+      const cell = { pid:p.pid, tech, cup, n:rows.length, n_ok:ok.length, n_flagged:flaggedT.length, error_rate:1 - ok.length / rows.length, ...all,
+        ...Object.fromEntries(['tp','mt_ms','imu_rms','lin_rms','tilt_max'].map(k => [k + '_ex', ex[k]])) };
+      delete cell.nImu;
       cells.push(cell);
       for(const t of rows){ const x = imu && imu.get(t.trial_uid);
         trialsOut.push({ pid:p.pid, technique:tech, cup, trial_uid:t.trial_uid, D:t.D, W:t.W, ID:t.ID, success:truthy(t.success) ? 1 : 0, mt_ms:t.mt_ms, plan_ms:t.plan_ms,
-          switchbacks:t.switchbacks, overshoot_px:t.overshoot_px, kept: kept.includes(t) ? 1 : 0, imu_rms_dps: x ? x.rms.toFixed(3) : '', imu_lin_rms_ms2: x ? x.lin.toFixed(4) : '', imu_tilt_max_deg: x ? x.tilt.toFixed(2) : '' }); }
+          switchbacks:t.switchbacks, overshoot_px:t.overshoot_px, fitts_resid_z: zOf.has(t) ? zOf.get(t).toFixed(2) : '', flagged: zOf.has(t) && Math.abs(zOf.get(t)) > 3 ? 1 : 0, imu_rms_dps: x ? x.rms.toFixed(3) : '', imu_lin_rms_ms2: x ? x.lin.toFixed(4) : '', imu_tilt_max_deg: x ? x.tilt.toFixed(2) : '' }); }
     }
     for(const tech of TECHS){ const tp0 = cells.find(c => c.pid === p.pid && c.tech === tech && c.cup === 'none');
-      for(const c of cells.filter(c => c.pid === p.pid && c.tech === tech && c.cup !== 'none')) c.tp_loss = tp0 ? 1 - c.tp / tp0.tp : NaN; }
+      for(const c of cells.filter(c => c.pid === p.pid && c.tech === tech && c.cup !== 'none')){ c.tp_loss = tp0 ? 1 - c.tp / tp0.tp : NaN; c.tp_loss_ex = tp0 ? 1 - c.tp_ex / tp0.tp_ex : NaN; } }
     const ss = p.session || {};
     if(!p.session) warn.push('session.json 없음');
     const nCond = new Set(meas.map(t => t.technique + t.cup)).size;
@@ -291,7 +309,7 @@ function analyze(people){
   // NASA-TLX (per participant x technique)
   const tlx = [];
   for(const p of people) for(const r of p.tlx) tlx.push({ pid:p.pid, tech:r.technique, ...Object.fromEntries(TLX_KEYS.map(k => [k, numOr(r[k])])) });
-  return { cells, trialsOut, roster, tlx };
+  return { cells, trialsOut, roster, tlx, imuView, flagged };
 }
 const TLX_KEYS = ['raw_tlx','mental','physical','temporal','performance','effort','frustration'];
 const TLX_NAME = { raw_tlx:'전체(Raw TLX)', mental:'정신적 부담', physical:'신체적 부담', temporal:'시간 압박', performance:'수행 만족(낮을수록 좋음)', effort:'노력', frustration:'좌절' };
@@ -470,8 +488,8 @@ function render(R){
 
   $('out').innerHTML = `
   <h2>참가자</h2>
-  <div class="card scroll"><table><tr><th>참가자</th><th>기법 순서</th><th>손</th><th>손 길이(mm)</th><th>손 뼘(mm)</th><th>키(cm)</th><th>본 시행</th><th>성공</th><th>제외(3SD)</th><th>IMU 시행</th><th style="text-align:left">확인할 것</th></tr>${people}</table>
-  <p class="muted">본 시행 = 연습·적응·건너뛴 시행을 뺀 시행. 제외(3SD) = 참가자 × 조건마다 이동 시간을 ID에 회귀한 Fitts 직선에서 잔차가 3SD를 넘은 성공 시행.</p></div>
+  <div class="card scroll"><table><tr><th>참가자</th><th>기법 순서</th><th>손</th><th>손 길이(mm)</th><th>손 뼘(mm)</th><th>키(cm)</th><th>본 시행</th><th>성공</th><th>확인할 시행</th><th>IMU 시행</th><th style="text-align:left">확인할 것</th></tr>${people}</table>
+  <p class="muted">본 시행 = 연습·적응·건너뛴 시행을 뺀 시행. 확인할 시행 = 참가자 × 조건마다 이동 시간에 맞춘 강건한 Fitts 직선(Theil–Sen)에서 잔차의 강건 z(MAD 기준)가 3을 넘은 성공 시행. 빼지 않고 분석에 그대로 넣으며, 아래 "확인할 시행"과 "민감도 분석"에서 따로 본다.</p></div>
 
   <h2>보고서용 문장</h2>
   <div class="card"><pre id="sentences">${sentences({ tp, loss, rms, lin, tilt, n:Math.min(tp.n, rms.n || tp.n), tlxRows })}</pre></div>
@@ -482,13 +500,79 @@ function render(R){
   <h2>주관 평가 (NASA-TLX)</h2>
   <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩 받았으므로 대응 Wilcoxon 부호순위 검정(정확 p). 0–100점, 낮을수록 부담이 적다.</p></div>
+  <h2>확인할 시행 (이동 시간이 그 사람의 Fitts 직선에서 크게 벗어남, 강건 z > 3)</h2>
+  <div class="card scroll">${flaggedTable(R.flagged)}</div>
+  <h2>민감도 분석 (확인할 시행을 뺐을 때)</h2>
+  <div class="card scroll">${sensitivity(cells)}</div>
+  <h2>IMU 시행 보기</h2>
+  <div class="card">
+    <p class="muted">한 참가자의 같은 컵, 같은 순번 시행을 두 기법으로 나란히 봅니다. 세로축은 두 기법이 같게 맞춰 비교할 수 있게 했습니다. 점선 = 그 시행의 RMS, ▲ = 최대 기울기.</p>
+    <div class="actions"><label>참가자 <select id="ivP"></select></label><label>컵 <select id="ivC"><option>60</option><option>75</option><option selected>90</option></select></label>
+      <label>시행 <select id="ivT"></select></label><button id="ivPrev">◀</button><button id="ivNext">▶</button></div>
+    <div id="ivOut" class="grid" style="margin-top:12px"></div>
+  </div>
   <h2>기타</h2>${sb.html}
   <h2>내려받기</h2>
   <div class="card"><div class="actions"><button class="primary" id="dlCells">조건 요약 CSV (참가자 × 기법 × 컵)</button><button id="dlTrials">시행별 CSV (IMU 지표 포함)</button><button id="dlText">보고서용 문장 TXT</button></div></div>`;
-  $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','lin_rms','tilt_max']));
+  setupImuView(R.imuView);
+  $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','lin_rms','tilt_max','n_flagged','tp_ex','tp_loss_ex','mt_ms_ex','imu_rms_ex','lin_rms_ex','tilt_max_ex']));
   $('dlTrials').onclick = () => download('gripspread_trials_all.csv', toCSV(R.trialsOut, Object.keys(R.trialsOut[0] || {})));
   $('dlText').onclick = () => download('gripspread_results.txt', $('sentences').textContent);
 }
+// ---------- flagged trials and sensitivity ----------
+function flaggedTable(F){
+  if(!F.length) return '<p class="muted">없음. 모든 성공 시행이 각자의 Fitts 직선에서 강건 z 3 안에 있다.</p>';
+  F = [...F].sort((a,b) => Math.abs(b.z) - Math.abs(a.z));
+  return `<table><tr><th>참가자</th><th>기법</th><th>컵</th><th>D × W</th><th>이동 시간</th><th>조건 평균</th><th>강건 z</th><th>반응 시간</th><th>방향 전환</th><th>과잉 이동</th><th>각속도 RMS</th><th>조건 평균</th><th>최대 기울기</th><th></th></tr>` +
+    F.map((f, i) => `<tr><td>${f.pid}</td><td>${TECH_NAME[f.tech]}</td><td>${CUP_NAME[f.cup]}</td><td class="num">${f.D} × ${f.W}</td><td class="num">${fmt(f.mt,0)} ms</td><td class="num muted">${fmt(f.condMt,0)}</td><td class="num${Math.abs(f.z) > 3 ? ' w' : ''}">${fmt(f.z,1)}</td><td class="num">${fmt(f.plan,0)}</td><td class="num">${fmt(f.sb,0)}</td><td class="num">${fmt(f.os,0)} px</td><td class="num">${fmt(f.rms,2)}</td><td class="num muted">${fmt(f.condRms,2)}</td><td class="num">${fmt(f.tilt,2)}°</td><td>${f.cup !== 'none' && isFinite(f.rms) ? `<button data-iv="${i}">IMU 보기</button>` : ''}</td></tr>`).join('') +
+    `</table><p class="muted">왜 벗어났는지 보는 단서: 방향 전환과 과잉 이동이 많으면 목표를 지나쳐 되돌아온 것, 반응 시간이 길면 시작을 늦게 한 것, 각속도가 조건 평균보다 크면 컵을 고쳐 쥐거나 흔든 것. 폰 녹화 영상에서 같은 시행을 찾아 확인한다(시행 번호 = trial_uid).</p>`;
+}
+function sensitivity(cells){
+  const items = [['tp_loss', '처리량 손실', CUPS3, '기법 × 컵'], ['tp', '처리량', CUPS, '기법 × 컵'], ['mt_ms', '이동 시간', CUPS, '기법 × 컵'], ['imu_rms', '각속도 RMS', CUPS3, '기법'], ['lin_rms', '선형 가속도 RMS', CUPS3, '기법'], ['tilt_max', '최대 기울기 변화', CUPS3, '기법 × 컵']];
+  const rows = items.map(([k, name, cups, eff]) => { const a = matrix(cells, k, cups), b = matrix(cells, k + '_ex', cups);
+    if(a.Y.length < 3 || b.Y.length < 3) return `<tr><td>${name}</td><td>${eff}</td><td colspan="3" class="muted">참가자 부족</td></tr>`;
+    const A = rmAnova2(a.Y, 2, cups.length)[eff], B = rmAnova2(b.Y, 2, cups.length)[eff], same = (A.p < .05) === (B.p < .05);
+    return `<tr><td>${name}</td><td>${eff}</td><td class="num">${fp(A.p)} (η²G ${fmt(A.etaG,3)})</td><td class="num">${fp(B.p)} (η²G ${fmt(B.etaG,3)})</td><td class="${same ? '' : 'w'}">${same ? '같음' : '⚠ 달라짐'}</td></tr>`; });
+  return `<table><tr><th>지표</th><th>효과</th><th>전체 시행 p</th><th>확인할 시행 뺀 p</th><th>결론</th></tr>${rows.join('')}</table><p class="muted">주 분석은 모든 성공 시행을 쓴다. 결론이 달라지면 그 시행들의 원인을 위 표와 영상으로 확인하고 보고서에 적는다.</p>`;
+}
+
+// ---------- per-trial IMU viewer ----------
+function setupImuView(V){
+  const pids = Object.keys(V); if(!pids.length){ $('ivOut').innerHTML = '<p class="muted">IMU 데이터가 없습니다.</p>'; return; }
+  $('ivP').innerHTML = pids.map(p => `<option>${p}</option>`).join('');
+  const list = () => { const v = V[$('ivP').value] || {}, c = $('ivC').value; return [(v.trackpad || {})[c] || [], (v.gs || {})[c] || []]; };
+  const fillT = () => { const [a, b] = list(), n = Math.max(a.length, b.length);
+    $('ivT').innerHTML = Array.from({length:n}, (_, i) => `<option value="${i}">${i+1} / ${n}${[a[i], b[i]].some(x => x && Math.abs(x.z) > 3) ? ' ⚠' : ''}</option>`).join(''); draw(); };
+  const draw = () => {
+    const [a, b] = list(), i = +$('ivT').value || 0, tr = [a[i], b[i]];
+    const series = [['w', '회전 떨림: 각속도 크기 (°/s)', 'rms'], ['lin', '밀리는 떨림: 선형 가속도 크기 (m/s²)', 'lin'], ['tilt', '기울기: 시작 자세 대비 (°)', 'tilt']];
+    const maxOf = k => Math.max(1e-6, ...tr.filter(Boolean).flatMap(x => x.imu.ser[k]));
+    $('ivOut').innerHTML = TECHS.map((t, ti) => { const x = tr[ti];
+      if(!x) return `<div><h3>${TECH_NAME[t]}</h3><p class="muted">이 순번의 시행 없음</p></div>`;
+      const s = x.imu.ser, dur = s.t[s.t.length-1] || 1;
+      return `<div><h3 style="color:${t === 'gs' ? 'var(--gs)' : 'var(--tp)'}">${TECH_NAME[t]} <span class="muted" style="font-weight:400">· D ${x.D} px, W ${x.W} px · ${dur.toFixed(2)} s · ${x.uid}${Math.abs(x.z) > 3 ? ` · <b class="w">확인할 시행 (z ${x.z.toFixed(1)})</b>` : ''}</span></h3>` +
+        series.map(([k, label, sum]) => lineChart(s.t, s[k], maxOf(k), label, k === 'tilt' ? { mark:x.imu.tilt } : { ref:x.imu[sum] }, t === 'gs' ? 'var(--gs)' : 'var(--tp)')).join('') + '</div>'; }).join('');
+  };
+  $('ivP').onchange = fillT; $('ivC').onchange = fillT; $('ivT').onchange = draw;
+  $('ivPrev').onclick = () => { const s = $('ivT'); if(s.selectedIndex > 0){ s.selectedIndex--; draw(); } };
+  $('ivNext').onclick = () => { const s = $('ivT'); if(s.selectedIndex < s.options.length-1){ s.selectedIndex++; draw(); } };
+  fillT();
+  document.querySelectorAll('[data-iv]').forEach(btn => btn.onclick = () => { const f = [...LAST.flagged].sort((a,b) => Math.abs(b.z) - Math.abs(a.z))[+btn.dataset.iv];
+    $('ivP').value = f.pid; $('ivC').value = f.cup; fillT(); const lst = list()[TECHS.indexOf(f.tech)], i = lst.findIndex(x => x.uid === f.uid);
+    if(i >= 0){ $('ivT').value = String(i); draw(); } $('ivOut').scrollIntoView({ behavior:'smooth', block:'center' }); });
+}
+function lineChart(t, y, ymax, label, opt, col){
+  const W = 440, H = 110, L = 44, R = 8, T = 18, B = 18, tmax = t[t.length-1] || 1;
+  const X = v => L + (W-L-R) * v / tmax, Y = v => T + (H-T-B) * (1 - v / ymax);
+  let g = `<text x="${L}" y="12" font-size="11" fill="#6B7178">${label}</text>`;
+  for(const v of [0, ymax/2, ymax]) g += `<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#ECEEF0"/><text x="${L-5}" y="${Y(v)+4}" text-anchor="end" font-size="10" fill="#6B7178">${+v.toPrecision(2)}</text>`;
+  g += `<text x="${W-R}" y="${H-4}" text-anchor="end" font-size="10" fill="#6B7178">${tmax.toFixed(1)} s</text>`;
+  g += `<path d="${t.map((v,i) => (i ? 'L' : 'M') + X(v).toFixed(1) + ',' + Y(y[i]).toFixed(1)).join('')}" fill="none" stroke="${col}" stroke-width="1.3"/>`;
+  if(opt.ref != null) g += `<line x1="${L}" x2="${W-R}" y1="${Y(opt.ref)}" y2="${Y(opt.ref)}" stroke="${col}" stroke-dasharray="4 3"/><text x="${L+4}" y="${Y(opt.ref)-3}" font-size="10" fill="${col}" stroke="#fff" stroke-width="3" paint-order="stroke">RMS ${opt.ref.toFixed(2)}</text>`;
+  if(opt.mark != null){ const i = y.indexOf(Math.max(...y)); g += `<path d="M${X(t[i])-5},${Y(y[i])-3}l5,-8l5,8z" fill="${col}"/><text x="${X(t[i])+8}" y="${Y(y[i])-4}" font-size="10" fill="${col}">최대 ${opt.mark.toFixed(2)}°</text>`; }
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${g}</svg>`;
+}
+
 function sentences({ tp, loss, rms, lin, tilt, n, tlxRows }){
   const d = (b, t, c, digits, pct) => { const x = b.desc[t + c]; return x && isFinite(x.m) ? (pct ? fmt(x.m*100, 1) + '%' : fmt(x.m, digits)) : '–'; };
   const eff = (A, k, b) => A ? `F(${fmt(A[k].df1*A[k].eps,2)}, ${fmt(A[k].df2*A[k].eps,1)}) = ${fmt(A[k].F)}, p ${A[k].p < .001 ? '< .001' : '= ' + fp(A[k].p)}, η²G = ${fmt(A[k].etaG,3)}` +
