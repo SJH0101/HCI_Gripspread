@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>GripSpread 문서</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<style>
+  :root { --bg:#fafaf9; --fg:#1f2328; --mute:#6b7178; --line:#e3e3e0; --card:#fff; --acc:#2f6fdb; --warn:#c2410c; --ok:#15803d; --chip:#f0efec; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#16181b; --fg:#e8e8e6; --mute:#9aa1a9; --line:#2c3035; --card:#1e2125; --acc:#7aa7ff; --warn:#fb923c; --ok:#4ade80; --chip:#2a2e33; } }
+  * { box-sizing:border-box; } [hidden] { display:none !important; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.65 -apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif; }
+  a { color:var(--acc); }
+  .muted { color:var(--mute); } .warn { color:var(--warn); } .ok { color:var(--ok); }
+  input, button, select { font:inherit; color:var(--fg); background:var(--card); border:1px solid var(--line); border-radius:6px; padding:5px 10px; }
+  button { cursor:pointer; } button:hover:not(:disabled) { border-color:var(--fg); } button:disabled { opacity:.45; cursor:default; }
+  button.primary { background:var(--fg); color:var(--bg); border-color:var(--fg); }
+  .bar { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); }
+  .bar .in { max-width:1200px; margin:0 auto; padding:10px 16px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .bar .grow { flex:1; min-width:120px; }
+  #msg { font-size:13px; }
+  .pwrow { max-width:1200px; margin:0 auto; padding:8px 16px; display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:14px; }
+  main { max-width:1200px; margin:0 auto; padding:16px 16px 80px; }
+  .paper { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:28px 36px; max-width:820px; margin:0 auto; }
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .split .paper { max-width:none; margin:0; overflow:auto; height:calc(100vh - 150px); }
+  textarea { width:100%; height:calc(100vh - 150px); resize:none; font:13px/1.6 ui-monospace,Menlo,monospace; color:var(--fg); background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; tab-size:2; }
+  @media (max-width:800px) { .split { grid-template-columns:1fr; } .split .paper, textarea { height:60vh; } .paper { padding:20px 18px; } }
+  /* rendered markdown */
+  .md h1 { font-size:26px; margin:0 0 4px; line-height:1.3; }
+  .md h1 + p { color:var(--mute); margin-top:0; }
+  .md h2 { font-size:19px; margin:28px 0 8px; padding-top:8px; border-top:1px solid var(--line); }
+  .md h3 { font-size:16px; margin:20px 0 6px; }
+  .md p { margin:8px 0; }
+  .md ul, .md ol { padding-left:24px; margin:6px 0; }
+  .md li { margin:2px 0; }
+  .md li.task { list-style:none; margin-left:-22px; }
+  .md li.task > input { margin:0 8px 0 0; vertical-align:-1px; width:15px; height:15px; }
+  .md li.task.done { color:var(--mute); }
+  code, .md code { background:var(--chip); border-radius:4px; padding:1px 5px; font-size:.9em; }
+  .md table { border-collapse:collapse; width:100%; margin:10px 0; font-size:14px; }
+  .md th, .md td { border:1px solid var(--line); padding:6px 9px; text-align:left; vertical-align:top; }
+  .md th { background:var(--chip); }
+  .md blockquote { margin:8px 0; padding:2px 12px; border-left:3px solid var(--line); color:var(--mute); }
+  .list a.doc { display:block; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 16px; margin-bottom:8px; color:inherit; text-decoration:none; }
+  .list a.doc:hover { border-color:var(--acc); }
+  .list a.doc b { display:block; } .list a.doc span { color:var(--mute); font-size:13px; }
+  @media print {
+    @page { margin:16mm 14mm; }
+    :root { --bg:#fff; --fg:#000; --mute:#555; --line:#ccc; --card:#fff; --chip:#f2f2f2; }
+    body { background:#fff; font-size:11pt; }
+    .bar, .pwrow, textarea, .noprint { display:none !important; }
+    main { padding:0; max-width:none; }
+    .split { display:block; } .split .paper { height:auto; overflow:visible; }
+    .paper { border:none; padding:0; max-width:none; }
+    .md h2 { break-after:avoid; } .md li, .md tr { break-inside:avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="bar"><div class="in">
+  <a href="index.html">← 처음</a>
+  <a id="toList" href="gripspread_docs.html">문서 목록</a>
+  <span class="grow"></span>
+  <span id="msg" class="muted"></span>
+  <select id="hist" hidden><option value="">이전 버전…</option></select>
+  <button id="bEdit" hidden>편집</button>
+  <button id="bSave" class="primary" hidden>저장</button>
+  <button id="bDone" hidden>보기로</button>
+  <button id="bPdf" hidden>PDF로 저장</button>
+</div></div>
+<div class="pwrow" id="pwrow" hidden>
+  <span class="warn">비밀번호를 넣어야 최신 문서를 보고 고칠 수 있습니다. 지금 보이는 건 저장소에 있는 처음 버전입니다.</span>
+  <input class="srvPw" id="pw" type="password" placeholder="연구자 비밀번호" autocomplete="current-password"><button id="bPw">열기</button>
+</div>
+<main id="main"></main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+/*@SERVER_CLIENT@*/
+const NAME = new URLSearchParams(location.search).get('d');
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' })[c]);
+const msg = (t, cls) => { $('msg').textContent = t; $('msg').className = cls || 'muted'; };
+const when = s => { if(!s) return ''; const d = new Date(s); return d.toLocaleDateString('ko-KR', { month:'numeric', day:'numeric', weekday:'short' }) + ' ' + d.toLocaleTimeString('ko-KR', { hour:'2-digit', minute:'2-digit', hour12:false }); };
+const verTime = v => when(v.replace(/T(\d\d)-(\d\d)-(\d\d)-(\d+)Z$/, 'T$1:$2:$3.$4Z'));
+async function sha(s){ const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+const titleOf = md => ((md || '').match(/^#\s+(.+)$/m) || [])[1] || '';
+const docs = window.docs = { srv:false, text:'', base:null, mode:'view', dirty:false };
+
+async function seedIndex(){ try{ return await (await fetch('docs/seed/index.json', { cache:'no-store' })).json(); }catch(e){ return []; } }
+async function seedText(name){ try{ const r = await fetch(`docs/seed/${name}.md`, { cache:'no-store' }); return r.ok ? await r.text() : null; }catch(e){ return null; } }
+
+// ---------- markdown with clickable checkboxes ----------
+// the n-th task checkbox in the rendered page is the n-th "- [ ]" line in the source (fenced code skipped)
+function taskLines(src){
+  const out = []; let fence = false;
+  src.split('\n').forEach((l, i) => { if(/^\s*(```|~~~)/.test(l)) fence = !fence; else if(!fence && /^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]/.test(l)) out.push(i); });
+  return out;
+}
+function render(el, src, clickable){
+  el.innerHTML = marked.parse(src, { gfm:true, breaks:false });
+  const lines = taskLines(src);
+  el.querySelectorAll('input[type=checkbox]').forEach((box, n) => {
+    const li = box.closest('li'); if(li){ li.classList.add('task'); li.classList.toggle('done', box.checked); }
+    box.disabled = !clickable || lines[n] == null;
+    if(!box.disabled) box.onchange = () => toggleTask(lines[n], box.checked);
+  });
+}
+async function toggleTask(line, on){
+  const ls = docs.text.split('\n');
+  ls[line] = ls[line].replace(/\[[ xX]\]/, on ? '[x]' : '[ ]');
+  docs.text = ls.join('\n');
+  if(docs.mode === 'edit'){ $('ta').value = docs.text; setDirty(true); preview(); return; }
+  await save();
+}
+
+// ---------- list page ----------
+async function showList(){
+  document.title = 'GripSpread 문서';
+  $('toList').hidden = true;
+  const seeds = await seedIndex(); let srv = [];
+  if(SRV.ready()) try{ srv = (await SRV.call('docs', { action:'list' })).docs; docs.srv = true; }catch(e){ msg(e.message, 'warn'); }
+  $('pwrow').hidden = docs.srv || !SRV.online();
+  const names = [...new Set([...seeds.map(s => s.name), ...srv.map(d => d.name)])];
+  const rows = names.map(n => { const s = seeds.find(x => x.name === n), d = srv.find(x => x.name === n);
+    return `<a class="doc" href="?d=${encodeURIComponent(n)}"><b>${esc((s && s.title) || n)}</b><span>${d ? '마지막 수정 ' + when(d.updated_at) : docs.srv ? '아직 사이트에서 고친 적 없음' : ''}</span></a>`; }).join('');
+  $('main').innerHTML = `<div class="list" style="max-width:720px;margin:0 auto">
+    <h1 style="font-size:24px;margin:8px 0 4px">팀 문서</h1>
+    <p class="muted">문서를 열고 <b>편집</b>을 누르면 고칠 수 있습니다. 체크박스는 보기 화면에서 바로 눌러도 저장됩니다. <b>PDF로 저장</b>은 인쇄 창에서 “PDF로 저장”을 고르면 됩니다. 저장할 때마다 이전 버전이 남습니다.</p>
+    ${rows || '<p class="muted">문서 없음</p>'}
+    ${docs.srv ? '<p><button id="bNew">새 문서</button></p>' : ''}</div>`;
+  if($('bNew')) $('bNew').onclick = () => {
+    const n = (prompt('문서 주소 이름 (영어 소문자·숫자·-·_, 예: meeting_1112)') || '').trim();
+    if(!n) return; if(!/^[a-z0-9][a-z0-9_-]{0,39}$/.test(n)) return alert('영어 소문자·숫자·-·_만 됩니다');
+    if(names.includes(n)) return alert('이미 있는 이름입니다');
+    location.href = `?d=${n}&new=1`;
+  };
+}
+
+// ---------- one document ----------
+async function load(){
+  msg('불러오는 중…');
+  let text = null, from = '';
+  if(SRV.ready()) try{ const r = await SRV.call('docs', { action:'get', name:NAME }); docs.srv = true; if(r.content != null){ text = r.content; docs.base = r.sha; from = 'srv'; } }
+    catch(e){ msg(e.message, 'warn'); }
+  if(text == null){ text = await seedText(NAME); if(text != null){ from = 'seed'; docs.base = null; } }
+  if(text == null){
+    if(!(docs.srv && new URLSearchParams(location.search).get('new'))){ $('main').innerHTML = `<p class="muted">“${esc(NAME)}” 문서가 없습니다. <a href="gripspread_docs.html">목록</a></p>`; $('pwrow').hidden = docs.srv || !SRV.online(); msg(''); return; }
+    text = `# 새 문서\n\n${new Date().toISOString().slice(0, 10)}\n\n`; from = 'new';
+  }
+  docs.text = text;
+  $('pwrow').hidden = docs.srv || !SRV.online();
+  ['bEdit', 'bPdf'].forEach(id => $(id).hidden = false);
+  $('bEdit').disabled = !docs.srv;
+  $('bEdit').title = docs.srv ? '' : '비밀번호를 넣어야 고칠 수 있습니다';
+  msg(from === 'srv' ? '' : from === 'seed' ? (docs.srv ? '사이트에서 아직 안 고친 처음 버전' : '') : '새 문서');
+  if(docs.srv) loadHistory();
+  from === 'new' ? edit() : view();
+}
+function view(){
+  docs.mode = 'view';
+  ['bSave', 'bDone'].forEach(id => $(id).hidden = true); $('bEdit').hidden = false;
+  document.title = titleOf(docs.text) || 'GripSpread 문서';
+  $('main').innerHTML = '<div class="paper md" id="out"></div>';
+  render($('out'), docs.text, docs.srv);
+}
+function edit(){
+  docs.mode = 'edit';
+  $('bEdit').hidden = true; ['bSave', 'bDone'].forEach(id => $(id).hidden = false);
+  $('main').innerHTML = `<div class="split"><textarea id="ta" spellcheck="false"></textarea><div class="paper md" id="out"></div></div>
+    <p class="muted noprint" style="font-size:13px">마크다운: <code># 제목</code> <code>## 소제목</code> <code>**굵게**</code> <code>- 목록</code> <code>1. 번호</code> <code>- [ ] 체크</code> <code>| 표 | 칸 |</code> · 저장 Ctrl/⌘+S</p>`;
+  $('ta').value = docs.text; preview();
+  let t; $('ta').oninput = () => { docs.text = $('ta').value; setDirty(true); clearTimeout(t); t = setTimeout(preview, 150); };
+  $('ta').onkeydown = e => { if(e.key === 'Tab'){ e.preventDefault(); const ta = e.target, s = ta.selectionStart; ta.setRangeText('  ', s, ta.selectionEnd, 'end'); ta.oninput(); } };
+  setDirty(docs.dirty);
+}
+function preview(){ if($('out')) render($('out'), docs.text, true); }
+function setDirty(d){ docs.dirty = d; $('bSave').disabled = !d; if(d) msg('저장 안 됨', 'warn'); }
+
+async function save(force){
+  if(!docs.srv) return;
+  msg('저장 중…');
+  try{
+    const r = await SRV.call('docs', { action:'save', name:NAME, content:docs.text, base:docs.base, force:!!force });
+    docs.base = r.sha; setDirty(false); msg('저장됨 ' + when(new Date()), 'ok');
+    if(docs.mode === 'view') view(); loadHistory();
+  }catch(e){
+    if(/서버 409/.test(e.message)) return conflict();
+    msg('저장 실패: ' + e.message, 'warn'); if(docs.mode === 'view') view();
+  }
+}
+// someone saved after we loaded: keep ours or take theirs (theirs is never lost — saving ours puts theirs in history)
+async function conflict(){
+  const r = await SRV.call('docs', { action:'get', name:NAME });
+  if(confirm('그사이 다른 사람이 이 문서를 저장했습니다.\n\n[확인] 내 내용으로 덮어쓰기 (상대 내용은 이전 버전에 남음)\n[취소] 상대 내용을 불러오기 (내 수정은 사라짐)')){
+    docs.base = r.sha; return save(true);
+  }
+  docs.text = r.content; docs.base = r.sha; setDirty(false); msg('최신 내용을 불러왔습니다');
+  docs.mode === 'edit' ? edit() : view();
+}
+async function loadHistory(){
+  try{ const { versions } = await SRV.call('docs', { action:'history', name:NAME });
+    $('hist').innerHTML = `<option value="">이전 버전 (${versions.length})…</option>` + versions.slice(0, 50).map(v => `<option value="${esc(v.ver)}">${esc(verTime(v.ver))}</option>`).join('');
+    $('hist').hidden = !versions.length; }catch(e){}
+}
+$('hist').onchange = async () => {
+  const ver = $('hist').value; $('hist').value = ''; if(!ver) return;
+  if(docs.dirty && !confirm('저장 안 한 수정이 사라집니다. 계속할까요?')) return;
+  const { content } = await SRV.call('docs', { action:'version', name:NAME, ver });
+  docs.text = content; edit(); setDirty(true); msg(verTime(ver) + ' 버전을 불러왔습니다. 저장하면 이 버전으로 돌아갑니다', 'warn');
+};
+$('bEdit').onclick = edit;
+$('bDone').onclick = () => { if(docs.dirty && !confirm('저장 안 한 수정이 있습니다. 저장하지 않고 볼까요?')) return; if(docs.dirty){ docs.dirty = false; return location.reload(); } view(); };
+$('bSave').onclick = () => save();
+$('bPdf').onclick = () => { if(docs.mode === 'edit') preview(); window.print(); };
+$('bPw').onclick = () => { SRV.setPw($('pw').value.trim()); location.reload(); };
+$('pw').onkeydown = e => { if(e.key === 'Enter') $('bPw').click(); };
+addEventListener('keydown', e => { if((e.metaKey || e.ctrlKey) && e.key === 's'){ e.preventDefault(); if(docs.mode === 'edit' && docs.dirty) save(); } });
+addEventListener('beforeunload', e => { if(docs.dirty){ e.preventDefault(); e.returnValue = ''; } });
+
+NAME ? load() : showList();
+</script>
+</body>
+</html>

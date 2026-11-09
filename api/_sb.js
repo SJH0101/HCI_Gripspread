@@ -9,6 +9,7 @@
 //   tuning/tuning_T1_<time>.json                   constant-tuning results (상수 보정), one per researcher
 //   params/gripspread_params_<time>.json           merged tuning values the study loads (newest wins)
 //   imu_calib/imu_calib_<time>.json                cup IMU sensor calibration (newest wins)
+//   docs/<name>.md, docs/_history/<name>/<time>.md   team documents edited on the site (api/docs.js)
 //   _test/<time>.txt                               connection tests
 //   _trash/<time>/<original path>                  files moved away on the admin page (restorable)
 const crypto = require('crypto');

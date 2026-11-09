@@ -88,7 +88,7 @@ const SRV = {
 // every <input class="srvPw"> on the page shows and sets the shared password
 document.querySelectorAll('.srvPw').forEach(i => { i.value = SRV.pw(); i.addEventListener('change', () => { SRV.setPw(i.value.trim()); document.querySelectorAll('.srvPw').forEach(o => { if(o !== i) o.value = i.value.trim(); }); }); });
 
-const FOLDERS = [['all','전체'], ['experiment','본 실험'], ['pilot','본 실험 파일럿'], ['rehearsal','리허설'], ['tuning','상수 보정'], ['params','실험 값'], ['imu_calib','IMU 보정'], ['_test','연결 테스트'], ['_trash','휴지통']];
+const FOLDERS = [['all','전체'], ['experiment','본 실험'], ['pilot','본 실험 파일럿'], ['rehearsal','리허설'], ['tuning','상수 보정'], ['params','실험 값'], ['imu_calib','IMU 보정'], ['docs','문서'], ['_test','연결 테스트'], ['_trash','휴지통']];
 const SESSION_DIRS = ['experiment', 'pilot', 'rehearsal'];
 const FREE_BYTES = 1024 ** 3;   // Supabase free plan storage
 let FILES = [], TAB = 'all';
