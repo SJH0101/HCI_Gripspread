@@ -107,12 +107,13 @@
   .tlx-item .val{font-variant-numeric:tabular-nums;font-weight:700;min-width:3ch;text-align:right}
   .tlx-item .val.none{color:#B00020;font-weight:500;font-size:12px}
   .tlx-item .scale{position:relative;padding-top:6px}
-  .tlx-item .scale::before{content:"";position:absolute;left:8px;right:8px;top:0;height:10px;
-    background:repeating-linear-gradient(to right,#9AA0A6 0 1px,transparent 1px calc((100% - 1px)/20));}
+  .tlx-item .ticks{display:flex;justify-content:space-between;align-items:flex-end;height:14px;margin:0 8px}
+  .tlx-item .ticks i{width:1px;height:8px;background:#9AA0A6} .tlx-item .ticks i.mid{height:14px;background:#6B7178}
   .tlx-item input{width:100%;accent-color:var(--ink);padding:0;border:0;margin:0}
   .tlx-item input.untouched{opacity:.45}
+  /* no default mark: the knob appears only where the participant clicks, so the middle position does not anchor answers */
+  .tlx-item input.untouched::-webkit-slider-thumb{opacity:0} .tlx-item input.untouched::-moz-range-thumb{opacity:0}
   .tlx-item .ends{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
-  .tlx-item .nums{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums;padding:0 4px}
   #tlxWarn{color:#B00020;font-size:13px;margin-left:8px;align-self:center}
   .wizard{max-width:820px;margin:24px auto 40px;padding:0 16px}
   .wizard .sheet{margin:12px 0 0;max-width:none}
@@ -416,7 +417,7 @@
     <section id="sTlx" class="screen">
       <div class="sheet">
         <h1 id="tlxTitle">방금 쓴 방법은 어땠나요?</h1>
-        <p>각 항목의 막대를 움직여 0–100 사이로 표시해 주세요 (5점 단위). 정답은 없습니다. 모든 항목을 한 번씩 움직여야 제출됩니다.</p>
+        <p>방금 쓴 방법을 떠올리며, 각 항목에서 해당하는 위치를 막대 위에서 눌러 주세요. 정답은 없습니다. 모든 항목에 표시해야 제출됩니다.</p>
         <div id="tlxItems"></div>
         <div class="actions"><button id="btnTlx" class="primary">제출</button><span id="tlxWarn"></span></div>
       </div>
@@ -1229,25 +1230,29 @@ idbAll().then(list => {
 }).catch(()=>{});
 
 // ---------- NASA-TLX ----------
+// NASA-TLX (Hart & Staveland 1988), Raw TLX: the official six questions and rating-scale definitions in Korean, a
+// 21-mark scale (0-100 in steps of 5) with words only at the two ends, no numbers shown (as on the paper form).
+// Performance runs Perfect (0) -> Failure (100), so for every scale a higher score means more workload.
 const TLX = [
-  ['mental','정신적 요구','얼마나 생각하고 집중해야 했나요?','낮음','높음'],
-  ['physical','신체적 요구','손과 팔이 얼마나 힘들었나요?','낮음','높음'],
-  ['temporal','시간 압박','얼마나 쫓기는 느낌이었나요?','낮음','높음'],
-  ['performance','수행 만족도','목표를 얼마나 잘 해냈다고 느끼나요?','잘함','못함'],
-  ['effort','노력','그 정도로 하려고 얼마나 애써야 했나요?','낮음','높음'],
-  ['frustration','좌절감','짜증 나거나 불안했던 정도는 어땠나요?','낮음','높음'],
+  ['mental','정신적 요구','이 과제는 정신적으로 얼마나 부담이 컸나요?','생각하기, 판단하기, 기억하기, 보기, 찾기처럼 머리와 감각을 얼마나 써야 했나요? 쉬웠나요, 어려웠나요? 단순했나요, 복잡했나요?','매우 낮음','매우 높음'],
+  ['physical','신체적 요구','이 과제는 신체적으로 얼마나 부담이 컸나요?','밀기, 당기기, 돌리기, 조작하기처럼 몸을 얼마나 써야 했나요? 편했나요, 힘들었나요? 느슨했나요, 고됐나요?','매우 낮음','매우 높음'],
+  ['temporal','시간적 요구','과제의 속도가 얼마나 급하거나 쫓기는 느낌이었나요?','과제가 진행되는 속도 때문에 시간 압박을 얼마나 느꼈나요? 여유로웠나요, 다급했나요?','매우 낮음','매우 높음'],
+  ['performance','수행','요구받은 것을 얼마나 성공적으로 해냈나요?','과제의 목표를 얼마나 잘 이뤘다고 생각하나요? 자신의 수행에 얼마나 만족하나요?','완벽','실패'],
+  ['effort','노력','그 정도로 해내기 위해 얼마나 애써야 했나요?','지금의 수행 수준에 이르기 위해 정신적·신체적으로 얼마나 열심히 해야 했나요?','매우 낮음','매우 높음'],
+  ['frustration','좌절감','얼마나 불안하고, 의욕이 꺾이고, 짜증 나고, 스트레스를 받았나요?','과제를 하는 동안 불안하고 짜증 나고 스트레스를 받았나요, 아니면 안정되고 만족스럽고 편안했나요?','매우 낮음','매우 높음'],
 ];
 function showTlx(st){
   $('tlxTitle').textContent = `방금 쓴 ${TECH[st.tech]}는 어땠나요?`;
-  $('tlxItems').innerHTML = TLX.map(([k,q,d,lo,hi]) => `<div class="tlx-item"><div class="q"><span>${q}</span><span class="val none" id="v_${k}">아직 안 함</span></div><div class="d">${d}</div>
-    <div class="scale"><input type="range" class="untouched" min="0" max="100" step="5" value="50" data-k="${k}" aria-label="${q}"></div>
-    <div class="nums"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+  const ticks = '<div class="ticks">' + Array.from({length:21}, (_, i) => `<i${i === 10 ? ' class="mid"' : ''}></i>`).join('') + '</div>';
+  $('tlxItems').innerHTML = TLX.map(([k,name,q,d,lo,hi]) => `<div class="tlx-item"><div class="q"><span>${name} · ${q}</span><span class="val none" id="v_${k}">아직 안 함</span></div><div class="d">${d}</div>
+    ${ticks}<div class="scale"><input type="range" class="untouched" min="0" max="100" step="5" value="50" data-k="${k}" aria-label="${name}"></div>
     <div class="ends"><span>${lo}</span><span>${hi}</span></div></div>`).join('');
   $('tlxWarn').textContent = '';
   document.querySelectorAll('#tlxItems input').forEach(i => i.addEventListener('input', () => {
-    i.classList.remove('untouched'); const v = $('v_' + i.dataset.k); v.textContent = i.value; v.classList.remove('none'); }));
+    i.classList.remove('untouched'); const v = $('v_' + i.dataset.k); v.textContent = '선택함'; v.classList.remove('none'); }));   // the number is recorded, not shown
   show('sTlx');
 }
+window.GS_DEBUG.showTlx = showTlx;   // console/testing
 $('btnTlx').onclick = () => {
   const left = [...document.querySelectorAll('#tlxItems input.untouched')];
   if(left.length){ $('tlxWarn').textContent = `아직 안 움직인 항목이 ${left.length}개 있습니다`; left[0].focus(); return; }
