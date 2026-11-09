@@ -18,6 +18,12 @@
   a.card:hover { border-color:var(--acc); }
   a.card b { display:block; font-size:16px; }
   a.card span { color:var(--mute); font-size:14px; }
+  div.card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:8px; }
+  div.card > a { color:inherit; text-decoration:none; } div.card > a:hover b { color:var(--acc); }
+  div.card b { display:block; font-size:16px; } div.card > span { color:var(--mute); font-size:14px; }
+  div.card nav { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  div.card nav a { font-size:14px; color:var(--fg); text-decoration:none; border:1px solid var(--line); border-radius:999px; padding:3px 12px; }
+  div.card nav a:hover { border-color:var(--acc); color:var(--acc); }
   footer { margin-top:40px; color:var(--mute); font-size:13px; }
 </style>
 </head>
@@ -37,11 +43,8 @@
   <a class="card" href="gripspread_admin.html"><b>파일 관리</b><span>서버에 올라간 파일 보기 · 용량·날짜 · 휴지통·삭제</span></a>
 
   <h2>문서</h2>
-  <a class="card" href="gripspread_docs.html?d=schedule"><b>일정</b><span>남은 일·담당·본 실험 파일럿 체크리스트</span></a>
-  <a class="card" href="gripspread_docs.html?d=meeting_1110"><b>11/10 미팅 안건</b></a>
-  <a class="card" href="gripspread_docs.html?d=operator_manual"><b>진행자 매뉴얼</b><span>세션 하나를 처음부터 끝까지</span></a>
-  <a class="card" href="gripspread_docs.html?d=participant_script"><b>참여자 안내 대본</b><span>진행자가 그대로 읽는 문장</span></a>
-  <a class="card" href="gripspread_docs.html"><b>문서 목록</b><span>사이트에서 바로 편집 · PDF로 저장 · 이전 버전</span></a>
+  <div class="card docs"><a href="gripspread_docs.html"><b>팀 문서</b></a><span>사이트에서 바로 편집 · 체크 · PDF로 저장</span>
+    <nav><a href="gripspread_docs.html?d=schedule">일정</a><a href="gripspread_docs.html?d=meeting_1110">11/10 미팅 안건</a><a href="gripspread_docs.html?d=operator_manual">진행자 매뉴얼</a><a href="gripspread_docs.html?d=participant_script">참여자 안내 대본</a></nav></div>
 
   <h2>데모</h2>
   <a class="card" href="gripspread_core.html"><b>GripSpread 데모</b><span>문서 읽으며 손가락 스크롤 체험</span></a>
