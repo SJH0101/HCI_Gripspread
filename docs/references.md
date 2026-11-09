@@ -48,6 +48,11 @@ GripSpread 기획, 실험 설계, 파일럿 절차에서 근거로 쓴 자료. �
 - **Ruiz, J. R., España-Romero, V., Ortega, F. B., Sjöström, M., Castillo, M. J., & Gutierrez, A. (2006).** Hand span influences optimal grip span in male and female teenagers. *Journal of Hand Surgery (Am)*, 31(8), 1367–1372. https://doi.org/10.1016/j.jhsa.2006.06.014
   - 쓴 곳: **span 측정 정의의 출처.** 손을 최대한 벌린 상태에서 엄지 끝부터 소지 끝까지 잰다 (초록에 명시). 같은 그룹의 2002 연구를 잇는 후속 연구로, span이 최적 쥐기 폭과 남녀 모두에서 관련됨(13–18세 206명).
 
+## 주관 평가
+
+- **Hart, S. G., & Staveland, L. E. (1988).** Development of NASA-TLX (Task Load Index): Results of empirical and theoretical research. *Advances in Psychology*, 52, 139–183. https://doi.org/10.1016/S0166-4115(08)62386-9 — 기법별 작업 부하(Raw TLX).
+- **Sauro, J., & Dumas, J. S. (2009).** Comparison of three one-question, post-task usability questionnaires. *Proc. CHI 2009*, 1599–1608. https://doi.org/10.1145/1518701.1518946 — SEQ, 조건별 난이도 7점.
+
 ## 통계 분석 (`gripspread_analysis.html`)
 
 - **Leys, C., Ley, C., Klein, O., Bernard, P., & Licata, L. (2013).** Detecting outliers: Do not use standard deviation around the mean, use absolute deviation around the median. *Journal of Experimental Social Psychology*, 49(4), 764–766. https://doi.org/10.1016/j.jesp.2013.03.013 — MAD 기준 강건 z, 임계 3.
