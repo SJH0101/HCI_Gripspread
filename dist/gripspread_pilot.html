@@ -164,7 +164,8 @@
       <div class="sheet" id="tuneDone" style="display:none">
         <h1>끝</h1>
         <div id="doneTable"></div>
-        <div class="actions"><button id="tSave" class="primary">결과 저장 (json)</button><button id="tAgain">처음으로</button></div>
+        <div class="actions"><button id="tSave" class="primary">결과 저장 (json + 서버)</button><button id="tAgain">처음으로</button><span id="tSaveMsg" class="muted"></span></div>
+        <div class="form" style="margin-top:10px"><label>연구자 비밀번호</label><input class="srvPw" type="password" autocomplete="current-password"></div>
       </div>
     </section>
 
@@ -182,10 +183,11 @@
     <section id="sSum" class="screen">
       <div class="sheet">
         <h1>결과 합치기</h1>
-        <p>파일럿 참가자별 결과 파일(json)을 모두 고르면, 값마다 사람별 최종값과 평균을 보여줍니다. 평균을 본 실험 값으로 고정하고, 실험 프로그램 시작 화면의 <b>값 불러오기</b>로 넣습니다.</p>
-        <div class="actions"><input id="sumFiles" type="file" accept=".json" multiple></div>
+        <p>서버의 <b>pilot</b> 폴더에 올라간 파일럿 결과를 자동으로 모아, 값마다 사람별 최종값과 평균을 보여줍니다. <b>저장</b>을 누르면 평균이 서버의 <b>params</b> 폴더에 올라가고, 본 실험 페이지가 열릴 때 자동으로 불러옵니다(파일로도 내려받음). 서버 없이 쓰려면 결과 파일을 직접 고르세요.</p>
+        <div class="form"><label>연구자 비밀번호</label><input class="srvPw" type="password" autocomplete="current-password"></div>
+        <div class="actions"><button id="sumLoad">서버에서 다시 불러오기</button><span class="muted">또는</span><input id="sumFiles" type="file" accept=".json" multiple><span id="sumMsg" class="muted"></span></div>
         <div id="sumTable" style="margin-top:14px"></div>
-        <div class="actions"><button id="sumSave" class="primary" disabled>gripspread_params.json 저장</button></div>
+        <div class="actions"><button id="sumSave" class="primary" disabled>본 실험 값으로 저장 (서버 + 파일)</button><span id="sumSaveMsg" class="muted"></span></div>
       </div>
     </section>
   </main>
@@ -414,6 +416,36 @@ const GripEngine = (() => {
 
 
 const $ = id => document.getElementById(id);
+// ---------- server (this site's /api; the Supabase key stays on the server) ----------
+// One researcher password per browser, shared by every page of the site (same origin, same localStorage key).
+// Opened as a local file there is no /api: every call fails and the page keeps working with local files only.
+const PW_KEY = 'gripspread_researcher_pw_v1';
+const SRV = {
+  pw(){ try{ return localStorage.getItem(PW_KEY) || ''; }catch(e){ return ''; } },
+  setPw(v){ try{ v ? localStorage.setItem(PW_KEY, v) : localStorage.removeItem(PW_KEY); }catch(e){} },
+  online(){ return location.protocol !== 'file:'; },
+  ready(){ return SRV.online() && !!SRV.pw(); },
+  async call(route, body){
+    if(!SRV.online()) throw new Error('파일로 연 페이지에서는 서버를 쓸 수 없습니다. 사이트 주소로 열어 주세요');
+    if(!SRV.pw()) throw new Error('서버 비밀번호를 넣어 주세요');
+    const r = await fetch('/api/' + route, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ ...body, password:SRV.pw() }) });
+    const j = await r.json().catch(() => ({}));
+    if(r.status === 401){ SRV.setPw(''); document.querySelectorAll('.srvPw').forEach(i => i.value = ''); throw new Error('서버 비밀번호가 틀렸습니다'); }
+    if(!r.ok) throw new Error(`서버 ${r.status} ${j.error || ''}`.trim());
+    return j;
+  },
+  async put(path, blob, type){
+    const { url } = await SRV.call('upload-url', { path });
+    const r = await fetch(url, { method:'PUT', headers:{ 'Content-Type':type, 'x-upsert':'false' }, body:blob });
+    if(!r.ok){ let m = ''; try{ m = (await r.json()).message || ''; }catch(e){} throw new Error(`업로드 ${r.status} ${m}`.trim()); }
+  },
+  putJSON(path, obj){ return SRV.put(path, new Blob([JSON.stringify(obj, null, 2)], { type:'application/json' }), 'application/json'); },
+  latest(kind){ return SRV.call('latest', { kind }); },
+  stamp(){ return new Date().toISOString().replace(/[:.]/g, '-'); },
+};
+// every <input class="srvPw"> on the page shows and sets the shared password
+document.querySelectorAll('.srvPw').forEach(i => { i.value = SRV.pw(); i.addEventListener('change', () => { SRV.setPw(i.value.trim()); document.querySelectorAll('.srvPw').forEach(o => { if(o !== i) o.value = i.value.trim(); }); }); });
+
 let actx = null;
 function beep(freq=880, dur=0.08, vol=0.12){
   try{ actx = actx || new AudioContext(); const o = actx.createOscillator(), g = actx.createGain();
@@ -571,10 +603,15 @@ function finishTuning(){
     T.keys.map(k => { const p = PARAMS.find(x=>x.k===k); return `<tr><td>${p.name}</td><td>${BASE[k]}</td><td><b>${T.values[k]}</b></td><td>${T.comparisons.filter(c=>c.param===k).length}</td></tr>`; }).join('') + '</table>';
   T.finished = new Date().toISOString();
 }
-$('tSave').onclick = () => download(`pilot_${T.id}_${T.started.slice(0,10)}.json`, {
-  pilot_id:T.id, cup:T.cup, trials_per_version:T.n, practice_trials:T.practice_trials || 0, started:T.started, finished:T.finished, calibration:T.calib,
-  start_values:Object.fromEntries(T.keys.map(k => [k, BASE[k]])), final_values:Object.fromEntries(T.keys.map(k => [k, T.values[k]])),
-  all_engine_values:T.values, comparisons:T.comparisons, trials:T.trials });
+$('tSave').onclick = async () => {
+  const out = { pilot_id:T.id, cup:T.cup, trials_per_version:T.n, practice_trials:T.practice_trials || 0, started:T.started, finished:T.finished, calibration:T.calib,
+    start_values:Object.fromEntries(T.keys.map(k => [k, BASE[k]])), final_values:Object.fromEntries(T.keys.map(k => [k, T.values[k]])),
+    all_engine_values:T.values, comparisons:T.comparisons, trials:T.trials };
+  download(`pilot_${T.id}_${T.started.slice(0,10)}.json`, out);
+  const msg = t => $('tSaveMsg').textContent = t;
+  try{ msg('서버에 올리는 중…'); await SRV.putJSON(`pilot/pilot_${String(T.id).replace(/[^A-Za-z0-9-]/g, '') || 'X'}_${SRV.stamp()}.json`, out); msg('파일 저장 + 서버 pilot 폴더에 올림'); }
+  catch(e){ msg('파일은 저장됨 · 서버 실패: ' + e.message); }
+};
 $('tAgain').onclick = () => { T = null; $('tuneDone').style.display = 'none'; $('tuneSetup').style.display = ''; $('hInfo').textContent = ''; updCalib(); };
 
 // ---------- short scroll trials (same task and stop rule as the study program) ----------
@@ -685,8 +722,21 @@ document.addEventListener('keydown', e => {
 // ======================================================================
 let merged = null;
 $('sumFiles').onchange = async e => {
-  const files = [...e.target.files], data = [];
-  for(const f of files){ try{ data.push(JSON.parse(await f.text())); }catch(err){} }
+  const data = [];
+  for(const f of [...e.target.files]){ try{ data.push(JSON.parse(await f.text())); }catch(err){} }
+  mergePilots(data); $('sumMsg').textContent = `파일 ${data.length}개`;
+};
+async function loadPilotsFromServer(){
+  const msg = t => $('sumMsg').textContent = t;
+  try{ msg('서버에서 불러오는 중…'); const j = await SRV.call('data', { kind:'pilot' }), data = [];
+    for(const f of j.files){ const r = await fetch(f.url); if(r.ok) try{ data.push(await r.json()); }catch(e){} }
+    if(!data.length){ msg('서버 pilot 폴더가 비어 있습니다'); return; }
+    mergePilots(data); msg(`서버에서 ${data.length}명 불러옴`); }
+  catch(e){ msg('서버 실패: ' + e.message); }
+}
+$('sumLoad').onclick = loadPilotsFromServer;
+if(SRV.ready()) loadPilotsFromServer();
+function mergePilots(data){
   const ok = data.filter(d => d.final_values);
   if(!ok.length){ $('sumTable').innerHTML = '<p class="bad">결과 파일이 아닙니다</p>'; return; }
   const keys = PARAMS.map(p => p.k).filter(k => ok.some(d => k in d.final_values));
@@ -696,8 +746,14 @@ $('sumFiles').onchange = async e => {
   $('sumTable').innerHTML = '<table><tr><th>값</th>' + ok.map(d => `<th>${d.pilot_id}</th>`).join('') + '<th>평균 (고정값)</th></tr>' +
     keys.map(k => { const p = PARAMS.find(x=>x.k===k); return `<tr><td>${p.name}</td>` + ok.map(d => `<td>${d.final_values[k] ?? '–'}</td>`).join('') + `<td><b>${merged.values[k]}</b></td></tr>`; }).join('') + '</table>';
   $('sumSave').disabled = false;
+}
+$('sumSave').onclick = async () => {
+  if(!merged) return;
+  download('gripspread_params.json', merged);
+  const msg = t => $('sumSaveMsg').textContent = t;
+  try{ msg('서버에 올리는 중…'); await SRV.putJSON(`params/gripspread_params_${SRV.stamp()}.json`, merged); msg('서버 params 폴더에 올림 · 본 실험 페이지가 열릴 때 이 값을 자동으로 씁니다'); }
+  catch(e){ msg('파일은 저장됨 · 서버 실패: ' + e.message); }
 };
-$('sumSave').onclick = () => merged && download('gripspread_params.json', merged);
 
 // ---------- main loop ----------
 function loop(now){

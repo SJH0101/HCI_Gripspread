@@ -328,8 +328,9 @@
 
         <div class="wz" data-who="실험자 세팅 · 선택">
           <h1>클라우드 자동 저장</h1>
-          <p>켜 두면 조건이 끝날 때마다 가벼운 기록이, 실험이 끝나면 전체 데이터 zip이 서버를 거쳐 Supabase에 올라갑니다. 키는 서버에만 있어서 여기서 넣을 것이 없습니다. 로컬 zip 저장은 그대로 됩니다. 시작 전에 <b>연결 테스트</b>를 한 번 눌러 주세요.</p>
+          <p>켜 두면 조건이 끝날 때마다 가벼운 기록이, 실험이 끝나면 전체 데이터 zip이 서버를 거쳐 Supabase의 <b>experiment</b> 폴더에 올라갑니다. Supabase 키는 서버에만 있고, 여기서는 연구자 비밀번호만 한 번 넣으면 이 브라우저가 기억합니다. 로컬 zip 저장은 그대로 됩니다. 시작 전에 <b>연결 테스트</b>를 한 번 눌러 주세요.</p>
         <div class="form">
+          <label for="cPw">연구자 비밀번호</label><input id="cPw" class="srvPw" type="password" autocomplete="current-password">
           <label>사용</label><span><label style="color:var(--ink)"><input id="cOn" type="checkbox"> 자동 업로드 켜기</label> <button id="cTest" type="button" style="margin-left:8px">연결 테스트</button> <span id="cMsg" class="check"></span></span>
         </div>
 
@@ -442,7 +443,9 @@
 
         <h2>결과</h2>
         <pre id="imuOut">아직 없음</pre>
-        <div class="actions"><button id="bImuSave" class="primary" disabled>imu_calib.json 저장</button></div>
+        <div class="actions"><button id="bImuSave" class="primary" disabled>저장 (파일 + 서버)</button><span id="imuSaveMsg" class="muted"></span></div>
+        <p class="muted">서버의 <b>imu_calib</b> 폴더에 올라가고, 본 실험 페이지가 열릴 때 가장 최근 보정을 자동으로 불러옵니다.</p>
+        <div class="form"><label>연구자 비밀번호</label><input class="srvPw" type="password" autocomplete="current-password"></div>
       </div>
     </section>
 
@@ -748,6 +751,36 @@ const GripEngine = (() => {
 
 
 const $ = id => document.getElementById(id);
+// ---------- server (this site's /api; the Supabase key stays on the server) ----------
+// One researcher password per browser, shared by every page of the site (same origin, same localStorage key).
+// Opened as a local file there is no /api: every call fails and the page keeps working with local files only.
+const PW_KEY = 'gripspread_researcher_pw_v1';
+const SRV = {
+  pw(){ try{ return localStorage.getItem(PW_KEY) || ''; }catch(e){ return ''; } },
+  setPw(v){ try{ v ? localStorage.setItem(PW_KEY, v) : localStorage.removeItem(PW_KEY); }catch(e){} },
+  online(){ return location.protocol !== 'file:'; },
+  ready(){ return SRV.online() && !!SRV.pw(); },
+  async call(route, body){
+    if(!SRV.online()) throw new Error('파일로 연 페이지에서는 서버를 쓸 수 없습니다. 사이트 주소로 열어 주세요');
+    if(!SRV.pw()) throw new Error('서버 비밀번호를 넣어 주세요');
+    const r = await fetch('/api/' + route, { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ ...body, password:SRV.pw() }) });
+    const j = await r.json().catch(() => ({}));
+    if(r.status === 401){ SRV.setPw(''); document.querySelectorAll('.srvPw').forEach(i => i.value = ''); throw new Error('서버 비밀번호가 틀렸습니다'); }
+    if(!r.ok) throw new Error(`서버 ${r.status} ${j.error || ''}`.trim());
+    return j;
+  },
+  async put(path, blob, type){
+    const { url } = await SRV.call('upload-url', { path });
+    const r = await fetch(url, { method:'PUT', headers:{ 'Content-Type':type, 'x-upsert':'false' }, body:blob });
+    if(!r.ok){ let m = ''; try{ m = (await r.json()).message || ''; }catch(e){} throw new Error(`업로드 ${r.status} ${m}`.trim()); }
+  },
+  putJSON(path, obj){ return SRV.put(path, new Blob([JSON.stringify(obj, null, 2)], { type:'application/json' }), 'application/json'); },
+  latest(kind){ return SRV.call('latest', { kind }); },
+  stamp(){ return new Date().toISOString().replace(/[:.]/g, '-'); },
+};
+// every <input class="srvPw"> on the page shows and sets the shared password
+document.querySelectorAll('.srvPw').forEach(i => { i.value = SRV.pw(); i.addEventListener('change', () => { SRV.setPw(i.value.trim()); document.querySelectorAll('.srvPw').forEach(o => { if(o !== i) o.value = i.value.trim(); }); }); });
+
 const CUPS = { none:'컵 없음', 60:'60mm 컵', 75:'75mm 컵', 90:'90mm 컵' };
 const TECH = { trackpad:'트랙패드', gs:'GripSpread' };
 // 4x4 balanced Latin square for cup order (each condition follows every other exactly once)
@@ -914,13 +947,15 @@ function showHandCheck(){
 // load the averaged pilot values (gripspread_params.json from the pilot tool) into the fields below
 const PARAM_FIELD = { dead:'gDead', gain:'gGain', gamma:'gGamma', boostMax:'gBoost', boostMs:'gBoostMs', boostOn:'gBoostOn', minSide:'gMinSide', accMs:'gAcc', brakeMs:'gBrake', curlMax:'gCurl', holdMs:'gHold' };
 let paramsSource = null;
+function applyParams(j, file){
+  const v = j.values || j.final_values; if(!v) throw new Error('not a params file');
+  const set = Object.entries(v).filter(([k]) => PARAM_FIELD[k]).map(([k,x]) => { $(PARAM_FIELD[k]).value = x; return `${k}=${x}`; });
+  paramsSource = { file, from:j.from || j.pilot_id || null, values:v };
+  $('paramsMsg').className = 'check'; $('paramsMsg').textContent = `불러옴 (${file}): ` + set.join(', '); paramSummary();
+}
 $('fParams').onchange = async e => {
-  try{
-    const j = JSON.parse(await e.target.files[0].text()), v = j.values || j.final_values;
-    const set = Object.entries(v).filter(([k]) => PARAM_FIELD[k]).map(([k,x]) => { $(PARAM_FIELD[k]).value = x; return `${k}=${x}`; });
-    paramsSource = { file:e.target.files[0].name, from:j.from || j.pilot_id || null, values:v };
-    $('paramsMsg').className = 'check'; $('paramsMsg').textContent = '불러옴: ' + set.join(', '); paramSummary();
-  }catch(err){ $('paramsMsg').className = 'check bad'; $('paramsMsg').textContent = '파일을 읽지 못했습니다'; }
+  try{ applyParams(JSON.parse(await e.target.files[0].text()), e.target.files[0].name); }
+  catch(err){ $('paramsMsg').className = 'check bad'; $('paramsMsg').textContent = '파일을 읽지 못했습니다'; }
 };
 
 // ---------- cup IMU calibration before the session ----------
@@ -934,6 +969,19 @@ function useImuCal(c, src){
   $('imuCalMsg').textContent = `${src} · ${(c.calibrated_at || '').slice(0,10)} 보정 · 1g ≈ ${(c.accel_counts_per_g || []).map(x=>Math.round(x)).join('/')} · ${IMU_CPD} count/(°/s)`;
 }
 try{ const c = JSON.parse(localStorage.getItem(IMUCAL_KEY)); if(c && c.gyro_counts_per_dps) useImuCal(c, '저장된 파일'); }catch(e){}
+// Auto-load from the server when the page opens (before any session starts, so values never change mid-session):
+// the newest merged pilot values (params/) and the newest sensor calibration (imu_calib/). A file picked by hand still wins.
+async function loadFromServer(){
+  if(!SRV.ready()) return;
+  try{ const j = await SRV.latest('params'); if(j.name && !paramsSource) applyParams(j.data, '서버 ' + j.name); }
+  catch(e){ $('paramsMsg').className = 'check bad'; $('paramsMsg').textContent = '서버에서 값을 못 불러옴: ' + e.message; }
+  try{ const j = await SRV.latest('imu_calib');
+    if(j.name && j.data.gyro_counts_per_dps && (!IMU_CAL || String(j.data.calibrated_at || '') >= String(IMU_CAL.calibrated_at || ''))){
+      useImuCal(j.data, '서버 ' + j.name); try{ localStorage.setItem(IMUCAL_KEY, JSON.stringify(j.data)); }catch(err){} } }
+  catch(e){ $('imuCalMsg').className = 'check bad'; $('imuCalMsg').textContent = '서버에서 보정 파일을 못 불러옴: ' + e.message; }
+}
+setTimeout(loadFromServer, 0);
+$('cPw').addEventListener('change', loadFromServer);
 $('fImuCal').onchange = async e => {
   try{ const c = JSON.parse(await e.target.files[0].text()); if(!c.gyro_counts_per_dps || !c.accel_counts_per_g) throw 0;
     useImuCal(c, e.target.files[0].name); try{ localStorage.setItem(IMUCAL_KEY, JSON.stringify(c)); }catch(err){} }
@@ -1121,7 +1169,12 @@ function finishTurn(){
   $('r3').innerHTML = `<span class="good">${CAL.turns.length}번째 완료</span> · ${cpd.toFixed(2)} count/(°/s) → 센서 자이로 범위 <b>±${near.dps}°/s</b> (표준값 ${near.cpd} 대비 ${(off*100).toFixed(1)}%)` + (CAL.turns.length < 2 ? ' · 한 번 더 해 주세요' : '');
   renderImu();
 }
-$('bImuSave').onclick = () => download(`imu_calib_${new Date().toISOString().slice(0,10)}.json`, imuResult());
+$('bImuSave').onclick = async () => {
+  const out = imuResult(); download(`imu_calib_${new Date().toISOString().slice(0,10)}.json`, out);
+  const msg = t => $('imuSaveMsg').textContent = t;
+  try{ msg('서버에 올리는 중…'); await SRV.putJSON(`imu_calib/imu_calib_${SRV.stamp()}.json`, out); msg('파일 저장 + 서버 imu_calib 폴더에 올림'); }
+  catch(e){ msg('파일은 저장됨 · 서버 실패: ' + e.message); }
+};
 
 
 // ---------- live view: a cube that follows the sensor ----------
@@ -1672,24 +1725,17 @@ function readCloudForm(){
 }
 $('cOn').addEventListener('change', readCloudForm);
 $('kCloud').textContent = CLOUD.on ? '켜짐' : '꺼짐';
-async function cloudPut(path, blob, type){
-  const a = await fetch('/api/upload-url', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ path }) });
-  const aj = await a.json().catch(() => ({}));
-  if(!a.ok) throw new Error(`서버 ${a.status} ${aj.error || ''}`.trim());
-  const r = await fetch(aj.url, { method:'PUT', headers:{ 'Content-Type':type, 'x-upsert':'false' }, body:blob });
-  if(!r.ok){ let m = ''; try{ m = (await r.json()).message || ''; }catch(e){} throw new Error(`업로드 ${r.status} ${m}`.trim()); }
-}
+const cloudPut = (path, blob, type) => SRV.put(path, blob, type);
 $('cTest').onclick = async () => {
   readCloudForm();
-  if(location.protocol === 'file:'){ $('cMsg').className = 'check bad'; $('cMsg').textContent = '파일로 연 페이지에서는 업로드가 안 됩니다. 사이트 주소로 열어 주세요'; return; }
   $('cMsg').className = 'check'; $('cMsg').textContent = '테스트 중…';
-  try{ await cloudPut(`_test/${new Date().toISOString().replace(/[:.]/g,'-')}.txt`, new Blob(['gripspread upload test']), 'text/plain');
+  try{ await cloudPut(`_test/${SRV.stamp()}.txt`, new Blob(['gripspread upload test']), 'text/plain');
     $('cMsg').textContent = '연결됨 · _test 폴더에 테스트 파일이 올라갔습니다'; }
   catch(e){ $('cMsg').className = 'check bad'; $('cMsg').textContent = '실패: ' + e.message; }
 };
 window.GS_DEBUG.cloudSync = () => cloudSync();
 async function cloudSync(){
-  if(!CLOUD.on || location.protocol === 'file:' || !S.cfg || !window.JSZip) return;
+  if(!CLOUD.on || !SRV.ready() || !S.cfg || !window.JSZip) return;
   if(CLOUD.busy){ CLOUD.again = true; return; }          // a newer checkpoint will be sent right after
   CLOUD.busy = true;
   try{
@@ -1700,7 +1746,7 @@ async function cloudSync(){
       const label = final ? 'final' : `after-step-${S.stepIdx}`;
       if(blob.size > 45e6){ CLOUD.log.push({ label, at:new Date().toISOString(), ok:false, error:'file over 45 MB, kept local only' });
         $('kCloud').textContent = '파일이 커서 로컬에만 저장'; $('kCloud').style.color = 'var(--alert)'; continue; }
-      const path = `${tag}/${(S.startedAt || '').replace(/[:.]/g,'-')}/${tag}_${String(++CLOUD.n).padStart(3,'0')}_${label}.zip`;
+      const path = `experiment/${tag}/${(S.startedAt || '').replace(/[:.]/g,'-')}/${tag}_${String(++CLOUD.n).padStart(3,'0')}_${label}.zip`;
       try{ await cloudPut(path, blob, 'application/zip'); CLOUD.log.push({ path, at:new Date().toISOString(), ok:true });
         $('kCloud').textContent = `올림 ${new Date().toLocaleTimeString().slice(0,-3)}`; $('kCloud').style.color = ''; }
       catch(e){ CLOUD.log.push({ path, at:new Date().toISOString(), ok:false, error:e.message }); CLOUD.n--;

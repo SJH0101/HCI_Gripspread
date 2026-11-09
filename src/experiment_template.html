@@ -307,8 +307,9 @@
 
         <div class="wz" data-who="실험자 세팅 · 선택">
           <h1>클라우드 자동 저장</h1>
-          <p>켜 두면 조건이 끝날 때마다 가벼운 기록이, 실험이 끝나면 전체 데이터 zip이 서버를 거쳐 Supabase에 올라갑니다. 키는 서버에만 있어서 여기서 넣을 것이 없습니다. 로컬 zip 저장은 그대로 됩니다. 시작 전에 <b>연결 테스트</b>를 한 번 눌러 주세요.</p>
+          <p>켜 두면 조건이 끝날 때마다 가벼운 기록이, 실험이 끝나면 전체 데이터 zip이 서버를 거쳐 Supabase의 <b>experiment</b> 폴더에 올라갑니다. Supabase 키는 서버에만 있고, 여기서는 연구자 비밀번호만 한 번 넣으면 이 브라우저가 기억합니다. 로컬 zip 저장은 그대로 됩니다. 시작 전에 <b>연결 테스트</b>를 한 번 눌러 주세요.</p>
         <div class="form">
+          <label for="cPw">연구자 비밀번호</label><input id="cPw" class="srvPw" type="password" autocomplete="current-password">
           <label>사용</label><span><label style="color:var(--ink)"><input id="cOn" type="checkbox"> 자동 업로드 켜기</label> <button id="cTest" type="button" style="margin-left:8px">연결 테스트</button> <span id="cMsg" class="check"></span></span>
         </div>
 
@@ -463,6 +464,7 @@ import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@m
 {{ENGINE}}
 
 const $ = id => document.getElementById(id);
+/*@SERVER_CLIENT@*/
 const CUPS = { none:'컵 없음', 60:'60mm 컵', 75:'75mm 컵', 90:'90mm 컵' };
 const TECH = { trackpad:'트랙패드', gs:'GripSpread' };
 // 4x4 balanced Latin square for cup order (each condition follows every other exactly once)
@@ -629,13 +631,15 @@ function showHandCheck(){
 // load the averaged pilot values (gripspread_params.json from the pilot tool) into the fields below
 const PARAM_FIELD = { dead:'gDead', gain:'gGain', gamma:'gGamma', boostMax:'gBoost', boostMs:'gBoostMs', boostOn:'gBoostOn', minSide:'gMinSide', accMs:'gAcc', brakeMs:'gBrake', curlMax:'gCurl', holdMs:'gHold' };
 let paramsSource = null;
+function applyParams(j, file){
+  const v = j.values || j.final_values; if(!v) throw new Error('not a params file');
+  const set = Object.entries(v).filter(([k]) => PARAM_FIELD[k]).map(([k,x]) => { $(PARAM_FIELD[k]).value = x; return `${k}=${x}`; });
+  paramsSource = { file, from:j.from || j.pilot_id || null, values:v };
+  $('paramsMsg').className = 'check'; $('paramsMsg').textContent = `불러옴 (${file}): ` + set.join(', '); paramSummary();
+}
 $('fParams').onchange = async e => {
-  try{
-    const j = JSON.parse(await e.target.files[0].text()), v = j.values || j.final_values;
-    const set = Object.entries(v).filter(([k]) => PARAM_FIELD[k]).map(([k,x]) => { $(PARAM_FIELD[k]).value = x; return `${k}=${x}`; });
-    paramsSource = { file:e.target.files[0].name, from:j.from || j.pilot_id || null, values:v };
-    $('paramsMsg').className = 'check'; $('paramsMsg').textContent = '불러옴: ' + set.join(', '); paramSummary();
-  }catch(err){ $('paramsMsg').className = 'check bad'; $('paramsMsg').textContent = '파일을 읽지 못했습니다'; }
+  try{ applyParams(JSON.parse(await e.target.files[0].text()), e.target.files[0].name); }
+  catch(err){ $('paramsMsg').className = 'check bad'; $('paramsMsg').textContent = '파일을 읽지 못했습니다'; }
 };
 
 // ---------- cup IMU calibration before the session ----------
@@ -649,6 +653,19 @@ function useImuCal(c, src){
   $('imuCalMsg').textContent = `${src} · ${(c.calibrated_at || '').slice(0,10)} 보정 · 1g ≈ ${(c.accel_counts_per_g || []).map(x=>Math.round(x)).join('/')} · ${IMU_CPD} count/(°/s)`;
 }
 try{ const c = JSON.parse(localStorage.getItem(IMUCAL_KEY)); if(c && c.gyro_counts_per_dps) useImuCal(c, '저장된 파일'); }catch(e){}
+// Auto-load from the server when the page opens (before any session starts, so values never change mid-session):
+// the newest merged pilot values (params/) and the newest sensor calibration (imu_calib/). A file picked by hand still wins.
+async function loadFromServer(){
+  if(!SRV.ready()) return;
+  try{ const j = await SRV.latest('params'); if(j.name && !paramsSource) applyParams(j.data, '서버 ' + j.name); }
+  catch(e){ $('paramsMsg').className = 'check bad'; $('paramsMsg').textContent = '서버에서 값을 못 불러옴: ' + e.message; }
+  try{ const j = await SRV.latest('imu_calib');
+    if(j.name && j.data.gyro_counts_per_dps && (!IMU_CAL || String(j.data.calibrated_at || '') >= String(IMU_CAL.calibrated_at || ''))){
+      useImuCal(j.data, '서버 ' + j.name); try{ localStorage.setItem(IMUCAL_KEY, JSON.stringify(j.data)); }catch(err){} } }
+  catch(e){ $('imuCalMsg').className = 'check bad'; $('imuCalMsg').textContent = '서버에서 보정 파일을 못 불러옴: ' + e.message; }
+}
+setTimeout(loadFromServer, 0);
+$('cPw').addEventListener('change', loadFromServer);
 $('fImuCal').onchange = async e => {
   try{ const c = JSON.parse(await e.target.files[0].text()); if(!c.gyro_counts_per_dps || !c.accel_counts_per_g) throw 0;
     useImuCal(c, e.target.files[0].name); try{ localStorage.setItem(IMUCAL_KEY, JSON.stringify(c)); }catch(err){} }
@@ -1171,24 +1188,17 @@ function readCloudForm(){
 }
 $('cOn').addEventListener('change', readCloudForm);
 $('kCloud').textContent = CLOUD.on ? '켜짐' : '꺼짐';
-async function cloudPut(path, blob, type){
-  const a = await fetch('/api/upload-url', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ path }) });
-  const aj = await a.json().catch(() => ({}));
-  if(!a.ok) throw new Error(`서버 ${a.status} ${aj.error || ''}`.trim());
-  const r = await fetch(aj.url, { method:'PUT', headers:{ 'Content-Type':type, 'x-upsert':'false' }, body:blob });
-  if(!r.ok){ let m = ''; try{ m = (await r.json()).message || ''; }catch(e){} throw new Error(`업로드 ${r.status} ${m}`.trim()); }
-}
+const cloudPut = (path, blob, type) => SRV.put(path, blob, type);
 $('cTest').onclick = async () => {
   readCloudForm();
-  if(location.protocol === 'file:'){ $('cMsg').className = 'check bad'; $('cMsg').textContent = '파일로 연 페이지에서는 업로드가 안 됩니다. 사이트 주소로 열어 주세요'; return; }
   $('cMsg').className = 'check'; $('cMsg').textContent = '테스트 중…';
-  try{ await cloudPut(`_test/${new Date().toISOString().replace(/[:.]/g,'-')}.txt`, new Blob(['gripspread upload test']), 'text/plain');
+  try{ await cloudPut(`_test/${SRV.stamp()}.txt`, new Blob(['gripspread upload test']), 'text/plain');
     $('cMsg').textContent = '연결됨 · _test 폴더에 테스트 파일이 올라갔습니다'; }
   catch(e){ $('cMsg').className = 'check bad'; $('cMsg').textContent = '실패: ' + e.message; }
 };
 window.GS_DEBUG.cloudSync = () => cloudSync();
 async function cloudSync(){
-  if(!CLOUD.on || location.protocol === 'file:' || !S.cfg || !window.JSZip) return;
+  if(!CLOUD.on || !SRV.ready() || !S.cfg || !window.JSZip) return;
   if(CLOUD.busy){ CLOUD.again = true; return; }          // a newer checkpoint will be sent right after
   CLOUD.busy = true;
   try{
@@ -1199,7 +1209,7 @@ async function cloudSync(){
       const label = final ? 'final' : `after-step-${S.stepIdx}`;
       if(blob.size > 45e6){ CLOUD.log.push({ label, at:new Date().toISOString(), ok:false, error:'file over 45 MB, kept local only' });
         $('kCloud').textContent = '파일이 커서 로컬에만 저장'; $('kCloud').style.color = 'var(--alert)'; continue; }
-      const path = `${tag}/${(S.startedAt || '').replace(/[:.]/g,'-')}/${tag}_${String(++CLOUD.n).padStart(3,'0')}_${label}.zip`;
+      const path = `experiment/${tag}/${(S.startedAt || '').replace(/[:.]/g,'-')}/${tag}_${String(++CLOUD.n).padStart(3,'0')}_${label}.zip`;
       try{ await cloudPut(path, blob, 'application/zip'); CLOUD.log.push({ path, at:new Date().toISOString(), ok:true });
         $('kCloud').textContent = `올림 ${new Date().toLocaleTimeString().slice(0,-3)}`; $('kCloud').style.color = ''; }
       catch(e){ CLOUD.log.push({ path, at:new Date().toISOString(), ok:false, error:e.message }); CLOUD.n--;
