@@ -211,7 +211,8 @@
     <div class="keys">
       <kbd>Space</kbd> 다음 조건 시작<br>
       <kbd>P</kbd> 지금 시행 끝나면 일시정지<br>
-      <kbd>S</kbd> 연습 끝내기 (실험자)<br>
+      <kbd>S</kbd> 연습 끝내기 (이번 시행까지)<br>
+      <button id="btnSkipPrac" style="display:none;margin:4px 0;padding:2px 8px;font-size:12px">연습 건너뛰기 (지금 바로)</button>
       <span class="testonly"><kbd>N</kbd> 이 시행 건너뛰기 (테스트 모드)<br>
       <kbd>K</kbd> 이 조건 건너뛰기 (테스트 모드)</span>
     </div>
@@ -1026,8 +1027,9 @@ function nextTrial(){
 
 function practiceCriterion(){
   const done = stepTrials.length;
+  if(run.pracDone) return true;   // experimenter ended it (S key), even before the minimum
   if(done < S.cfg.pracMin) return false;
-  if(done >= S.cfg.pracMax || run.pracDone) return true;
+  if(done >= S.cfg.pracMax) return true;
   if(done < 20) return false;
   const mt = stepTrials.map(r=>r.success ? r.mt_ms : S.cfg.timeout);
   const last = mt.slice(-10).reduce((a,b)=>a+b,0)/10, prev = mt.slice(-20,-10).reduce((a,b)=>a+b,0)/10;
@@ -1119,7 +1121,8 @@ function tickTask(now){
   tr.prevTop = top;
 
   if(S.cfg.frames && run.phase !== 'idle'){
-    const row = [Math.round(now), st.tech, st.cup, st.type, tr.uid, run.phase, Math.round(top), Math.round(d), inFrame?1:0, wheelAcc.toFixed(1),
+    const pos = st.tech === 'gs' && tr.pos != null ? tr.pos : top;   // GS keeps a sub-pixel position; log it so slow creep is not a staircase
+    const row = [Math.round(now), st.tech, st.cup, st.type, tr.uid, run.phase, +pos.toFixed(1), +((tr.T - pos) - fc).toFixed(1), inFrame?1:0, wheelAcc.toFixed(1),
       E.state, E.theta == null ? '' : E.theta.toFixed(2), E.velocity.toFixed(1), E.command.toFixed(1), E.boost.toFixed(2), E.reliable?1:0, E.reason || ''];
     if(S.cfg.frames === 2){ const w = E.world; for(let i=0;i<21;i++) row.push(w ? w[i].x.toFixed(5) : '', w ? w[i].y.toFixed(5) : '', w ? w[i].z.toFixed(5) : ''); }
     frames.push(row);
@@ -1168,6 +1171,16 @@ function finishTrial(now, success){
   setTimeout(() => { if(run && run.trial === tr) nextTrial(); }, S.cfg.itiMs);
 }
 
+// Skip the rest of a practice block right now (the trial in progress is dropped; practice is never measured data).
+// Logged in session.json as practice_skips so the report can say who got less practice.
+const pracSkips = [];
+function skipPractice(){
+  if(!run || run.st.type !== 'practice') return;
+  pracSkips.push({ technique:run.st.tech, cup:run.st.cup, practice_trials_done:stepTrials.length, at:new Date().toISOString() });
+  if(run.trial) run.trial = null;
+  endStep();
+}
+$('btnSkipPrac').onclick = skipPractice;
 function endStep(){
   const st = run.st; run.phase = 'idle'; run.trial = null;
   saveStepFiles();
@@ -1282,7 +1295,7 @@ function sessionObj(){
   return { session_type:S.sessionType || 'study', target_marked:MARK_TARGET, pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
-    tlx:S.tlx, seq:seqRows.slice(), iso:isoRows.slice(), interview:interviewRows.slice(), calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
+    tlx:S.tlx, seq:seqRows.slice(), iso:isoRows.slice(), interview:interviewRows.slice(), calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), practice_skips:pracSkips.slice(), user_agent:navigator.userAgent };
 }
 $('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
 // recovery list on the setup screen
@@ -1500,6 +1513,7 @@ function loop(now){
   tickTask(now);
   const tv = !!(run && run.st && run.st.type !== 'practice' && $('sTask').classList.contains('on'));
   document.body.classList.toggle('trialView', tv); document.body.classList.toggle('tp', tv && run.st.tech === 'trackpad');
+  $('btnSkipPrac').style.display = run && run.st.type === 'practice' ? '' : 'none';
   $('kTheta').textContent = E.theta == null ? '–' : E.theta.toFixed(1) + '°';
   $('kR0').textContent = E.r0 == null ? '–' : E.r0.toFixed(1) + '°';
   $('kRange').textContent = E.range ? `${E.range.min.toFixed(0)}–${E.range.max.toFixed(0)}°` : '안 잼';
