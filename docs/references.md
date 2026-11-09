@@ -52,6 +52,8 @@ GripSpread 기획, 실험 설계, 파일럿 절차에서 근거로 쓴 자료. �
 
 - **Hart, S. G., & Staveland, L. E. (1988).** Development of NASA-TLX (Task Load Index): Results of empirical and theoretical research. *Advances in Psychology*, 52, 139–183. https://doi.org/10.1016/S0166-4115(08)62386-9 — 기법별 작업 부하(Raw TLX).
 - **Sauro, J., & Dumas, J. S. (2009).** Comparison of three one-question, post-task usability questionnaires. *Proc. CHI 2009*, 1599–1608. https://doi.org/10.1145/1518701.1518946 — SEQ, 조건별 난이도 7점.
+- **Douglas, S. A., Kirkpatrick, A. E., & MacKenzie, I. S. (1999).** Testing pointing device performance and user assessment with the ISO 9241, Part 9 standard. *Proc. CHI '99*, 215–222. https://doi.org/10.1145/302979.303042 — ISO 9241-9 장치 평가 설문 13문항, 5점 형식(원문 그림 3에서 문항 확인, https://www.yorku.ca/mack/CHI99b.html).
+- **ISO 9241-9:2000.** Ergonomic requirements for office work with visual display terminals — Part 9: Requirements for non-keyboard input devices (2012년 ISO 9241-411로 대체). — 장치 평가 설문 출처. 인용 판은 원문 확인 후 확정.
 
 ## 통계 분석 (`gripspread_analysis.html`)
 

@@ -118,6 +118,11 @@
   .seq-row button{padding:14px 0;font-size:18px;font-variant-numeric:tabular-nums}
   .seq-row button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
   .seq-ends{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin-bottom:12px}
+  /* ISO 9241-9 questionnaire */
+  .iso-item{margin:0 0 14px} .iso-item .q{font-weight:500}
+  .iso-item .seq-row{grid-template-columns:repeat(5,1fr);margin:6px 0 2px} .iso-item .seq-row button{padding:8px 0;font-size:15px}
+  .iso-item .seq-ends{margin-bottom:0;font-size:12px}
+  #isoWarn{color:#B00020;font-size:13px;margin-left:8px;align-self:center}
   #tlxWarn{color:#B00020;font-size:13px;margin-left:8px;align-self:center}
   .wizard{max-width:820px;margin:24px auto 40px;padding:0 16px}
   .wizard .sheet{margin:12px 0 0;max-width:none}
@@ -426,6 +431,16 @@
       </div>
     </section>
 
+    <!-- 4a. ISO 9241-9 device assessment questionnaire, right after NASA-TLX -->
+    <section id="sIso" class="screen">
+      <div class="sheet">
+        <h1 id="isoTitle">방금 쓴 방법을 평가해 주세요</h1>
+        <p>각 항목에서 가장 가까운 칸을 하나씩 눌러 주세요. 정답은 없습니다. 모든 항목에 답해야 제출됩니다.</p>
+        <div id="isoItems"></div>
+        <div class="actions"><button id="btnIso" class="primary">제출</button><span id="isoWarn"></span></div>
+      </div>
+    </section>
+
     <!-- 4b. SEQ after each condition -->
     <section id="sSeq" class="screen">
       <div class="sheet">
@@ -504,7 +519,7 @@ function drawOverlay(){
 // ---------- session ----------
 const S = { pid:null, hand:'R', handLen:null, span:null, note:'', seq:null, techOrder:null, latinRow:null,
   cfg:null, steps:[], stepIdx:-1, startedAt:null, tlx:[], files:[], calib:[] };
-const allTrials = [], tlxRows = [], seqRows = [];
+const allTrials = [], tlxRows = [], seqRows = [], isoRows = [];
 let frames = [], imuRows = [], stepTrials = [];
 
 function parseList(v){ return v.split(',').map(x=>parseFloat(x.trim())).filter(x=>!isNaN(x)); }
@@ -535,6 +550,7 @@ function buildSteps(){
     // SEQ (Sauro & Dumas 2009) right after every measured condition: one 7-point item, so workload can be read per cup
     o.cups.forEach((cup, ci) => { add({ type:'measure', tech, cup, condIndex: ci+1 }); steps.push({ type:'seq', tech, cup }); });
     steps.push({ type:'tlx', tech });
+    steps.push({ type:'iso', tech });   // ISO 9241-9 device assessment, whole questionnaire
     if(bi === 0) steps.push({ type:'rest' });
   });
   steps.push({ type:'done' });
@@ -843,7 +859,7 @@ function stepName(st){
   if(st.type === 'measure') return `${TECH[st.tech]} · ${CUPS[st.cup]}`;
   if(st.type === 'calib') return `${TECH[st.tech]} 보정 · ${CUPS[st.cup]}`;
   if(st.type === 'seq') return `${TECH[st.tech]} · ${CUPS[st.cup]} 난이도`;
-  return { tlx:`${TECH[st.tech]} 설문`, rest:'휴식', done:'끝' }[st.type] || st.type;
+  return { tlx:`${TECH[st.tech]} 설문`, iso:`${TECH[st.tech]} 장치 평가`, rest:'휴식', done:'끝' }[st.type] || st.type;
 }
 function gotoStep(i){
   if(run){ run.trial = null; run = null; }
@@ -864,6 +880,7 @@ function nextStep(){
   if(st.type === 'calib') return showCalib(st);
   if(st.type === 'practice' || st.type === 'measure') return showBrief(st);
   if(st.type === 'tlx') return showTlx(st);
+  if(st.type === 'iso') return showIso(st);
   if(st.type === 'seq') return showSeq(st);
   if(st.type === 'rest') return showRest();
   if(st.type === 'done') return showDone();
@@ -1023,7 +1040,7 @@ document.addEventListener('keydown', e => {
   }
   if(testMode && (e.key === 'k' || e.key === 'K')){
     if(run){ if(run.trial) run.trial = null; endStep(); }
-    else if(['sBrief','sCalib','sTlx','sRest'].some(id => $(id).classList.contains('on'))) gotoStep(S.stepIdx + 1);
+    else if(['sBrief','sCalib','sTlx','sIso','sRest'].some(id => $(id).classList.contains('on'))) gotoStep(S.stepIdx + 1);
   }
   if((e.key === 's' || e.key === 'S') && run && run.st.type === 'practice'){ run.pracDone = true; taskMsg.textContent = '연습을 이번 시행에서 끝냅니다'; }
 });
@@ -1154,6 +1171,8 @@ function frameHead(cfgFrames){ const h = ['t_ms','technique','cup','step','trial
 const IMU_HEAD = ['t_ms','technique','cup','step','trial_uid','phase','seq','t_us','ax_raw','ay_raw','az_raw','gx_raw','gy_raw','gz_raw','tilt_deg','ref_ready','connection_id'];
 const SEQ_HEAD = ['pid','technique','cup','seq'];
 const TLX_HEAD = ['pid','technique','mental','physical','temporal','performance','effort','frustration','raw_tlx'];
+const ISO_KEYS = ['force','smooth','mental','physical','accuracy','speed','finger','wrist','arm','shoulder','neck','comfort','overall'];
+const ISO_HEAD = ['pid','technique', ...ISO_KEYS.map(k => 'iso_' + k)];
 const allFrames = [], allImu = [];
 const pTag = pid => `P${String(pid).padStart(2,'0')}`;
 
@@ -1163,7 +1182,7 @@ function idb(){ return new Promise((res, rej) => { const r = indexedDB.open(DB, 
 async function idbPut(key, val){ const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(val, key); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
 async function idbAll(){ const db = await idb(); return new Promise((res, rej) => { const out = []; const tx = db.transaction(STORE); const c = tx.objectStore(STORE).openCursor();
   c.onsuccess = () => { const cur = c.result; if(cur){ out.push([cur.key, cur.value]); cur.continue(); } else res(out); }; c.onerror = () => rej(c.error); }); }
-function snapshot(){ return { session:sessionObj(), trials:allTrials, frames:allFrames, imu:allImu, tlx:tlxRows, seq:seqRows }; }
+function snapshot(){ return { session:sessionObj(), trials:allTrials, frames:allFrames, imu:allImu, tlx:tlxRows, seq:seqRows, iso:isoRows }; }
 async function backup(){
   if(!S.cfg || !S.cfg.save) return;
   try{ await idbPut(`${pTag(S.pid)}_${S.startedAt}`, snapshot()); $('hSaved').textContent = '브라우저에 백업됨 · ' + new Date().toLocaleTimeString(); }
@@ -1229,6 +1248,7 @@ async function makeZip(snap, light){
   if(!light && snap.imu.length) z.file(`${tag}_imu.csv`, toCSV(IMU_HEAD, snap.imu));
   if(snap.tlx.length) z.file(`${tag}_tlx.csv`, toCSV(TLX_HEAD, snap.tlx));
   if(snap.seq && snap.seq.length) z.file(`${tag}_seq.csv`, toCSV(SEQ_HEAD, snap.seq));
+  if(snap.iso && snap.iso.length) z.file(`${tag}_iso.csv`, toCSV(ISO_HEAD, snap.iso));
   z.file(`${tag}_session.json`, JSON.stringify(ss, null, 2));
   const blob = await z.generateAsync({ type:'blob', compression:'DEFLATE' });
   const name = `${ss.practice ? 'PRACTICE_' : ''}${tag}_gripspread_${(ss.started_at || '').slice(0,16).replace(/[:T]/g,'-')}.zip`;
@@ -1244,7 +1264,7 @@ function sessionObj(){
   return { practice:!!S.practice, pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
-    tlx:S.tlx, seq:seqRows.slice(), calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
+    tlx:S.tlx, seq:seqRows.slice(), iso:isoRows.slice(), calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
 }
 $('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
 // recovery list on the setup screen
@@ -1281,6 +1301,45 @@ function showTlx(st){
   show('sTlx');
 }
 window.GS_DEBUG.showTlx = showTlx;   // console/testing
+
+// ---------- ISO 9241-9 device assessment questionnaire (Annex C; item set and 5-point format as in Douglas, Kirkpatrick &
+// MacKenzie, CHI 1999), the whole questionnaire right after NASA-TLX for each technique. Item 5 "Accurate pointing" is
+// worded for scrolling ("원하는 위치에 정확히 맞추기"). Stored 1-5 from the left anchor to the right anchor, as shown.
+// Items 1, 3, 4 and 6 run "too low/fast -> too high/slow", so 3 is the ideal there, not the best end.
+const ISO = [
+  ['force','조작에 필요한 힘은','너무 작았다','너무 컸다'],
+  ['smooth','조작하는 동안의 부드러움은','매우 거칠었다','매우 부드러웠다'],
+  ['mental','조작에 필요한 정신적 노력은','너무 적었다','너무 많았다'],
+  ['physical','조작에 필요한 신체적 노력은','너무 적었다','너무 많았다'],
+  ['accuracy','원하는 위치에 정확히 맞추기는','쉬웠다','어려웠다'],
+  ['speed','조작 속도는','너무 빨랐다','너무 느렸다'],
+  ['finger','손가락 피로','없음','매우 심함'],
+  ['wrist','손목 피로','없음','매우 심함'],
+  ['arm','팔 피로','없음','매우 심함'],
+  ['shoulder','어깨 피로','없음','매우 심함'],
+  ['neck','목 피로','없음','매우 심함'],
+  ['comfort','전반적인 편안함은','매우 불편했다','매우 편했다'],
+  ['overall','전반적으로, 이 입력 방법은','쓰기 매우 어려웠다','쓰기 매우 쉬웠다'],
+];
+const isoVal = {};
+function showIso(st){
+  $('isoTitle').textContent = `방금 쓴 ${TECH[st.tech]}를 평가해 주세요`;
+  ISO.forEach(([k]) => delete isoVal[k]); $('isoWarn').textContent = '';
+  $('isoItems').innerHTML = ISO.map(([k, q, lo, hi], i) => `<div class="iso-item"><div class="q">${i+1}. ${q}</div>
+    <div class="seq-row" data-k="${k}">${[1,2,3,4,5].map(v => `<button data-v="${v}">${v}</button>`).join('')}</div>
+    <div class="seq-ends"><span>${lo}</span><span>${hi}</span></div></div>`).join('');
+  $('isoItems').querySelectorAll('.seq-row').forEach(r => r.querySelectorAll('button').forEach(b => b.onclick = () => {
+    isoVal[r.dataset.k] = +b.dataset.v; r.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); }));
+  show('sIso');
+}
+window.GS_DEBUG.showIso = showIso;
+$('btnIso').onclick = () => {
+  const left = ISO.filter(([k]) => isoVal[k] == null);
+  if(left.length){ $('isoWarn').textContent = `아직 안 고른 항목이 ${left.length}개 있습니다 (${left.map(([k]) => ISO.findIndex(x => x[0] === k) + 1).join(', ')}번)`; return; }
+  const st = S.steps[S.stepIdx], row = { pid:S.pid, technique:st.tech };
+  ISO.forEach(([k]) => row['iso_' + k] = isoVal[k]);
+  isoRows.push(row); backup(); nextStep();
+};
 
 // ---------- SEQ: Single Ease Question (Sauro & Dumas 2009), 7 points, words only at the ends ----------
 let seqVal = null;

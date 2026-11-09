@@ -9,6 +9,8 @@ TRIAL_HEAD = ['pid','technique','cup','step','cond_index','trial_index','trial_u
 IMU_HEAD = ['t_ms','technique','cup','step','trial_uid','phase','seq','t_us','ax_raw','ay_raw','az_raw','gx_raw','gy_raw','gz_raw','tilt_deg','ref_ready','connection_id']
 SEQ_HEAD = ['pid','technique','cup','seq']
 TLX_HEAD = ['pid','technique','mental','physical','temporal','performance','effort','frustration','raw_tlx']
+ISO_KEYS = ['force','smooth','mental','physical','accuracy','speed','finger','wrist','arm','shoulder','neck','comfort','overall']
+ISO_HEAD = ['pid','technique'] + ['iso_' + k for k in ISO_KEYS]
 CAL = json.load(open(os.path.join(os.path.dirname(__file__), '..', 'imu', 'calib', 'imu_calib_2026-11-05.json')))
 
 
@@ -63,10 +65,11 @@ def person(i, rng):
     for tech in order:
         vals = {k: max(0, min(100, round(rng.gauss(45 if tech == 'trackpad' else 35, 15)))) for k in TLX_HEAD[2:8]}
         tlx.append(dict(pid=pid, technique=tech, **vals, raw_tlx=round(sum(vals.values()) / 6, 1)))
+    iso = [dict(pid=pid, technique=tech, **{'iso_' + k: max(1, min(5, round(rng.gauss((3.4 if k in ('finger', 'wrist') else 3) if tech == 'gs' else 2.6, .8)))) for k in ISO_KEYS}) for tech in order]
     session = dict(pid=pid, hand='right', stature_cm=round(rng.gauss(172, 7)), hand_length_mm=round(rng.gauss(185, 10)), span_mm=round(rng.gauss(205, 12)),
                    tech_order=order, imu=dict(calib=CAL, session_check=dict(gyro_bias=CAL['gyro_bias']), counts_per_dps_used=CAL['gyro_counts_per_dps']),
                    note='FAKE DATA')
-    return pid, trials, imu, tlx, seq, session
+    return pid, trials, imu, tlx, seq, iso, session
 
 
 def main():
@@ -74,12 +77,13 @@ def main():
     os.makedirs(out, exist_ok=True)
     rng = random.Random(7)
     for i in range(1, n + 1):
-        pid, trials, imu, tlx, seq, session = person(i, rng)
+        pid, trials, imu, tlx, seq, iso, session = person(i, rng)
         with zipfile.ZipFile(os.path.join(out, f'FAKE_{pid}.zip'), 'w', zipfile.ZIP_DEFLATED) as z:
             z.writestr(f'{pid}_trials.csv', csv(TRIAL_HEAD, trials))
             z.writestr(f'{pid}_imu.csv', csv(IMU_HEAD, imu))
             z.writestr(f'{pid}_tlx.csv', csv(TLX_HEAD, tlx))
             z.writestr(f'{pid}_seq.csv', csv(SEQ_HEAD, seq))
+            z.writestr(f'{pid}_iso.csv', csv(ISO_HEAD, iso))
             z.writestr(f'{pid}_session.json', json.dumps(session))
     print('wrote', n, 'fake participants to', out)
 

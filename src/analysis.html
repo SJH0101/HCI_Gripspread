@@ -107,7 +107,7 @@ if(SRV.ready()) setTimeout(loadFromServer, 0);
 
 // each experiment file is <tag>_trials.csv, <tag>_imu.csv, <tag>_tlx.csv, <tag>_session.json (frames are not needed)
 function kindOf(name){
-  const m = name.split('/').pop().match(/^(.*)_(trials|imu|tlx|seq|session)\.(csv|json)$/);
+  const m = name.split('/').pop().match(/^(.*)_(trials|imu|tlx|seq|iso|session)\.(csv|json)$/);
   return m ? { tag:m[1], kind:m[2] } : null;
 }
 async function load(files){
@@ -147,7 +147,7 @@ function buildPeople(parts){
     if(!trials.length) continue;
     let session = null; try{ session = p.session ? JSON.parse(p.session) : null; }catch(e){}
     const pid = (session && session.pid) || trials[0].pid || tag;
-    const person = { tag, pid, session, trials, imuText:p.imu || null, tlx: p.tlx ? parseCSV(p.tlx) : [], seq: p.seq ? parseCSV(p.seq) : [] };
+    const person = { tag, pid, session, trials, imuText:p.imu || null, tlx: p.tlx ? parseCSV(p.tlx) : [], seq: p.seq ? parseCSV(p.seq) : [], iso: p.iso ? parseCSV(p.iso) : [] };
     const prev = byPid[pid];
     if(!prev || person.trials.length > prev.trials.length) byPid[pid] = { ...person, dupes:(prev ? prev.dupes + 1 : 0) };
     else prev.dupes++;
@@ -295,8 +295,16 @@ function analyze(people){
   // NASA-TLX (per participant x technique)
   const tlx = [];
   for(const p of people) for(const r of p.tlx) tlx.push({ pid:p.pid, tech:r.technique, ...Object.fromEntries(TLX_KEYS.map(k => [k, numOr(r[k])])) });
-  return { cells, trialsOut, roster, tlx, imuView, flagged, tiltMt };
+  const iso = [];
+  for(const p of people) for(const r of p.iso) iso.push({ pid:p.pid, tech:r.technique, ...Object.fromEntries(ISO_ITEMS.map(([k]) => [k, numOr(r['iso_' + k])])) });
+  return { cells, trialsOut, roster, tlx, imuView, flagged, tiltMt, iso };
 }
+// ISO 9241-9 device assessment (13 items, 1-5 from left to right anchor). ideal: 'mid' = 3 is best (too little <-> too much),
+// 'lo' / 'hi' = that end is better.
+const ISO_ITEMS = [['force','조작에 필요한 힘 (너무 작음 1 – 너무 큼 5)','mid'], ['smooth','부드러움 (거침 1 – 부드러움 5)','hi'], ['mental','정신적 노력 (너무 적음 1 – 너무 많음 5)','mid'],
+  ['physical','신체적 노력 (너무 적음 1 – 너무 많음 5)','mid'], ['accuracy','정확히 맞추기 (쉬움 1 – 어려움 5)','lo'], ['speed','조작 속도 (너무 빠름 1 – 너무 느림 5)','mid'],
+  ['finger','손가락 피로 (없음 1 – 매우 심함 5)','lo'], ['wrist','손목 피로','lo'], ['arm','팔 피로','lo'], ['shoulder','어깨 피로','lo'], ['neck','목 피로','lo'],
+  ['comfort','전반적 편안함 (불편 1 – 편함 5)','hi'], ['overall','전반적 사용 (어려움 1 – 쉬움 5)','hi']];
 const TLX_KEYS = ['raw_tlx','mental','physical','temporal','performance','effort','frustration'];
 const TLX_NAME = { raw_tlx:'전체(Raw TLX)', mental:'정신적 부담', physical:'신체적 부담', temporal:'시간 압박', performance:'수행 만족(낮을수록 좋음)', effort:'노력', frustration:'좌절' };
 
@@ -509,6 +517,13 @@ function render(R){
     const w = wilcoxon(x, y), med = v => { const s = [...v].sort((p,q) => p-q); return s.length ? (s[(s.length-1)>>1] + s[s.length>>1]) / 2 : NaN; };
     return { k, n:x.length, mx:med(x), my:med(y), w }; });
 
+  const med = v => { const s = [...v].sort((p,q) => p-q); return s.length ? (s[(s.length-1)>>1] + s[s.length>>1]) / 2 : NaN; };
+  const isoRows = ISO_ITEMS.map(([k, name, ideal]) => { const pids = [...new Set(R.iso.map(r => r.pid))], x = [], y = [];
+    for(const pid of pids){ const a = R.iso.find(r => r.pid === pid && r.tech === 'trackpad'), b = R.iso.find(r => r.pid === pid && r.tech === 'gs'); if(a && b && a[k] != null && b[k] != null){ x.push(a[k]); y.push(b[k]); } }
+    // for middle-ideal items also compare the distance from 3 (how far from "just right")
+    const dist = ideal === 'mid' ? wilcoxon(x.map(v => Math.abs(v - 3)), y.map(v => Math.abs(v - 3))) : null;
+    return { k, name, ideal, n:x.length, mx:med(x), my:med(y), w:wilcoxon(x, y), dist }; });
+  const isoP = holm(isoRows.map(r => r.w.p));
   const people = roster.map(r => `<tr><td>${r.pid}</td><td>${r.order}</td><td>${r.hand}</td><td class="num">${fmt(r.handLen,0)}</td><td class="num">${fmt(r.span,0)}</td><td class="num">${r.stature ?? '–'}</td><td class="num">${r.trials}</td><td class="num">${fmt(r.success*100,1)}%</td><td class="num">${r.outliers}</td><td class="num">${r.imuTrials}</td><td class="${r.warn.length ? 'w' : 'muted'}" style="text-align:left;white-space:normal">${r.warn.join(' · ') || '없음'}</td></tr>`).join('');
 
   $('out').innerHTML = `
@@ -529,6 +544,9 @@ function render(R){
   <h2>주관 평가 (NASA-TLX)</h2>
   <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩 받았으므로 대응 Wilcoxon 부호순위 검정(정확 p). 0–100점, 낮을수록 부담이 적다.</p></div>
+  <h2>장치 평가 (ISO 9241-9 설문)</h2>
+  <div class="card scroll"><table><tr><th style="text-align:left">항목</th><th>좋은 쪽</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th><th>Holm p</th><th>3에서 거리 p</th></tr>${isoRows.map((r, i) => `<tr><td style="text-align:left">${r.name}</td><td>${{ mid:'3 (적당)', lo:'1', hi:'5' }[r.ideal]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td><td class="num${stars(isoP[i])}">${fp(isoP[i])}</td><td class="num">${r.dist ? fp(r.dist.p) : '–'}</td></tr>`).join('')}</table>
+  <p class="muted">기법별로 한 번씩, 13문항 전부(Douglas, Kirkpatrick &amp; MacKenzie, CHI 1999의 5점 형식). 대응 Wilcoxon 부호순위 검정(정확 p), 13문항에 Holm 보정. 힘·정신적 노력·신체적 노력·속도는 "너무 적음–너무 많음" 척도라 3이 가장 좋으므로, 3에서 얼마나 떨어졌는지(|값 − 3|)도 따로 비교한다.</p></div>
   <h2>확인할 시행 (이동 시간이 그 사람의 Fitts 직선에서 크게 벗어남, 강건 z > 3)</h2>
   <div class="card scroll">${flaggedTable(R.flagged)}</div>
   <h2>민감도 분석 (확인할 시행을 뺐을 때)</h2>
