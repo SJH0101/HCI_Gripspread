@@ -492,16 +492,18 @@ const PARAMS = [
   { k:'dead',    name:'멈춤 구간',        unit:'',   step:0.05, min:0.05, max:0.40, dec:2, why:'편한 V 주변에서 안 움직이는 폭 (범위 대비)' },
   { k:'gain',    name:'기본 속도',        unit:'px/s', step:200, min:300, max:2000, dec:0, why:'끝까지 벌렸을 때 속도 (가속 전)' },
   { k:'gamma',   name:'속도 곡선 지수',   unit:'',   step:0.4,  min:1.0,  max:3.4,  dec:1, why:'클수록 살짝 벌릴 때 더 느림' },
+];
+// Not tuned (team decision 11/9): they act only in rare moments (holding a full spread, the ramp in/out) and
+// 6 trials per version cannot tell their steps apart. They stay at the engine defaults for everyone.
+const FIXED = [
   { k:'boostMax',name:'유지 가속 최대 배수', unit:'×', step:0.5, min:1.0, max:4.0, dec:1, why:'끝까지 벌린 채 버티면 붙는 가속' },
   { k:'accMs',   name:'가속 반응',        unit:'ms', step:100,  min:50,   max:600,  dec:0, why:'빨라질 때 따라가는 시간상수' },
   { k:'brakeMs', name:'감속 반응',        unit:'ms', step:40,   min:20,   max:200,  dec:0, why:'멈출 때 따라가는 시간상수' },
 ];
 const MAX_CMP = 4;
-// Checked by default: the values most likely to differ between people. The rest stay at the researchers' values
-// unless the operator ticks them (keeps one tuning session short).
-const DEFAULT_TUNE = ['dead', 'gain', 'gamma'];
 const BASE = { ...E.P };
-$('paramList').innerHTML = PARAMS.map((p,i) => `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-k="${p.k}" ${DEFAULT_TUNE.includes(p.k) ? 'checked' : ''}> ${i+1}. ${p.name} <span class="muted">· 지금 ${BASE[p.k]}${p.unit} · 한 칸 ${p.step}${p.unit} · ${p.why}</span></label>`).join('');
+$('paramList').innerHTML = PARAMS.map((p,i) => `<div>${i+1}. ${p.name} <span class="muted">· 지금 ${BASE[p.k]}${p.unit} · 한 칸 ${p.step}${p.unit} · ${p.why}</span></div>`).join('')
+  + `<div class="muted" style="margin-top:6px">고정: ${FIXED.map(p => `${p.name} ${BASE[p.k]}${p.unit}`).join(' · ')}</div>`;
 
 let T = null;      // tuning session
 let run = null;    // block of trials
@@ -515,8 +517,7 @@ function updCalib(){
   $('tStart').disabled = !ok;
 }
 $('tStart').onclick = () => {
-  const keys = [...document.querySelectorAll('#paramList input:checked')].map(i => i.dataset.k);
-  if(!keys.length) return;
+  const keys = PARAMS.map(p => p.k);
   Object.assign(E.P, BASE);
   T = { id:$('tId').value.trim() || 'T?', cup:$('tCup').value, n:Math.max(2, +$('tN').value || 4), keys, ki:0,
         values:{ ...BASE }, calib:{ range:{ ...E.range }, r0:E.r0 }, comparisons:[], trials:[], started:new Date().toISOString() };
