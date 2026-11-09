@@ -116,7 +116,7 @@
   .tlx-item .ends{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
   .seq-row{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin:18px 0 6px}
   .seq-row button{padding:14px 0;font-size:18px;font-variant-numeric:tabular-nums}
-  .seq-row button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .seq-row button.on, #ivPref button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
   .seq-ends{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin-bottom:12px}
   /* ISO 9241-9 questionnaire */
   .iso-item{margin:0 0 14px} .iso-item .q{font-weight:500}
@@ -454,6 +454,16 @@
     </section>
 
     <!-- 6. done -->
+    <!-- 5. closing interview, read out by the experimenter, notes typed by the experimenter -->
+    <section id="sInterview" class="screen">
+      <div class="sheet">
+        <h1>마지막 인터뷰 <span style="font-size:14px;color:var(--muted);font-weight:500">진행자용 · 약 5분</span></h1>
+        <p>폰 녹화가 켜져 있는지 확인하고, 질문을 순서대로 읽어 주세요. 답은 녹화로 남으니 여기에는 한두 줄 요약만 적습니다. 답이 없으면 비워 둬도 됩니다. 질문은 유도하지 않게 그대로 읽고, 1번은 열린 질문, 선호는 6번에서 묻습니다.</p>
+        <div id="ivItems"></div>
+        <div class="actions"><button id="btnInterview" class="primary">저장하고 끝내기</button></div>
+      </div>
+    </section>
+
     <section id="sDone" class="screen">
       <div class="sheet">
         <h1>실험 끝</h1>
@@ -510,7 +520,7 @@ function drawOverlay(){
 // ---------- session ----------
 const S = { pid:null, hand:'R', handLen:null, span:null, note:'', seq:null, techOrder:null, latinRow:null,
   cfg:null, steps:[], stepIdx:-1, startedAt:null, tlx:[], files:[], calib:[] };
-const allTrials = [], tlxRows = [], seqRows = [], isoRows = [];
+const allTrials = [], tlxRows = [], seqRows = [], isoRows = [], interviewRows = [];
 let frames = [], imuRows = [], stepTrials = [];
 
 function parseList(v){ return v.split(',').map(x=>parseFloat(x.trim())).filter(x=>!isNaN(x)); }
@@ -544,6 +554,7 @@ function buildSteps(){
     steps.push({ type:'iso', tech });   // ISO 9241-9 device assessment, whole questionnaire
     if(bi === 0) steps.push({ type:'rest' });
   });
+  steps.push({ type:'interview' });
   steps.push({ type:'done' });
   return steps;
 }
@@ -853,7 +864,7 @@ function stepName(st){
   if(st.type === 'measure') return `${TECH[st.tech]} · ${CUPS[st.cup]}`;
   if(st.type === 'calib') return `${TECH[st.tech]} 보정 · ${CUPS[st.cup]}`;
   if(st.type === 'seq') return `${TECH[st.tech]} · ${CUPS[st.cup]} 난이도`;
-  return { tlx:`${TECH[st.tech]} 설문`, iso:`${TECH[st.tech]} 장치 평가`, rest:'휴식', done:'끝' }[st.type] || st.type;
+  return { tlx:`${TECH[st.tech]} 설문`, iso:`${TECH[st.tech]} 장치 평가`, interview:'마지막 인터뷰', rest:'휴식', done:'끝' }[st.type] || st.type;
 }
 function gotoStep(i){
   if(run){ run.trial = null; run = null; }
@@ -877,6 +888,7 @@ function nextStep(){
   if(st.type === 'iso') return showIso(st);
   if(st.type === 'seq') return showSeq(st);
   if(st.type === 'rest') return showRest();
+  if(st.type === 'interview') return showInterview();
   if(st.type === 'done') return showDone();
 }
 
@@ -1165,6 +1177,7 @@ function frameHead(cfgFrames){ const h = ['t_ms','technique','cup','step','trial
 const IMU_HEAD = ['t_ms','technique','cup','step','trial_uid','phase','seq','t_us','ax_raw','ay_raw','az_raw','gx_raw','gy_raw','gz_raw','tilt_deg','ref_ready','connection_id'];
 const SEQ_HEAD = ['pid','technique','cup','seq'];
 const TLX_HEAD = ['pid','technique','mental','physical','temporal','performance','effort','frustration','raw_tlx'];
+const INTERVIEW_HEAD = ['pid','q','topic','question','note'];
 const ISO_KEYS = ['force','smooth','mental','physical','accuracy','speed','finger','wrist','arm','shoulder','neck','comfort','overall'];
 const ISO_HEAD = ['pid','technique', ...ISO_KEYS.map(k => 'iso_' + k)];
 const allFrames = [], allImu = [];
@@ -1176,7 +1189,7 @@ function idb(){ return new Promise((res, rej) => { const r = indexedDB.open(DB, 
 async function idbPut(key, val){ const db = await idb(); return new Promise((res, rej) => { const tx = db.transaction(STORE, 'readwrite'); tx.objectStore(STORE).put(val, key); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
 async function idbAll(){ const db = await idb(); return new Promise((res, rej) => { const out = []; const tx = db.transaction(STORE); const c = tx.objectStore(STORE).openCursor();
   c.onsuccess = () => { const cur = c.result; if(cur){ out.push([cur.key, cur.value]); cur.continue(); } else res(out); }; c.onerror = () => rej(c.error); }); }
-function snapshot(){ return { session:sessionObj(), trials:allTrials, frames:allFrames, imu:allImu, tlx:tlxRows, seq:seqRows, iso:isoRows }; }
+function snapshot(){ return { session:sessionObj(), trials:allTrials, frames:allFrames, imu:allImu, tlx:tlxRows, seq:seqRows, iso:isoRows, interview:interviewRows }; }
 async function backup(){
   if(!S.cfg || !S.cfg.save) return;
   try{ await idbPut(`${pTag(S.pid)}_${S.startedAt}`, snapshot()); $('hSaved').textContent = '브라우저에 백업됨 · ' + new Date().toLocaleTimeString(); }
@@ -1238,6 +1251,7 @@ async function makeZip(snap, light){
   if(snap.tlx.length) z.file(`${tag}_tlx.csv`, toCSV(TLX_HEAD, snap.tlx));
   if(snap.seq && snap.seq.length) z.file(`${tag}_seq.csv`, toCSV(SEQ_HEAD, snap.seq));
   if(snap.iso && snap.iso.length) z.file(`${tag}_iso.csv`, toCSV(ISO_HEAD, snap.iso));
+  if(snap.interview && snap.interview.length) z.file(`${tag}_interview.csv`, toCSV(INTERVIEW_HEAD, snap.interview));
   z.file(`${tag}_session.json`, JSON.stringify(ss, null, 2));
   const blob = await z.generateAsync({ type:'blob', compression:'DEFLATE' });
   const name = `${{ pilot:'PILOT_', rehearsal:'REHEARSAL_' }[ss.session_type] || ''}${tag}_gripspread_${(ss.started_at || '').slice(0,16).replace(/[:T]/g,'-')}.zip`;
@@ -1253,7 +1267,7 @@ function sessionObj(){
   return { session_type:S.sessionType || 'study', pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
-    tlx:S.tlx, seq:seqRows.slice(), iso:isoRows.slice(), calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
+    tlx:S.tlx, seq:seqRows.slice(), iso:isoRows.slice(), interview:interviewRows.slice(), calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
 }
 $('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
 // recovery list on the setup screen
@@ -1365,6 +1379,32 @@ function showRest(){
   restTimer = setInterval(() => { const s = Math.max(0, Math.round((end - Date.now())/1000)); $('restClock').textContent = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; if(!s) clearInterval(restTimer); }, 250);
 }
 $('btnRestDone').onclick = () => { clearInterval(restTimer); nextStep(); };
+// ---------- closing interview (semi-structured, ~5 min). Open question first, preference late, so earlier answers are
+// not anchored on a stated choice; items 2-5 map to H2/H3 (cup), H1 (cup size), the speed function and fatigue.
+const INTERVIEW = [
+  ['open', '두 방법을 써 보셨는데, 각각 어떠셨나요? 기억에 남는 점을 자유롭게 말씀해 주세요.'],
+  ['cup', '컵을 든 채 손가락을 벌려 스크롤할 때, 컵이나 쥔 손에서 신경 쓰인 점이 있었나요?'],
+  ['cup_size', '컵 크기가 달라질 때 GripSpread 쓰기가 어떻게 달라졌나요?'],
+  ['stopping', '원하는 줄에 멈추기 어려웠던 순간이 있었다면, 어떤 때였나요?'],
+  ['fatigue', '손가락, 손목, 팔에 불편하거나 피곤한 느낌이 든 적이 있었나요? 언제였나요?'],
+  ['preference', '둘 중 하나만 쓸 수 있다면 어느 쪽을 고르시겠어요? 이유도 말씀해 주세요.'],
+  ['context', '평소 생활에서 이런 방식을 쓴다면, 쓰고 싶은 상황과 쓰기 싫은 상황이 있을까요?'],
+];
+function showInterview(){
+  $('ivItems').innerHTML = INTERVIEW.map(([k, q], i) => `<div style="margin:0 0 14px"><div style="font-weight:600;margin-bottom:4px">${i+1}. ${q}</div>
+    ${k === 'preference' ? `<div class="actions" style="margin:4px 0" id="ivPref"><button data-v="trackpad">트랙패드</button><button data-v="gs">GripSpread</button><button data-v="none">고르지 못함</button></div>` : ''}
+    <textarea data-k="${k}" rows="2" style="width:100%;font:inherit;padding:8px;border:1px solid var(--hair);border-radius:8px" placeholder="요약 (선택)"></textarea></div>`).join('');
+  document.querySelectorAll('#ivPref button').forEach(b => b.onclick = () => { $('ivPref').dataset.v = b.dataset.v; document.querySelectorAll('#ivPref button').forEach(x => x.classList.toggle('on', x === b)); });
+  show('sInterview');
+}
+window.GS_DEBUG.showInterview = showInterview;
+$('btnInterview').onclick = () => {
+  interviewRows.length = 0;
+  INTERVIEW.forEach(([k, q], i) => { let note = (document.querySelector(`#ivItems textarea[data-k="${k}"]`).value || '').trim();
+    if(k === 'preference' && $('ivPref').dataset.v) note = `[${$('ivPref').dataset.v}] ` + note;
+    interviewRows.push({ pid:S.pid, q:i + 1, topic:k, question:q, note }); });
+  backup(); nextStep();
+};
 function showDone(){
   const m = allTrials.filter(r=>r.step==='measure' && !r.warmup && !r.skipped);
   const by = (tech, cup) => m.filter(r=>r.technique===tech && r.cup===cup);

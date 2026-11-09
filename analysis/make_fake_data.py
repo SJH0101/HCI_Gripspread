@@ -11,6 +11,8 @@ SEQ_HEAD = ['pid','technique','cup','seq']
 TLX_HEAD = ['pid','technique','mental','physical','temporal','performance','effort','frustration','raw_tlx']
 ISO_KEYS = ['force','smooth','mental','physical','accuracy','speed','finger','wrist','arm','shoulder','neck','comfort','overall']
 ISO_HEAD = ['pid','technique'] + ['iso_' + k for k in ISO_KEYS]
+INTERVIEW_HEAD = ['pid','q','topic','question','note']
+INTERVIEW_Q = ['open','cup','cup_size','stopping','fatigue','preference','context']
 CAL = json.load(open(os.path.join(os.path.dirname(__file__), '..', 'imu', 'calib', 'imu_calib_2026-11-05.json')))
 
 
@@ -74,10 +76,12 @@ def person(i, rng):
         vals = {k: max(0, min(100, round(rng.gauss(45 if tech == 'trackpad' else 35, 15)))) for k in TLX_HEAD[2:8]}
         tlx.append(dict(pid=pid, technique=tech, **vals, raw_tlx=round(sum(vals.values()) / 6, 1)))
     iso = [dict(pid=pid, technique=tech, **{'iso_' + k: max(1, min(5, round(rng.gauss((3.4 if k in ('finger', 'wrist') else 3) if tech == 'gs' else 2.6, .8)))) for k in ISO_KEYS}) for tech in order]
+    pref = rng.choice(['gs', 'gs', 'trackpad', 'none'])
+    interview = [dict(pid=pid, q=n + 1, topic=k, question=f'(가짜) 질문 {n + 1}', note=(f'[{pref}] ' if k == 'preference' else '') + f'(가짜 요약) {pid} {k}') for n, k in enumerate(INTERVIEW_Q)]
     session = dict(pid=pid, hand='right', stature_cm=round(rng.gauss(172, 7)), hand_length_mm=round(rng.gauss(185, 10)), span_mm=round(rng.gauss(205, 12)),
                    tech_order=order, imu=dict(calib=CAL, session_check=dict(gyro_bias=CAL['gyro_bias']), counts_per_dps_used=CAL['gyro_counts_per_dps']),
                    note='FAKE DATA')
-    return pid, trials, imu, tlx, seq, iso, session
+    return pid, trials, imu, tlx, seq, iso, interview, session
 
 
 def main():
@@ -85,13 +89,14 @@ def main():
     os.makedirs(out, exist_ok=True)
     rng = random.Random(7)
     for i in range(1, n + 1):
-        pid, trials, imu, tlx, seq, iso, session = person(i, rng)
+        pid, trials, imu, tlx, seq, iso, interview, session = person(i, rng)
         with zipfile.ZipFile(os.path.join(out, f'FAKE_{pid}.zip'), 'w', zipfile.ZIP_DEFLATED) as z:
             put(z, f'{pid}_trials.csv', csv(TRIAL_HEAD, trials))
             put(z, f'{pid}_imu.csv', csv(IMU_HEAD, imu))
             put(z, f'{pid}_tlx.csv', csv(TLX_HEAD, tlx))
             put(z, f'{pid}_seq.csv', csv(SEQ_HEAD, seq))
             put(z, f'{pid}_iso.csv', csv(ISO_HEAD, iso))
+            put(z, f'{pid}_interview.csv', csv(INTERVIEW_HEAD, interview))
             put(z, f'{pid}_session.json', json.dumps(session))
     print('wrote', n, 'fake participants to', out)
 

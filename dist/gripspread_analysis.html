@@ -146,7 +146,7 @@ if(SRV.ready()) setTimeout(loadFromServer, 0);
 
 // each experiment file is <tag>_trials.csv, <tag>_imu.csv, <tag>_tlx.csv, <tag>_session.json (frames are not needed)
 function kindOf(name){
-  const m = name.split('/').pop().match(/^(.*)_(trials|imu|tlx|seq|iso|session)\.(csv|json)$/);
+  const m = name.split('/').pop().match(/^(.*)_(trials|imu|tlx|seq|iso|interview|session)\.(csv|json)$/);
   return m ? { tag:m[1], kind:m[2] } : null;
 }
 async function load(files){
@@ -186,7 +186,7 @@ function buildPeople(parts){
     if(!trials.length) continue;
     let session = null; try{ session = p.session ? JSON.parse(p.session) : null; }catch(e){}
     const pid = (session && session.pid) || trials[0].pid || tag;
-    const person = { tag, pid, session, trials, imuText:p.imu || null, tlx: p.tlx ? parseCSV(p.tlx) : [], seq: p.seq ? parseCSV(p.seq) : [], iso: p.iso ? parseCSV(p.iso) : [] };
+    const person = { tag, pid, session, trials, imuText:p.imu || null, tlx: p.tlx ? parseCSV(p.tlx) : [], seq: p.seq ? parseCSV(p.seq) : [], iso: p.iso ? parseCSV(p.iso) : [], interview: p.interview ? parseCSV(p.interview) : [] };
     const prev = byPid[pid];
     if(!prev || person.trials.length > prev.trials.length) byPid[pid] = { ...person, dupes:(prev ? prev.dupes + 1 : 0) };
     else prev.dupes++;
@@ -339,7 +339,8 @@ function analyze(people){
   for(const p of people) for(const r of p.tlx) tlx.push({ pid:p.pid, tech:r.technique, ...Object.fromEntries(TLX_KEYS.map(k => [k, numOr(r[k])])) });
   const iso = [];
   for(const p of people) for(const r of p.iso) iso.push({ pid:p.pid, tech:r.technique, ...Object.fromEntries(ISO_ITEMS.map(([k]) => [k, numOr(r['iso_' + k])])) });
-  return { cells, trialsOut, roster, tlx, imuView, flagged, tiltMt, iso };
+  const interview = people.flatMap(p => p.interview.map(r => ({ pid:p.pid, q:+r.q, topic:r.topic, question:r.question, note:r.note || '' })));
+  return { cells, trialsOut, roster, tlx, imuView, flagged, tiltMt, iso, interview };
 }
 // ISO 9241-9 device assessment (13 items, 1-5 from left to right anchor). ideal: 'mid' = 3 is best (too little <-> too much),
 // 'lo' / 'hi' = that end is better.
@@ -686,7 +687,7 @@ function render(R){
 
   $('out').innerHTML = (DEMO ? `<div class="card" style="border-color:#B00020;color:#B00020"><b>데모 · 가짜 데이터</b> 아래 숫자는 모두 지어낸 것이다. 표와 그림이 어떻게 나오는지 보는 용도.</div>` : '') + `
 
-  <nav class="card toc"><b>주 분석</b> <a href="#a-sum">핵심 결과</a> · <a href="#a-h1">H1 성능 손실</a> · <a href="#a-h23">H2·H3 컵 흔들림</a> · <a href="#a-subj">주관 평가</a>
+  <nav class="card toc"><b>주 분석</b> <a href="#a-sum">핵심 결과</a> · <a href="#a-h1">H1 성능 손실</a> · <a href="#a-h23">H2·H3 컵 흔들림</a> · <a href="#a-subj">주관 평가</a> · <a href="#a-iv">인터뷰</a>
     &nbsp;|&nbsp; <b>설계 점검</b> <a href="#a-people">참가자</a> · <a href="#a-order">순서 효과</a> · <a href="#a-flag">이상 시행·민감도</a>
     &nbsp;|&nbsp; <b>자료</b> <a href="#a-imu">IMU 시행 보기</a> · <a href="#a-dl">내려받기</a></nav>
   <h1 class="part">주 분석</h1>
@@ -710,6 +711,7 @@ function render(R){
   <div class="card scroll"><table><tr><th style="text-align:left">항목</th><th>좋은 쪽</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th><th>Holm p</th><th>3에서 거리 p</th></tr>${isoRows.map((r, i) => `<tr><td style="text-align:left">${r.name}</td><td>${{ mid:'3 (적당)', lo:'1', hi:'5' }[r.ideal]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td><td class="num${stars(isoP[i])}">${fp(isoP[i])}</td><td class="num">${r.dist ? fp(r.dist.p) : '–'}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩, 13문항 전부(Douglas, Kirkpatrick &amp; MacKenzie, CHI 1999의 5점 형식). 대응 Wilcoxon 부호순위 검정(정확 p), 13문항에 Holm 보정. 힘·정신적 노력·신체적 노력·속도는 "너무 적음–너무 많음" 척도라 3이 가장 좋으므로, 3에서 얼마나 떨어졌는지(|값 − 3|)도 따로 비교한다.</p></div>
 </section>
+  <section id="a-iv"><h2>인터뷰 요약</h2>${interviewTable(R.interview)}</section>
   <h1 class="part">설계 점검</h1>
   <section id="a-people">  <h2>참가자</h2>
   <div class="card scroll"><table><tr><th>참가자</th><th>기법 순서</th><th>손</th><th>손 길이(mm)</th><th>손 뼘(mm)</th><th>키(cm)</th><th>본 시행</th><th>성공</th><th>확인할 시행</th><th>IMU 시행</th><th style="text-align:left">확인할 것</th></tr>${people}</table>
@@ -740,6 +742,17 @@ function render(R){
   $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','lin_rms','tilt_max','tilt_1s','seq','n_flagged','tp_ex','tp_loss_ex','mt_ms_ex','imu_rms_ex','lin_rms_ex','tilt_max_ex','tilt_1s_ex']));
   $('dlTrials').onclick = () => download('gripspread_trials_all.csv', toCSV(R.trialsOut, Object.keys(R.trialsOut[0] || {})));
   $('dlText').onclick = () => download('gripspread_results.txt', $('sentences').textContent);
+}
+// ---------- closing interview notes: participant x question, with the stated preference counted ----------
+function interviewTable(rows){
+  if(!rows.length) return '<div class="card"><p class="muted">인터뷰 기록이 없습니다.</p></div>';
+  const qs = [...new Map(rows.map(r => [r.q, r])).values()].sort((a, b) => a.q - b.q), pids = [...new Set(rows.map(r => r.pid))];
+  const pref = rows.filter(r => r.topic === 'preference').map(r => (r.note.match(/^\[(\w+)\]/) || [])[1]).filter(Boolean);
+  const cnt = k => pref.filter(v => v === k).length;
+  const esc = t => String(t).replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' })[c]);
+  return `<div class="card"><p>선호(6번): 트랙패드 <b>${cnt('trackpad')}</b> · GripSpread <b>${cnt('gs')}</b> · 고르지 못함 <b>${cnt('none')}</b> (응답 ${pref.length}명)</p></div>
+  <div class="card scroll"><table><tr><th style="text-align:left">질문</th>${pids.map(p => `<th style="text-align:left">${p}</th>`).join('')}</tr>${qs.map(q => `<tr><td style="text-align:left;white-space:normal;min-width:220px">${q.q}. ${esc(q.question)}</td>${pids.map(p => { const r = rows.find(x => x.pid === p && x.q === q.q); return `<td style="text-align:left;white-space:normal;min-width:160px">${r ? esc(r.note) : ''}</td>`; }).join('')}</tr>`).join('')}</table>
+  <p class="muted">진행자가 세션 끝에 적은 한두 줄 요약. 전체 답은 녹화 영상에 있다. 보고서에는 주제별로 묶어(코딩) 대표 발언 몇 개를 쓴다.</p></div>`;
 }
 // ---------- flagged trials and sensitivity ----------
 function flaggedTable(F){
