@@ -174,6 +174,8 @@ function imuCal(session, warn){
 // to 1 g (within 0.05 g; time constant 1 s), so hand accelerations are not read as tilt. A gap over 0.2 s restarts from the accelerometer.
 // Peak tilt change of a trial = largest angle between the gravity direction at the trial's first sample and any later
 // sample (rotation about the vertical, which does not spill liquid, is not counted).
+// That peak grows with trial length (a slow trial has more time to drift), so a 1-s window version is kept beside it:
+// the largest tilt change between any two samples at most 1 s apart. Trials shorter than 1 s use the whole trial.
 function imuPerTrial(text, cal){
   const lines = text.replace(/\r/g, '').split('\n'); const head = lines[0].split(',');
   const ix = k => head.indexOf(k);
@@ -213,7 +215,10 @@ function imuPerTrial(text, cal){
     for(const r of rs){ const c = g0[0]*r.g[0] + g0[1]*r.g[1] + g0[2]*r.g[2];
       ser.t.push(((r.t - t0) >>> 0) / 1e6); ser.w.push(Math.hypot(...r.w)); ser.lin.push(r.lin); ser.tilt.push(Math.acos(Math.min(1, Math.max(-1, c))) * 180 / Math.PI); }
     for(const r of rs){ const c = g0[0]*r.g[0] + g0[1]*r.g[1] + g0[2]*r.g[2]; maxTilt = Math.max(maxTilt, Math.acos(Math.min(1, Math.max(-1, c))) * 180 / Math.PI); }
-    out.set(uid, { rms:Math.sqrt(s2 / rs.length), lin:Math.sqrt(l2 / rs.length), tilt:maxTilt, n:rs.length, ser });
+    let tilt1 = 0;
+    for(let i = 0; i < rs.length; i++) for(let j = i + 1; j < rs.length && ((rs[j].t - rs[i].t) >>> 0) <= 1e6; j++){
+      const a = rs[i].g, b = rs[j].g, c = a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; tilt1 = Math.max(tilt1, Math.acos(Math.min(1, Math.max(-1, c))) * 180 / Math.PI); }
+    out.set(uid, { rms:Math.sqrt(s2 / rs.length), lin:Math.sqrt(l2 / rs.length), tilt:maxTilt, tilt1, n:rs.length, ser });
   }
   out.agreeDeg = dN ? dSum / dN : NaN;
   return out;
@@ -225,7 +230,7 @@ const median = a => { if(!a.length) return NaN; const s = [...a].sort((p,q) => p
 const sd = a => { if(a.length < 2) return NaN; const m = mean(a); return Math.sqrt(a.reduce((s,x) => s + (x-m)**2, 0) / (a.length - 1)); };
 
 function analyze(people){
-  const cells = [], trialsOut = [], roster = [], imuView = {}, flagged = [];   // imuView[pid][tech][cup] = [{ uid, D, W, imu }]
+  const cells = [], trialsOut = [], roster = [], imuView = {}, flagged = [], tiltMt = [];   // tiltMt: { pid, tech, rho, n }   // imuView[pid][tech][cup] = [{ uid, D, W, imu }]
   for(const p of people){
     const warn = [];
     if(p.dupes) warn.push(`같은 참가자 파일 ${p.dupes + 1}개 중 시행이 많은 것 사용`);
@@ -259,22 +264,24 @@ function analyze(people){
         const im = imu && cup !== 'none' ? set.map(t => imu.get(t.trial_uid)).filter(Boolean) : [];
         return { mt_ms:mean(set.map(t => +t.mt_ms)), plan_ms:mean(set.map(t => numOr(t.plan_ms)).filter(x => x != null)), tp:mean(tps),
           switchbacks:mean(set.map(t => +t.switchbacks)), overshoot_px:mean(set.map(t => +t.overshoot_px)), nImu:im.length,
-          imu_rms:im.length ? mean(im.map(x => x.rms)) : NaN, lin_rms:im.length ? mean(im.map(x => x.lin)) : NaN, tilt_max:im.length ? mean(im.map(x => x.tilt)) : NaN };
+          imu_rms:im.length ? mean(im.map(x => x.rms)) : NaN, lin_rms:im.length ? mean(im.map(x => x.lin)) : NaN, tilt_max:im.length ? mean(im.map(x => x.tilt)) : NaN,
+          tilt_1s:im.length ? mean(im.map(x => x.tilt1)) : NaN };
       };
       const all = summ(ok), ex = summ(clean);
       if(imu && cup !== 'none') ((imuView[p.pid] = imuView[p.pid] || {})[tech] = imuView[p.pid][tech] || {})[cup] = ok.filter(t => imu.get(t.trial_uid)).map(t => ({ uid:t.trial_uid, D:+t.D, W:+t.W, imu:imu.get(t.trial_uid), z:zOf.get(t) }));
       imuHit += all.nImu;
+      if(imu && cup !== 'none'){ const pr = ok.map(t => [+t.mt_ms, imu.get(t.trial_uid)]).filter(x => x[1]); if(pr.length >= 5) tiltMt.push({ pid:p.pid, tech, cup, rho:spearman(pr.map(x => x[0]), pr.map(x => x[1].tilt)), rho1:spearman(pr.map(x => x[0]), pr.map(x => x[1].tilt1)), n:pr.length }); }
       for(const t of flaggedT){ const x = imu && imu.get(t.trial_uid);
         flagged.push({ pid:p.pid, tech, cup, uid:t.trial_uid, D:+t.D, W:+t.W, mt:+t.mt_ms, z:zOf.get(t), plan:numOr(t.plan_ms), sb:+t.switchbacks, os:+t.overshoot_px,
           rms:x ? x.rms : NaN, tilt:x ? x.tilt : NaN, condMt:all.mt_ms, condRms:all.imu_rms }); }
       const cell = { pid:p.pid, tech, cup, n:rows.length, n_ok:ok.length, n_flagged:flaggedT.length, error_rate:1 - ok.length / rows.length, ...all,
-        ...Object.fromEntries(['tp','mt_ms','imu_rms','lin_rms','tilt_max'].map(k => [k + '_ex', ex[k]])) };
+        ...Object.fromEntries(['tp','mt_ms','imu_rms','lin_rms','tilt_max','tilt_1s'].map(k => [k + '_ex', ex[k]])) };
       delete cell.nImu;
       const sq = p.seq.find(r => r.technique === tech && String(r.cup) === cup); cell.seq = sq ? numOr(sq.seq, NaN) : NaN;
       cells.push(cell);
       for(const t of rows){ const x = imu && imu.get(t.trial_uid);
         trialsOut.push({ pid:p.pid, technique:tech, cup, trial_uid:t.trial_uid, D:t.D, W:t.W, ID:t.ID, success:truthy(t.success) ? 1 : 0, mt_ms:t.mt_ms, plan_ms:t.plan_ms,
-          switchbacks:t.switchbacks, overshoot_px:t.overshoot_px, fitts_resid_z: zOf.has(t) ? zOf.get(t).toFixed(2) : '', flagged: zOf.has(t) && Math.abs(zOf.get(t)) > 3 ? 1 : 0, imu_rms_dps: x ? x.rms.toFixed(3) : '', imu_lin_rms_ms2: x ? x.lin.toFixed(4) : '', imu_tilt_max_deg: x ? x.tilt.toFixed(2) : '' }); }
+          switchbacks:t.switchbacks, overshoot_px:t.overshoot_px, fitts_resid_z: zOf.has(t) ? zOf.get(t).toFixed(2) : '', flagged: zOf.has(t) && Math.abs(zOf.get(t)) > 3 ? 1 : 0, imu_rms_dps: x ? x.rms.toFixed(3) : '', imu_lin_rms_ms2: x ? x.lin.toFixed(4) : '', imu_tilt_max_deg: x ? x.tilt.toFixed(2) : '', imu_tilt_1s_deg: x ? x.tilt1.toFixed(2) : '' }); }
     }
     for(const tech of TECHS){ const tp0 = cells.find(c => c.pid === p.pid && c.tech === tech && c.cup === 'none');
       for(const c of cells.filter(c => c.pid === p.pid && c.tech === tech && c.cup !== 'none')){ c.tp_loss = tp0 ? 1 - c.tp / tp0.tp : NaN; c.tp_loss_ex = tp0 ? 1 - c.tp_ex / tp0.tp_ex : NaN; } }
@@ -289,12 +296,16 @@ function analyze(people){
   // NASA-TLX (per participant x technique)
   const tlx = [];
   for(const p of people) for(const r of p.tlx) tlx.push({ pid:p.pid, tech:r.technique, ...Object.fromEntries(TLX_KEYS.map(k => [k, numOr(r[k])])) });
-  return { cells, trialsOut, roster, tlx, imuView, flagged };
+  return { cells, trialsOut, roster, tlx, imuView, flagged, tiltMt };
 }
 const TLX_KEYS = ['raw_tlx','mental','physical','temporal','performance','effort','frustration'];
 const TLX_NAME = { raw_tlx:'전체(Raw TLX)', mental:'정신적 부담', physical:'신체적 부담', temporal:'시간 압박', performance:'수행 만족(낮을수록 좋음)', effort:'노력', frustration:'좌절' };
 
 // ====================================================================== statistics
+function ranks(v){ const o = v.map((x, i) => [x, i]).sort((a, b) => a[0] - b[0]), r = new Array(v.length);
+  for(let i = 0; i < o.length; ){ let j = i; while(j + 1 < o.length && o[j+1][0] === o[i][0]) j++; for(let k = i; k <= j; k++) r[o[k][1]] = (i + j) / 2 + 1; i = j + 1; } return r; }
+function pearson(x, y){ const mx = mean(x), my = mean(y); let sxy = 0, sxx = 0, syy = 0; for(let i = 0; i < x.length; i++){ sxy += (x[i]-mx)*(y[i]-my); sxx += (x[i]-mx)**2; syy += (y[i]-my)**2; } return sxy / Math.sqrt(sxx * syy); }
+const spearman = (x, y) => pearson(ranks(x), ranks(y));
 // log-gamma (Lanczos) and regularized incomplete beta (continued fraction, Numerical Recipes)
 function lgamma(x){ const g = [676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
   if(x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI*x)) - lgamma(1-x);
@@ -394,6 +405,38 @@ function describe(cells, key, cups){
   return out;
 }
 
+// Order check (asymmetric skill transfer; MacKenzie 2013, ch. 5): technique (within) x order group (between: which technique
+// came first), on each participant's mean over cups. With two techniques this mixed ANOVA reduces to Student t-tests:
+// interaction = groups compared on the GripSpread - trackpad difference, order main effect = groups compared on the
+// mean of both; F = t^2 with df (1, n - 2). A significant interaction means counterbalancing did not cancel the
+// transfer between techniques, so the technique effect must be reported per order group as well.
+function studentT(a, b){ const n1 = a.length, n2 = b.length; if(n1 < 2 || n2 < 2) return null;
+  const sp2 = ((n1-1)*sd(a)**2 + (n2-1)*sd(b)**2) / (n1+n2-2), t = (mean(a) - mean(b)) / Math.sqrt(sp2 * (1/n1 + 1/n2)), df = n1+n2-2, F = t*t;
+  return { t, df, F, p:pT2(t, df), pEta:F / (F + df) }; }
+function orderCheck(cells, roster, key, cups){
+  const first = Object.fromEntries(roster.map(r => [r.pid, (r.order.split('>')[0] || '').trim()]));
+  const { Y, used } = matrix(cells, key, cups), k = cups.length, G = { trackpad:[], gs:[] };
+  Y.forEach((y, i) => { const f = first[used[i]]; if(G[f]) G[f].push({ tp:mean(y.slice(0, k)), gs:mean(y.slice(k)) }); });
+  const a = G.trackpad, b = G.gs;
+  return { a, b, inter:studentT(a.map(x => x.gs - x.tp), b.map(x => x.gs - x.tp)), main:studentT(a.map(x => (x.gs + x.tp)/2), b.map(x => (x.gs + x.tp)/2)) };
+}
+function orderTable(cells, roster){
+  const items = [['tp','처리량 (bits/s)',CUPS,2], ['tp_loss','처리량 손실',CUPS3,3], ['mt_ms','이동 시간 (ms)',CUPS,0], ['error_rate','실패율',CUPS,3], ['imu_rms','각속도 RMS (°/s)',CUPS3,2], ['tilt_max','최대 기울기 변화 (°)',CUPS3,2], ['tilt_1s','1초 안 최대 기울기 변화 (°)',CUPS3,2], ['seq','SEQ',CUPS,2]];
+  const rows = items.map(([key, name, cups, d]) => { const o = orderCheck(cells, roster, key, cups);
+    if(!o.inter) return `<tr><td>${name}</td><td colspan="7" class="muted">순서 그룹마다 2명 이상 필요</td></tr>`;
+    const m = (g, t) => fmt(mean(g.map(x => x[t])), d);
+    return `<tr><td>${name}</td><td class="num">${m(o.a,'tp')} / ${m(o.a,'gs')}</td><td class="num">${m(o.b,'tp')} / ${m(o.b,'gs')}</td><td class="num">${o.a.length} / ${o.b.length}</td>
+      <td class="num${o.inter.p < .05 ? ' w' : ''}">F(1, ${o.inter.df}) = ${fmt(o.inter.F,2)}, p ${fp(o.inter.p)}</td><td class="num">${fmt(o.inter.pEta,3)}</td><td class="num">F(1, ${o.main.df}) = ${fmt(o.main.F,2)}, p ${fp(o.main.p)}</td></tr>`; });
+  return `<table><tr><th>지표</th><th>트랙패드 먼저: 트랙패드 / GripSpread</th><th>GripSpread 먼저: 트랙패드 / GripSpread</th><th>n</th><th>기법 × 순서</th><th>부분 η²</th><th>순서 주효과</th></tr>${rows.join('')}</table>
+  <p class="muted">비대칭 학습 전이 확인. 참가자마다 컵 조건을 평균한 값으로, 기법(참가자 내) × 순서 그룹(참가자 간: 먼저 한 기법) 혼합 ANOVA. 기법 × 순서가 유의하지 않으면 순서 균형이 학습 전이를 상쇄한 것(대칭). 유의하면(⚠) 기법 효과를 순서 그룹별로도 보고하고, 첫 번째로 한 기법끼리의 비교(참가자 간)를 보조로 붙인다.</p>`;
+}
+function tiltMtTable(T){
+  if(!T.length) return '<p class="muted">IMU 데이터가 없습니다.</p>';
+  const row = t => { const v = T.filter(x => x.tech === t); return `<tr><td>${TECH_NAME[t]}</td><td class="num">${fmt(median(v.map(x => x.rho)),2)}</td><td class="num">${fmt(median(v.map(x => x.rho1)),2)}</td><td class="num">${v.length}</td></tr>`; };
+  return `<table><tr><th>기법</th><th>이동 시간 vs 최대 기울기 (ρ 중앙값)</th><th>이동 시간 vs 1초 안 최대 기울기 (ρ 중앙값)</th><th>참가자 × 컵</th></tr>${TECHS.map(row).join('')}</table>
+  <p class="muted">참가자 × 컵마다 시행 단위 Spearman ρ를 구해 중앙값을 보인다. 최대 기울기 쪽 ρ가 크면 느린 시행일수록 더 기운다는 뜻이라, 기법 간 이동 시간 차이가 최대 기울기 차이로 섞여 들어간다. 이때는 시간 길이에 덜 민감한 1초 안 최대 기울기를 함께 보고한다.</p>`;
+}
+
 // ====================================================================== rendering
 const fmt = (x, d = 2) => isFinite(x) ? (+x).toFixed(d) : '–';
 const fp = p => !isFinite(p) ? '–' : p < .001 ? '< .001' : p.toFixed(3).replace(/^0/, '');
@@ -457,6 +500,7 @@ function render(R){
   const rms = block('컵 각속도 RMS (°/s, H2)', cells, 'imu_rms', CUPS3, { yLabel:'각속도 RMS (°/s)', digits:2 });
   const lin = block('컵 선형 가속도 RMS (m/s², 보조: 회전 없이 밀리는 떨림)', cells, 'lin_rms', CUPS3, { yLabel:'선형 가속도 RMS (m/s²)', digits:3 });
   const tilt = block('컵 최대 기울기 변화 (°, H3)', cells, 'tilt_max', CUPS3, { yLabel:'최대 기울기 변화 (°)', digits:2 });
+  const tilt1 = block('컵 1초 안 최대 기울기 변화 (°, H3 보조: 시행 길이에 덜 민감)', cells, 'tilt_1s', CUPS3, { yLabel:'1초 안 최대 기울기 변화 (°)', digits:2 });
   const seqB = block('SEQ: 조건별 난이도 (1 매우 어려움 – 7 매우 쉬움). 서열 척도라 ART p를 주로 본다', cells, 'seq', CUPS, { yLabel:'SEQ (높을수록 쉬움)', digits:2 });
   const sb = block('방향 전환 횟수', cells, 'switchbacks', CUPS, { yLabel:'방향 전환 (회)', digits:2 });
 
@@ -478,7 +522,10 @@ function render(R){
 
   <h2>H1 · 성능 손실</h2>${loss.html}${tp.html}${mt.html}${er.html}
   <h2>H2, H3 · 컵 흔들림</h2>
-  <div class="card">${IMU_FIG}</div>${rms.html}${lin.html}${tilt.html}
+  <div class="card">${IMU_FIG}</div>${rms.html}${lin.html}${tilt.html}${tilt1.html}
+  <div class="card scroll"><h3>기울기와 이동 시간</h3>${tiltMtTable(R.tiltMt)}</div>
+  <h2>순서 효과 (비대칭 학습 전이)</h2>
+  <div class="card scroll">${orderTable(cells, roster)}</div>
   <h2>조건별 난이도 (SEQ)</h2>${seqB.html}
   <h2>주관 평가 (NASA-TLX)</h2>
   <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
@@ -498,7 +545,7 @@ function render(R){
   <h2>내려받기</h2>
   <div class="card"><div class="actions"><button class="primary" id="dlCells">조건 요약 CSV (참가자 × 기법 × 컵)</button><button id="dlTrials">시행별 CSV (IMU 지표 포함)</button><button id="dlText">보고서용 문장 TXT</button></div></div>`;
   setupImuView(R.imuView);
-  $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','lin_rms','tilt_max','seq','n_flagged','tp_ex','tp_loss_ex','mt_ms_ex','imu_rms_ex','lin_rms_ex','tilt_max_ex']));
+  $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','lin_rms','tilt_max','tilt_1s','seq','n_flagged','tp_ex','tp_loss_ex','mt_ms_ex','imu_rms_ex','lin_rms_ex','tilt_max_ex','tilt_1s_ex']));
   $('dlTrials').onclick = () => download('gripspread_trials_all.csv', toCSV(R.trialsOut, Object.keys(R.trialsOut[0] || {})));
   $('dlText').onclick = () => download('gripspread_results.txt', $('sentences').textContent);
 }
@@ -511,7 +558,7 @@ function flaggedTable(F){
     `</table><p class="muted">왜 벗어났는지 보는 단서: 방향 전환과 과잉 이동이 많으면 목표를 지나쳐 되돌아온 것, 반응 시간이 길면 시작을 늦게 한 것, 각속도가 조건 평균보다 크면 컵을 고쳐 쥐거나 흔든 것. 폰 녹화 영상에서 같은 시행을 찾아 확인한다(시행 번호 = trial_uid).</p>`;
 }
 function sensitivity(cells){
-  const items = [['tp_loss', '처리량 손실', CUPS3, '기법 × 컵'], ['tp', '처리량', CUPS, '기법 × 컵'], ['mt_ms', '이동 시간', CUPS, '기법 × 컵'], ['imu_rms', '각속도 RMS', CUPS3, '기법'], ['lin_rms', '선형 가속도 RMS', CUPS3, '기법'], ['tilt_max', '최대 기울기 변화', CUPS3, '기법 × 컵']];
+  const items = [['tp_loss', '처리량 손실', CUPS3, '기법 × 컵'], ['tp', '처리량', CUPS, '기법 × 컵'], ['mt_ms', '이동 시간', CUPS, '기법 × 컵'], ['imu_rms', '각속도 RMS', CUPS3, '기법'], ['lin_rms', '선형 가속도 RMS', CUPS3, '기법'], ['tilt_max', '최대 기울기 변화', CUPS3, '기법 × 컵'], ['tilt_1s', '1초 안 최대 기울기 변화', CUPS3, '기법 × 컵']];
   const rows = items.map(([k, name, cups, eff]) => { const a = matrix(cells, k, cups), b = matrix(cells, k + '_ex', cups);
     if(a.Y.length < 3 || b.Y.length < 3) return `<tr><td>${name}</td><td>${eff}</td><td colspan="3" class="muted">참가자 부족</td></tr>`;
     const A = rmAnova2(a.Y, 2, cups.length)[eff], B = rmAnova2(b.Y, 2, cups.length)[eff], same = (A.p < .05) === (B.p < .05);
@@ -577,7 +624,7 @@ function sentences({ tp, loss, rms, lin, tilt, seqB, n, tlxRows }){
 function toCSV(rows, keys){ return [keys.join(',')].concat(rows.map(r => keys.map(k => { const v = r[k]; return v == null || (typeof v === 'number' && !isFinite(v)) ? '' : typeof v === 'number' ? +v.toFixed(5) : String(v).includes(',') ? `"${v}"` : v; }).join(','))).join('\n'); }
 function download(name, text){ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type:'text/plain;charset=utf-8' })); a.download = name; a.click(); }
 
-window.GS_ANALYSIS = { rmAnova2, artAnova2, wilcoxon, pairedT, holm, pF, pT2, imuPerTrial };   // console/testing
+window.GS_ANALYSIS = { rmAnova2, artAnova2, wilcoxon, pairedT, holm, pF, pT2, imuPerTrial, orderCheck, studentT, spearman };   // console/testing
 </script>
 </body>
 </html>
