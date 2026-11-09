@@ -1,6 +1,6 @@
 // POST {password, kind} -> short-lived signed download URLs; the browser downloads the files straight from Supabase.
-//   kind 'experiment' (default) or 'practice': per participant folder, the newest final zip (or else the newest checkpoint)
-//   kind 'pilot': every pilot result file
+//   kind 'experiment' (default), 'pilot' or 'rehearsal': per participant folder, the newest final zip (or else the newest checkpoint)
+//   kind 'tuning': every constant-tuning result file
 const { sb, BUCKET, send, guard, list, isFolder } = require('./_sb');
 
 async function sessionFiles(dir) {
@@ -17,15 +17,15 @@ async function sessionFiles(dir) {
   }
   return pick;
 }
-async function pilotFiles() {
-  return (await list('pilot')).filter(f => !isFolder(f) && /\.json$/.test(f.name)).map(f => ({ path: `pilot/${f.name}`, name: f.name }));
+async function tuningFiles() {
+  return (await list('tuning')).filter(f => !isFolder(f) && /\.json$/.test(f.name)).map(f => ({ path: `tuning/${f.name}`, name: f.name }));
 }
 
 module.exports = async (req, res) => {
   const b = guard(req, res); if (!b) return;
-  const kind = ['pilot', 'practice'].includes(b.kind) ? b.kind : 'experiment';
+  const kind = ['pilot', 'rehearsal', 'tuning'].includes(b.kind) ? b.kind : 'experiment';
   try {
-    const pick = kind === 'pilot' ? await pilotFiles() : await sessionFiles(kind);
+    const pick = kind === 'tuning' ? await tuningFiles() : await sessionFiles(kind);
     let urls = [];
     if (pick.length) {
       const { data, error } = await sb().storage.from(BUCKET).createSignedUrls(pick.map(f => f.path), 600);

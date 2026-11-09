@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GripSpread 파일럿</title>
+<title>GripSpread 상수 보정</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
@@ -109,7 +109,7 @@
 <body>
 <div class="app">
   <header>
-    <span class="brand">GripSpread 파일럿</span>
+    <span class="brand">GripSpread 상수 보정</span>
     <button class="tab on" data-tab="sTune">① 값 맞추기</button>
     <button class="tab" data-tab="sSum">② 결과 합치기</button>
     <span class="spacer"></span>
@@ -127,13 +127,13 @@
   </aside>
 
   <main>
-    <!-- A/B tuning with one pilot participant -->
+    <!-- A/B tuning, one researcher at a time (blind to which version is changed) -->
     <section id="sTune" class="screen on">
       <div class="sheet" id="tuneSetup">
         <h1>값 맞추기</h1>
         <p>값 하나만 바꾼 두 버전(1, 2)을 각각 짧게 써 보고 어느 쪽이 나았는지 고릅니다. 바꾼 쪽이 나으면 그 방향으로 한 칸 더, 아니면 반대 방향을 시험하고, 더 나아지지 않으면 그 값에서 멈춥니다. 참가자에게는 어느 쪽이 바뀐 값인지 알려주지 않습니다.</p>
         <div class="form">
-          <label for="tId">파일럿 참가자</label><input id="tId" value="T1">
+          <label for="tId">보정하는 사람</label><input id="tId" value="T1">
           <label for="tCup">컵</label><select id="tCup"><option value="75">75mm 컵</option><option value="60">60mm 컵</option><option value="90">90mm 컵</option><option value="none">컵 없음</option></select>
           <label for="tN">버전당 시행 수</label><input id="tN" type="number" min="2" max="12" value="6">
         </div>
@@ -179,11 +179,11 @@
       <div id="taskMsg"></div>
     </section>
 
-    <!-- merge pilot results -->
+    <!-- merge tuning results -->
     <section id="sSum" class="screen">
       <div class="sheet">
         <h1>결과 합치기</h1>
-        <p>서버의 <b>pilot</b> 폴더에 올라간 파일럿 결과를 자동으로 모아, 값마다 사람별 최종값과 평균을 보여줍니다. <b>저장</b>을 누르면 평균이 서버의 <b>params</b> 폴더에 올라가고, 본 실험 페이지가 열릴 때 자동으로 불러옵니다(파일로도 내려받음). 서버 없이 쓰려면 결과 파일을 직접 고르세요.</p>
+        <p>서버의 <b>tuning</b> 폴더에 올라간 상수 보정 결과를 자동으로 모아, 값마다 사람별 최종값과 평균을 보여줍니다. <b>저장</b>을 누르면 평균이 서버의 <b>params</b> 폴더에 올라가고, 본 실험 페이지가 열릴 때 자동으로 불러옵니다(파일로도 내려받음). 서버 없이 쓰려면 결과 파일을 직접 고르세요.</p>
         <div class="form"><label>연구자 비밀번호</label><input class="srvPw" type="password" autocomplete="current-password"></div>
         <div class="actions"><button id="sumLoad">서버에서 다시 불러오기</button><span class="muted">또는</span><input id="sumFiles" type="file" accept=".json" multiple><span id="sumMsg" class="muted"></span></div>
         <div id="sumTable" style="margin-top:14px"></div>
@@ -493,7 +493,7 @@ const PARAMS = [
 ];
 const MAX_CMP = 4;
 // Checked by default: the values most likely to differ between people. The rest stay at the researchers' values
-// unless the experimenter ticks them (keeps one pilot session short).
+// unless the operator ticks them (keeps one tuning session short).
 const DEFAULT_TUNE = ['dead', 'gain', 'gamma'];
 const BASE = { ...E.P };
 $('paramList').innerHTML = PARAMS.map((p,i) => `<label style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-k="${p.k}" ${DEFAULT_TUNE.includes(p.k) ? 'checked' : ''}> ${i+1}. ${p.name} <span class="muted">· 지금 ${BASE[p.k]}${p.unit} · 한 칸 ${p.step}${p.unit} · ${p.why}</span></label>`).join('');
@@ -604,12 +604,12 @@ function finishTuning(){
   T.finished = new Date().toISOString();
 }
 $('tSave').onclick = async () => {
-  const out = { pilot_id:T.id, cup:T.cup, trials_per_version:T.n, practice_trials:T.practice_trials || 0, started:T.started, finished:T.finished, calibration:T.calib,
+  const out = { tuning_id:T.id, cup:T.cup, trials_per_version:T.n, practice_trials:T.practice_trials || 0, started:T.started, finished:T.finished, calibration:T.calib,
     start_values:Object.fromEntries(T.keys.map(k => [k, BASE[k]])), final_values:Object.fromEntries(T.keys.map(k => [k, T.values[k]])),
     all_engine_values:T.values, comparisons:T.comparisons, trials:T.trials };
-  download(`pilot_${T.id}_${T.started.slice(0,10)}.json`, out);
+  download(`tuning_${T.id}_${T.started.slice(0,10)}.json`, out);
   const msg = t => $('tSaveMsg').textContent = t;
-  try{ msg('서버에 올리는 중…'); await SRV.putJSON(`pilot/pilot_${String(T.id).replace(/[^A-Za-z0-9-]/g, '') || 'X'}_${SRV.stamp()}.json`, out); msg('파일 저장 + 서버 pilot 폴더에 올림'); }
+  try{ msg('서버에 올리는 중…'); await SRV.putJSON(`tuning/tuning_${String(T.id).replace(/[^A-Za-z0-9-]/g, '') || 'X'}_${SRV.stamp()}.json`, out); msg('파일 저장 + 서버 tuning 폴더에 올림'); }
   catch(e){ msg('파일은 저장됨 · 서버 실패: ' + e.message); }
 };
 $('tAgain').onclick = () => { T = null; $('tuneDone').style.display = 'none'; $('tuneSetup').style.display = ''; $('hInfo').textContent = ''; updCalib(); };
@@ -718,7 +718,7 @@ document.addEventListener('keydown', e => {
 });
 
 // ======================================================================
-// merge pilot results -> one parameter set for the study
+// merge tuning results -> one parameter set for the study
 // ======================================================================
 let merged = null;
 $('sumFiles').onchange = async e => {
@@ -728,9 +728,9 @@ $('sumFiles').onchange = async e => {
 };
 async function loadPilotsFromServer(){
   const msg = t => $('sumMsg').textContent = t;
-  try{ msg('서버에서 불러오는 중…'); const j = await SRV.call('data', { kind:'pilot' }), data = [];
+  try{ msg('서버에서 불러오는 중…'); const j = await SRV.call('data', { kind:'tuning' }), data = [];
     for(const f of j.files){ const r = await fetch(f.url); if(r.ok) try{ data.push(await r.json()); }catch(e){} }
-    if(!data.length){ msg('서버 pilot 폴더가 비어 있습니다'); return; }
+    if(!data.length){ msg('서버 tuning 폴더가 비어 있습니다'); return; }
     mergePilots(data); msg(`서버에서 ${data.length}명 불러옴`); }
   catch(e){ msg('서버 실패: ' + e.message); }
 }
@@ -741,9 +741,9 @@ function mergePilots(data){
   if(!ok.length){ $('sumTable').innerHTML = '<p class="bad">결과 파일이 아닙니다</p>'; return; }
   const keys = PARAMS.map(p => p.k).filter(k => ok.some(d => k in d.final_values));
   const mean = k => { const v = ok.filter(d => k in d.final_values).map(d => d.final_values[k]); return v.reduce((a,b)=>a+b,0)/v.length; };
-  merged = { from:ok.map(d => d.pilot_id), n:ok.length, merged_at:new Date().toISOString(), rule:'mean of each pilot participant\'s final value (Fashimpaur et al., CHI 2023)', values:{} };
+  merged = { from:ok.map(d => d.tuning_id || d.pilot_id), n:ok.length, merged_at:new Date().toISOString(), rule:'mean of each researcher\'s final value from blind A/B tuning (procedure after Fashimpaur et al., CHI 2023)', values:{} };
   keys.forEach(k => { const p = PARAMS.find(x=>x.k===k); merged.values[k] = +mean(k).toFixed(p.dec); });
-  $('sumTable').innerHTML = '<table><tr><th>값</th>' + ok.map(d => `<th>${d.pilot_id}</th>`).join('') + '<th>평균 (고정값)</th></tr>' +
+  $('sumTable').innerHTML = '<table><tr><th>값</th>' + ok.map(d => `<th>${d.tuning_id || d.pilot_id}</th>`).join('') + '<th>평균 (고정값)</th></tr>' +
     keys.map(k => { const p = PARAMS.find(x=>x.k===k); return `<tr><td>${p.name}</td>` + ok.map(d => `<td>${d.final_values[k] ?? '–'}</td>`).join('') + `<td><b>${merged.values[k]}</b></td></tr>`; }).join('') + '</table>';
   $('sumSave').disabled = false;
 }

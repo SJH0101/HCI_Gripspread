@@ -48,9 +48,9 @@
     <p class="muted">서버의 <b>experiment</b> 폴더에서 참가자마다 마지막 전체 zip(…_final.zip), 없으면 가장 최근 중간 저장본을 가져옵니다. 비밀번호가 기억돼 있으면 페이지를 열 때 자동으로 불러옵니다.</p>
     <div class="form">
       <label>연구자 비밀번호<input id="cPw" class="srvPw" type="password" autocomplete="current-password"></label>
-      <label>데이터<select id="cKind"><option value="experiment">본 실험 (experiment)</option><option value="practice">리허설·테스트 (practice)</option></select></label>
+      <label>데이터<select id="cKind"><option value="experiment">본 실험 (experiment)</option><option value="pilot">본 실험 파일럿 (pilot)</option><option value="rehearsal">리허설 (rehearsal)</option></select></label>
     </div>
-    <div class="actions"><button class="primary" id="cLoad">불러와서 분석</button><span id="cMsg" class="muted"></span></div>
+    <div class="actions"><button class="primary" id="cLoad">불러와서 분석</button><button id="cDemo">데모(가짜 데이터 12명)로 보기</button><span id="cMsg" class="muted"></span></div>
   </div>
 
   <div id="drop" class="card">
@@ -75,14 +75,14 @@ const drop = $('drop'), fileIn = $('files');
 drop.onclick = () => fileIn.click();
 drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
-drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); load([...e.dataTransfer.files]); };
-fileIn.onchange = () => load([...fileIn.files]);
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); DEMO = false; load([...e.dataTransfer.files]); };
+fileIn.onchange = () => { DEMO = false; load([...fileIn.files]); };
 
 // ====================================================================== cloud (via the site's /api/data)
 // The server holds the Supabase key and checks the researcher password; it returns short-lived signed URLs
 // and the files are downloaded straight from Supabase.
 async function loadFromServer(){
-  const msg = t => $('cMsg').textContent = t;
+  const msg = t => $('cMsg').textContent = t; DEMO = false;
   SRV.setPw($('cPw').value.trim());
   $('cLoad').disabled = true;
   try{
@@ -96,12 +96,21 @@ async function loadFromServer(){
       if(!d.ok) throw new Error('내려받기 실패 ' + d.status + ' ' + f.path);
       got.push({ name:f.name, blob:await d.blob() });
     }
-    msg(`${kind === 'practice' ? '[리허설·테스트] ' : ''}${j.files.length}명 파일을 불러왔습니다 (${j.files.filter(f => f.final).length}명은 최종본, 나머지는 중간 저장본) · ${new Date().toLocaleTimeString().slice(0,-3)}`);
+    msg(`${{ pilot:'[본 실험 파일럿] ', rehearsal:'[리허설] ' }[kind] || ''}${j.files.length}명 파일을 불러왔습니다 (${j.files.filter(f => f.final).length}명은 최종본, 나머지는 중간 저장본) · ${new Date().toLocaleTimeString().slice(0,-3)}`);
     await load(got);
   }catch(e){ msg(e instanceof TypeError ? `서버에 연결하지 못했습니다(${e.message})` : e.message); }
   finally{ $('cLoad').disabled = false; }
 }
 $('cLoad').onclick = loadFromServer;
+// demo: invented participants (analysis/make_fake_data.py) served with the site, to see what every table and chart looks like
+$('cDemo').onclick = async () => {
+  const msg = t => $('cMsg').textContent = t;
+  try{ msg('데모 데이터 불러오는 중…'); const names = await (await fetch('demo/index.json')).json(), got = [];
+    for(const n of names){ const r = await fetch('demo/' + n); got.push({ name:n, blob:await r.blob() }); }
+    DEMO = true; await load(got); msg(`데모: 가짜 참가자 ${names.length}명 (숫자는 지어낸 것, 실제 결과 아님)`); }
+  catch(e){ msg('데모를 못 불러옴: ' + e.message); }
+};
+let DEMO = false;
 $('cKind').onchange = () => { if(SRV.ready()) loadFromServer(); };
 if(SRV.ready()) setTimeout(loadFromServer, 0);
 
@@ -285,7 +294,8 @@ function analyze(people){
       for(const c of cells.filter(c => c.pid === p.pid && c.tech === tech && c.cup !== 'none')){ c.tp_loss = tp0 ? 1 - c.tp / tp0.tp : NaN; c.tp_loss_ex = tp0 ? 1 - c.tp_ex / tp0.tp_ex : NaN; } }
     const ss = p.session || {};
     if(!p.session) warn.push('session.json 없음');
-    if(ss.practice) warn.push('⚠ 연습 세션(practice): 본 분석에 넣으면 안 됨');
+    const stype = ss.session_type || (ss.practice ? 'rehearsal' : 'study');
+    if(stype !== 'study') warn.push(`⚠ ${{ pilot:'본 실험 파일럿', rehearsal:'리허설' }[stype] || stype} 세션: 본 분석에 넣으면 안 됨`);
     const nCond = new Set(meas.map(t => t.technique + t.cup)).size;
     if(nCond < 8) warn.push(`조건 ${nCond}/8개만 있음`);
     roster.push({ pid:p.pid, order:(ss.tech_order || []).join(' > ') || (p.trials[0] && p.trials[0].tech_order) || '', hand:ss.hand || '',
@@ -471,6 +481,38 @@ function chart(desc, cups, { yLabel, pct = false, digits = 2 }){
   });
   return `<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`;
 }
+// paired ratings per item: median dot and interquartile bar for each technique, one row per item
+const quant = (v, q) => { const s = [...v].sort((a, b) => a - b); if(!s.length) return NaN; const i = (s.length - 1) * q, f = Math.floor(i); return s[f] + (s[Math.min(s.length - 1, f + 1)] - s[f]) * (i - f); };
+function dotPlot(rows, { min, max, step, label, idealOf = () => null }){
+  const W = 640, LW = 230, R = 16, T = 26, RH = 26, H = T + rows.length * RH + 28;
+  const x = v => LW + (W - LW - R) * (v - min) / (max - min);
+  let g = `<text x="${LW}" y="14" font-size="11" fill="#6B7178">${label}</text>`;
+  for(let v = min; v <= max + 1e-9; v += step) g += `<line x1="${x(v)}" x2="${x(v)}" y1="${T-6}" y2="${H-24}" stroke="#ECEEF0"/><text x="${x(v)}" y="${H-8}" text-anchor="middle" font-size="11" fill="#6B7178">${+v.toFixed(1)}</text>`;
+  rows.forEach((r, i) => { const yc = T + i * RH + RH / 2;
+    g += `<text x="${LW - 8}" y="${yc + 4}" text-anchor="end" font-size="12" fill="#1F2328">${r.name}</text>`;
+    const ideal = idealOf(r); if(ideal != null) g += `<rect x="${x(ideal) - 5}" y="${yc - 9}" width="10" height="18" fill="#2F7D4F" opacity=".12"><title>좋은 쪽</title></rect>`;
+    [['trackpad', r.x, -5], ['gs', r.y, 5]].forEach(([t, v, dy]) => { if(!v.length) return; const col = t === 'gs' ? 'var(--gs)' : 'var(--tp)';
+      g += `<line x1="${x(quant(v, .25))}" x2="${x(quant(v, .75))}" y1="${yc + dy}" y2="${yc + dy}" stroke="${col}" stroke-width="2"/>` +
+           `<circle cx="${x(quant(v, .5))}" cy="${yc + dy}" r="4.5" fill="${col}"><title>${TECH_NAME[t]} 중앙값 ${fmt(quant(v, .5), 1)} (IQR ${fmt(quant(v, .25), 1)}–${fmt(quant(v, .75), 1)}, n=${v.length})</title></circle>`; }); });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" style="max-width:760px">${g}</svg><div class="legend"><span><i style="background:var(--tp)"></i>트랙패드</span><span><i style="background:var(--gs)"></i>GripSpread</span><span>점 = 중앙값, 막대 = 사분위 범위(25–75%)</span></div>`;
+}
+// order check as interaction plots: x = technique, one line per order group
+function orderPlots(cells, roster){
+  const items = [['tp','처리량 (bits/s)',CUPS], ['mt_ms','이동 시간 (ms)',CUPS], ['imu_rms','각속도 RMS (°/s)',CUPS3], ['tilt_1s','1초 안 최대 기울기 (°)',CUPS3], ['seq','SEQ',CUPS]];
+  return '<div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">' + items.map(([key, name, cups]) => {
+    const o = orderCheck(cells, roster, key, cups); if(!o.a.length || !o.b.length) return '';
+    const W = 230, H = 170, L = 44, R = 12, T = 22, B = 30, m = (g, t) => mean(g.map(r => r[t]));
+    const v = [m(o.a,'tp'), m(o.a,'gs'), m(o.b,'tp'), m(o.b,'gs')].filter(isFinite); if(!v.length) return '';
+    let lo = Math.min(...v), hi = Math.max(...v); const pad = (hi - lo || Math.abs(hi) || 1) * .25; lo -= pad; hi += pad;
+    const x = i => i ? W - R - 34 : L + 30, y = val => T + (H - T - B) * (1 - (val - lo) / (hi - lo));
+    let g = `<text x="${W/2}" y="13" text-anchor="middle" font-size="12" font-weight="600" fill="#1F2328">${name}</text>`;
+    [lo + (hi-lo)*.1, (lo+hi)/2, hi - (hi-lo)*.1].forEach(t => g += `<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="#ECEEF0"/><text x="${L-4}" y="${y(t)+4}" text-anchor="end" font-size="10" fill="#6B7178">${+t.toPrecision(3)}</text>`);
+    g += `<text x="${x(0)}" y="${H-10}" text-anchor="middle" font-size="11" fill="#1F2328">트랙패드</text><text x="${x(1)}" y="${H-10}" text-anchor="middle" font-size="11" fill="#1F2328">GripSpread</text>`;
+    [[o.a, '0', '트랙패드 먼저'], [o.b, '5 4', 'GripSpread 먼저']].forEach(([grp, dash, lab]) => { const a = m(grp,'tp'), b = m(grp,'gs');
+      g += `<line x1="${x(0)}" y1="${y(a)}" x2="${x(1)}" y2="${y(b)}" stroke="#1F2328" stroke-width="1.8" stroke-dasharray="${dash}"><title>${lab}: ${fmt(a,2)} → ${fmt(b,2)} (n=${grp.length})</title></line>` +
+           `<circle cx="${x(0)}" cy="${y(a)}" r="3.5" fill="var(--tp)"/><circle cx="${x(1)}" cy="${y(b)}" r="3.5" fill="var(--gs)"/>`; });
+    return `<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`; }).join('') + '</div><div class="legend"><span>실선 = 트랙패드 먼저 한 그룹</span><span>점선 = GripSpread 먼저 한 그룹</span><span>두 선이 평행하면 순서 효과 없음(대칭)</span></div>';
+}
 const legend = '<div class="legend"><span><i style="background:var(--tp)"></i>트랙패드</span><span><i style="background:var(--gs)"></i>GripSpread</span><span>점 = 평균, 막대 = 피험자 내 95% 신뢰구간</span></div>';
 function anovaTable(A, n, ART){
   return `<table><tr><th>효과</th><th>F</th><th>df</th><th>GG ε</th><th>p</th><th>η²G</th><th>부분 η²</th><th>ART p</th></tr>` + Object.entries(A).map(([k, r]) => { const q = ART && ART[k];
@@ -515,18 +557,18 @@ function render(R){
   const tlxRows = TLX_KEYS.map(k => { const pids = [...new Set(tlx.map(r => r.pid))], x = [], y = [];
     for(const pid of pids){ const a = tlx.find(r => r.pid === pid && r.tech === 'trackpad'), b = tlx.find(r => r.pid === pid && r.tech === 'gs'); if(a && b && a[k] != null && b[k] != null){ x.push(a[k]); y.push(b[k]); } }
     const w = wilcoxon(x, y), med = v => { const s = [...v].sort((p,q) => p-q); return s.length ? (s[(s.length-1)>>1] + s[s.length>>1]) / 2 : NaN; };
-    return { k, n:x.length, mx:med(x), my:med(y), w }; });
+    return { k, n:x.length, mx:med(x), my:med(y), w, x, y, name:TLX_NAME[k] }; });
 
   const med = v => { const s = [...v].sort((p,q) => p-q); return s.length ? (s[(s.length-1)>>1] + s[s.length>>1]) / 2 : NaN; };
   const isoRows = ISO_ITEMS.map(([k, name, ideal]) => { const pids = [...new Set(R.iso.map(r => r.pid))], x = [], y = [];
     for(const pid of pids){ const a = R.iso.find(r => r.pid === pid && r.tech === 'trackpad'), b = R.iso.find(r => r.pid === pid && r.tech === 'gs'); if(a && b && a[k] != null && b[k] != null){ x.push(a[k]); y.push(b[k]); } }
     // for middle-ideal items also compare the distance from 3 (how far from "just right")
     const dist = ideal === 'mid' ? wilcoxon(x.map(v => Math.abs(v - 3)), y.map(v => Math.abs(v - 3))) : null;
-    return { k, name, ideal, n:x.length, mx:med(x), my:med(y), w:wilcoxon(x, y), dist }; });
+    return { k, name, ideal, n:x.length, mx:med(x), my:med(y), w:wilcoxon(x, y), dist, x, y }; });
   const isoP = holm(isoRows.map(r => r.w.p));
   const people = roster.map(r => `<tr><td>${r.pid}</td><td>${r.order}</td><td>${r.hand}</td><td class="num">${fmt(r.handLen,0)}</td><td class="num">${fmt(r.span,0)}</td><td class="num">${r.stature ?? '–'}</td><td class="num">${r.trials}</td><td class="num">${fmt(r.success*100,1)}%</td><td class="num">${r.outliers}</td><td class="num">${r.imuTrials}</td><td class="${r.warn.length ? 'w' : 'muted'}" style="text-align:left;white-space:normal">${r.warn.join(' · ') || '없음'}</td></tr>`).join('');
 
-  $('out').innerHTML = `
+  $('out').innerHTML = (DEMO ? `<div class="card" style="border-color:#B00020;color:#B00020"><b>데모 · 가짜 데이터</b> 아래 숫자는 모두 지어낸 것이다. 표와 그림이 어떻게 나오는지 보는 용도.</div>` : '') + `
   <h2>참가자</h2>
   <div class="card scroll"><table><tr><th>참가자</th><th>기법 순서</th><th>손</th><th>손 길이(mm)</th><th>손 뼘(mm)</th><th>키(cm)</th><th>본 시행</th><th>성공</th><th>확인할 시행</th><th>IMU 시행</th><th style="text-align:left">확인할 것</th></tr>${people}</table>
   <p class="muted">본 시행 = 연습·적응·건너뛴 시행을 뺀 시행. 확인할 시행 = 참가자 × 조건마다 이동 시간에 맞춘 강건한 Fitts 직선(Theil–Sen)에서 잔차의 강건 z(MAD 기준)가 3을 넘은 성공 시행. 빼지 않고 분석에 그대로 넣으며, 아래 "확인할 시행"과 "민감도 분석"에서 따로 본다.</p></div>
@@ -539,12 +581,15 @@ function render(R){
   <div class="card">${IMU_FIG}</div>${rms.html}${lin.html}${tilt.html}${tilt1.html}
   <div class="card scroll"><h3>기울기와 이동 시간</h3>${tiltMtTable(R.tiltMt)}</div>
   <h2>순서 효과 (비대칭 학습 전이)</h2>
+  <div class="card">${orderPlots(cells, roster)}</div>
   <div class="card scroll">${orderTable(cells, roster)}</div>
   <h2>조건별 난이도 (SEQ)</h2>${seqB.html}
   <h2>주관 평가 (NASA-TLX)</h2>
+  <div class="card">${dotPlot(tlxRows, { min:0, max:100, step:20, label:'0–100, 낮을수록 부담이 적음 (수행: 0 완벽 – 100 실패)' })}</div>
   <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩 받았으므로 대응 Wilcoxon 부호순위 검정(정확 p). 0–100점, 낮을수록 부담이 적다.</p></div>
   <h2>장치 평가 (ISO 9241-9 설문)</h2>
+  <div class="card">${dotPlot(isoRows.map(r => ({ ...r, name:r.name.replace(/ \(.*\)$/, '') })), { min:1, max:5, step:1, label:'1–5 (왼쪽 끝 말 – 오른쪽 끝 말, 아래 표 참고). 초록 칸 = 좋은 쪽', idealOf:r => ({ mid:3, lo:1, hi:5 })[r.ideal] })}</div>
   <div class="card scroll"><table><tr><th style="text-align:left">항목</th><th>좋은 쪽</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th><th>Holm p</th><th>3에서 거리 p</th></tr>${isoRows.map((r, i) => `<tr><td style="text-align:left">${r.name}</td><td>${{ mid:'3 (적당)', lo:'1', hi:'5' }[r.ideal]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td><td class="num${stars(isoP[i])}">${fp(isoP[i])}</td><td class="num">${r.dist ? fp(r.dist.p) : '–'}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩, 13문항 전부(Douglas, Kirkpatrick &amp; MacKenzie, CHI 1999의 5점 형식). 대응 Wilcoxon 부호순위 검정(정확 p), 13문항에 Holm 보정. 힘·정신적 노력·신체적 노력·속도는 "너무 적음–너무 많음" 척도라 3이 가장 좋으므로, 3에서 얼마나 떨어졌는지(|값 − 3|)도 따로 비교한다.</p></div>
   <h2>확인할 시행 (이동 시간이 그 사람의 Fitts 직선에서 크게 벗어남, 강건 z > 3)</h2>

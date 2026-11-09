@@ -14,6 +14,10 @@ ISO_HEAD = ['pid','technique'] + ['iso_' + k for k in ISO_KEYS]
 CAL = json.load(open(os.path.join(os.path.dirname(__file__), '..', 'imu', 'calib', 'imu_calib_2026-11-05.json')))
 
 
+def put(z, name, text):   # fixed timestamp so rebuilding the demo gives identical zips
+    z.writestr(zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0)), text, zipfile.ZIP_DEFLATED)
+
+
 def csv(head, rows):
     return '\n'.join([','.join(head)] + [','.join(str(r.get(h, '')) for h in head) for r in rows])
 
@@ -79,12 +83,12 @@ def main():
     for i in range(1, n + 1):
         pid, trials, imu, tlx, seq, iso, session = person(i, rng)
         with zipfile.ZipFile(os.path.join(out, f'FAKE_{pid}.zip'), 'w', zipfile.ZIP_DEFLATED) as z:
-            z.writestr(f'{pid}_trials.csv', csv(TRIAL_HEAD, trials))
-            z.writestr(f'{pid}_imu.csv', csv(IMU_HEAD, imu))
-            z.writestr(f'{pid}_tlx.csv', csv(TLX_HEAD, tlx))
-            z.writestr(f'{pid}_seq.csv', csv(SEQ_HEAD, seq))
-            z.writestr(f'{pid}_iso.csv', csv(ISO_HEAD, iso))
-            z.writestr(f'{pid}_session.json', json.dumps(session))
+            put(z, f'{pid}_trials.csv', csv(TRIAL_HEAD, trials))
+            put(z, f'{pid}_imu.csv', csv(IMU_HEAD, imu))
+            put(z, f'{pid}_tlx.csv', csv(TLX_HEAD, tlx))
+            put(z, f'{pid}_seq.csv', csv(SEQ_HEAD, seq))
+            put(z, f'{pid}_iso.csv', csv(ISO_HEAD, iso))
+            put(z, f'{pid}_session.json', json.dumps(session))
     print('wrote', n, 'fake participants to', out)
 
 

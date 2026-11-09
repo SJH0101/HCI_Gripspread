@@ -9,3 +9,6 @@ data/
 .DS_Store
 __pycache__/
 node_modules
+
+# fake demo participants served with the site
+!dist/demo/*.zip

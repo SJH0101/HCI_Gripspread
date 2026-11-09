@@ -197,7 +197,7 @@
       <h3>데이터</h3>
       <div class="kv num">
         <span>화면 각도</span><b id="kLid">–</b>
-        <span>클라우드</span><b id="kCloud">꺼짐</b>
+        <span>서버 저장</span><b id="kCloud">확인 중</b>
       </div>
       <div class="rail-actions">
         <button id="btnSaveNow">지금까지 저장 (zip)</button>
@@ -217,9 +217,9 @@
     <section id="sSetup" class="screen on">
       <div class="wizard">
         <ol class="stepper" id="stepper">
-          <li data-go="0"><span>1</span>장비</li><li data-go="1"><span>2</span>실험 값</li><li data-go="2"><span>3</span>컵 IMU</li><li data-go="3"><span>4</span>클라우드</li>
+          <li data-go="0"><span>1</span>장비</li><li data-go="1"><span>2</span>실험 값</li><li data-go="2"><span>3</span>컵 IMU</li>
           <li class="sep" aria-hidden="true"></li>
-          <li data-go="4"><span>5</span>참여자</li><li data-go="5"><span>6</span>손 크기</li><li data-go="6"><span>7</span>설문</li><li data-go="7"><span>8</span>시작</li>
+          <li data-go="3"><span>4</span>참여자</li><li data-go="4"><span>5</span>손 크기</li><li data-go="5"><span>6</span>설문</li><li data-go="6"><span>7</span>시작</li>
         </ol>
         <div class="sheet">
 
@@ -235,6 +235,7 @@
             <span id="lidLive" class="lidlive">센서 없음</span>
             <span class="check" style="display:block;margin-top:4px">맥북 힌지의 각도 센서를 크롬으로 바로 읽습니다(창에서 <b>Apple 기기</b>를 고르면 됨). 목표 ±2° 안이면 초록. 센서가 없는 모델이면 아이폰 측정 앱 수평계를 화면 뒷면에 대고 <b id="eAngleTilt">15</b>°가 나오게 맞춥니다.</span></span>
           <label>카메라 (자동)</label><span id="camInfo" class="check">카메라 준비 중…</span>
+          <label for="cPw">서버 자동 저장</label><span><input id="cPw" class="srvPw" type="password" autocomplete="current-password" placeholder="연구자 비밀번호 (이 브라우저에서 한 번만)" style="width:260px"> <span id="cMsg" class="check">확인 중…</span></span>
           <label>확인</label><span class="checks" id="eChecks">
             <label><input type="checkbox" value="natural_scroll_on"> 트랙패드 기본값: 자연스러운 스크롤 켬 (트랙패드 › 스크롤 및 확대/축소)</label>
             <label><input type="checkbox" value="inertia_on"> 트랙패드 기본값: 스크롤할 때 관성 사용 켬 (손쉬운 사용 › 포인터 제어 › 트랙패드 옵션)</label>
@@ -262,8 +263,8 @@
 
         <div class="wz" data-who="실험자 세팅">
           <h1>실험 값</h1>
-          <p>GripSpread 값은 파일럿 도구(gripspread_pilot.html)에서 정한 <b>gripspread_params.json</b>을 불러옵니다. 한 번 불러오면 본 실험 동안 바꾸지 않습니다.</p>
-        <div class="actions" style="margin:0 0 10px"><label for="fParams" class="muted" style="color:var(--muted)">파일럿 결과 값 불러오기</label><input id="fParams" type="file" accept=".json"><span id="paramsMsg" class="check"></span></div>
+          <p>GripSpread 값은 상수 보정 페이지(gripspread_tuning.html)에서 정한 <b>gripspread_params.json</b>을 불러옵니다. 한 번 불러오면 본 실험 동안 바꾸지 않습니다.</p>
+        <div class="actions" style="margin:0 0 10px"><label for="fParams" class="muted" style="color:var(--muted)">상수 보정 값 불러오기</label><input id="fParams" type="file" accept=".json"><span id="paramsMsg" class="check"></span></div>
           <div id="paramSummary" class="order num"></div>
           <label class="testtoggle"><input id="fTest" type="checkbox"> <b>테스트 모드</b> · 데이터를 저장하지 않고, <kbd>N</kbd> 시행 건너뛰기 · <kbd>K</kbd> 조건 건너뛰기를 켭니다. 본 실험에서는 꺼 두세요.</label>
           <details class="guide"><summary>고급 설정 (개발용, 바꾸지 마세요)</summary>
@@ -310,16 +311,6 @@
 
         </div>
 
-        <div class="wz" data-who="실험자 세팅 · 선택">
-          <h1>클라우드 자동 저장</h1>
-          <p>켜 두면 조건이 끝날 때마다 가벼운 기록이, 실험이 끝나면 전체 데이터 zip이 서버를 거쳐 Supabase의 <b>experiment</b> 폴더에 올라갑니다. Supabase 키는 서버에만 있고, 여기서는 연구자 비밀번호만 한 번 넣으면 이 브라우저가 기억합니다. 로컬 zip 저장은 그대로 됩니다. 시작 전에 <b>연결 테스트</b>를 한 번 눌러 주세요.</p>
-        <div class="form">
-          <label for="cPw">연구자 비밀번호</label><input id="cPw" class="srvPw" type="password" autocomplete="current-password">
-          <label>사용</label><span><label style="color:var(--ink)"><input id="cOn" type="checkbox"> 자동 업로드 켜기</label> <button id="cTest" type="button" style="margin-left:8px">연결 테스트</button> <span id="cMsg" class="check"></span></span>
-        </div>
-
-        </div>
-
         <!-- participant -->
         <div class="wz" data-who="참여자">
           <h1>참여자 정보</h1>
@@ -328,7 +319,7 @@
             <label for="fPid">참여자 번호 (1–20)</label><input id="fPid" type="number" min="1" max="99" value="1">
             <label for="fHand">주손 (컵을 드는 손)</label><select id="fHand"><option value="R">오른손</option><option value="L">왼손</option></select>
             <label for="fStature">키 (cm)</label><input id="fStature" type="number" min="120" max="220" placeholder="본인에게 물어봄">
-            <label for="fPractice">리허설·테스트</label><span><label style="color:var(--ink)"><input id="fPractice" type="checkbox"> 이번 세션은 연습이다 (서버 <b>practice</b> 폴더로 가고 본 분석에 안 들어감)</label></span>
+            <label for="fType">세션 종류</label><select id="fType"><option value="study">본 실험</option><option value="pilot">본 실험 파일럿 (팀 밖 사람, 본 분석에 안 들어감)</option><option value="rehearsal">리허설 (팀원, 본 분석에 안 들어감)</option></select>
           </div>
           <div id="orderBox" class="order num"></div>
         </div>
@@ -575,9 +566,8 @@ function paramSummary(){
 const WZ_CHECK = [
   () => { const n = [...document.querySelectorAll('#eChecks input')].filter(i => !i.checked).length, tgt = +$('eAngle').value || 105;
     return (E.camera && !/facetime|macbook|built-?in/i.test(E.camera.label || '')) ? '내장 카메라가 아닌 카메라가 잡혀 있습니다' : (LID.angle != null && Math.abs(LID.angle - tgt) > 2) ? `화면 각도가 ${LID.angle}°입니다 (목표 ${tgt}°)` : n ? `체크 안 된 장비 항목이 ${n}개 있습니다` : ''; },
-  () => paramsSource ? '' : '파일럿 결과 값을 아직 안 불러왔습니다 (기본값으로 진행)',
+  () => paramsSource ? '' : '상수 보정 값을 아직 안 불러왔습니다 (기본값으로 진행)',
   () => !imuConn ? '컵 IMU가 연결되지 않았습니다' : !IMU_CAL ? '센서 보정이 없습니다' : !IMU_CHECK ? '정지 확인 10초를 아직 안 했습니다' : '',
-  () => '',
   () => !parseInt($('fPid').value) ? '참여자 번호를 넣어 주세요' : !$('fStature').value ? '키를 적어 주세요' : '',
   () => { const m = handMeas(); return !(m.len.a && m.len.b && m.span.a && m.span.b) ? '손 길이와 span을 두 번씩 적어 주세요' : [...m.len.notes, ...m.span.notes].join(' · '); },
   () => ['fAge','fGender','fPointer','fTpFreq','fMacTp'].some(id => !$(id).value) ? '나이, 성별, 트랙패드 관련 세 문항을 모두 적어 주세요' : '',
@@ -590,10 +580,11 @@ function startSummary(){
     row('장비', $('eDevice').value.trim() || DEVICE_DEFAULT, !WZ_CHECK[0]()),
     row('실험 값', paramsSource ? paramsSource.file : '기본값', !!paramsSource),
     row('컵 IMU', !imuConn ? '연결 안 됨' : (IMU_CAL ? '보정 있음' : '보정 없음') + (IMU_CHECK ? ' · 정지 확인 완료' : ' · 정지 확인 안 함'), !WZ_CHECK[2]()),
-    row('클라우드', CLOUD.on ? '자동 업로드 켜짐' : '꺼짐 (로컬 저장만)', true),
-    row('참여자', `P${String(parseInt($('fPid').value) || '?').padStart(2,'0')} · ${$('fHand').value === 'R' ? '오른손' : '왼손'} · ${o.techOrder.map(t => TECH[t]).join(' → ')}${$('fPractice').checked ? ' · <b>연습 세션 (practice)</b>' : ''}`, !WZ_CHECK[4]()),
-    row('손 크기', `길이 ${m.len.mean ?? '–'}mm · span ${m.span.mean ?? '–'}mm`, !WZ_CHECK[5]()),
-    row('설문', $('fAge').value ? `${$('fAge').value}세` : '미입력', !WZ_CHECK[6]()),
+    row('서버 자동 저장', SRV_OK ? `켜짐 · ${SESSION_FOLDER[$('fType').value]} 폴더` : '연결 안 됨 (로컬 zip만 저장)', SRV_OK),
+    row('세션 종류', SESSION_NAME[$('fType').value], $('fType').value === 'study'),
+    row('참여자', `P${String(parseInt($('fPid').value) || '?').padStart(2,'0')} · ${$('fHand').value === 'R' ? '오른손' : '왼손'} · ${o.techOrder.map(t => TECH[t]).join(' → ')}`, !WZ_CHECK[3]()),
+    row('손 크기', `길이 ${m.len.mean ?? '–'}mm · span ${m.span.mean ?? '–'}mm`, !WZ_CHECK[4]()),
+    row('설문', $('fAge').value ? `${$('fAge').value}세` : '미입력', !WZ_CHECK[5]()),
   ].join('<br>');
 }
 function wzShow(i){
@@ -673,7 +664,10 @@ try{ const c = JSON.parse(localStorage.getItem(IMUCAL_KEY)); if(c && c.gyro_coun
 // Auto-load from the server when the page opens (before any session starts, so values never change mid-session):
 // the newest merged pilot values (params/) and the newest sensor calibration (imu_calib/). A file picked by hand still wins.
 async function loadFromServer(){
-  if(!SRV.ready()) return;
+  if(!SRV.online()) return srvStatus(false, '파일로 연 페이지라 서버를 못 씁니다 (로컬 zip만 저장). 사이트 주소로 열어 주세요');
+  if(!SRV.pw()) return srvStatus(false, '연구자 비밀번호를 넣으면 자동 저장이 켜집니다');
+  try{ await SRV.latest('params'); srvStatus(true, '연결됨 · 조건마다, 그리고 끝날 때 자동으로 올라갑니다'); }
+  catch(e){ return srvStatus(false, '연결 안 됨: ' + e.message + ' (로컬 zip은 저장됨)'); }
   try{ const j = await SRV.latest('params'); if(j.name && !paramsSource) applyParams(j.data, '서버 ' + j.name); }
   catch(e){ $('paramsMsg').className = 'check bad'; $('paramsMsg').textContent = '서버에서 값을 못 불러옴: ' + e.message; }
   try{ const j = await SRV.latest('imu_calib');
@@ -833,7 +827,7 @@ $('btnStart').onclick = () => {
   try{ localStorage.setItem(ENV_KEY, JSON.stringify({ device:env.device, os:env.macos, angle:env.screen_angle_deg })); }catch(e){}
   S.env = env; LID.startAngle = LID.angle;
   const hm = handMeas();
-  Object.assign(S, { practice:$('fPractice').checked, pid, hand:$('fHand').value, stature_cm:+$('fStature').value || null, handLen:hm.len.mean, span:hm.span.mean,
+  Object.assign(S, { sessionType:$('fType').value, pid, hand:$('fHand').value, stature_cm:+$('fStature').value || null, handLen:hm.len.mean, span:hm.span.mean,
     handRaw:{ length_mm:[hm.len.a, hm.len.b], span_mm:[hm.span.a, hm.span.b] },
     demo:{ age:+$('fAge').value || null, gender:$('fGender').value || null, pointer_main:$('fPointer').value || null, trackpad_days_per_week:$('fTpFreq').value || null, macbook_trackpad:$('fMacTp').value || null,
       gesture_exp:[...document.querySelectorAll('#fGesture input:checked')].map(i => i.value),
@@ -1198,24 +1192,14 @@ async function backup(){
 const CLOUD_KEY = 'gripspread_cloud_v2';
 // The site's own /api/upload-url hands out a one-time signed URL per file; the zip then goes straight to Supabase.
 // No key ever reaches this page. Opened as a local file there is no /api, so uploads simply fail and stay local.
+// Always on: every session uploads when the server answers (the password check runs when the page opens).
 const CLOUD = { on:true, n:0, busy:false, again:false, log:[] };
-try{ const c = JSON.parse(localStorage.getItem(CLOUD_KEY)); if(c && typeof c.on === 'boolean') CLOUD.on = c.on; }catch(e){}
-$('cOn').checked = CLOUD.on;
-function readCloudForm(){
-  CLOUD.on = $('cOn').checked;
-  try{ localStorage.setItem(CLOUD_KEY, JSON.stringify({ on:CLOUD.on })); }catch(e){}
-  $('kCloud').textContent = CLOUD.on ? '켜짐' : '꺼짐';
-}
-$('cOn').addEventListener('change', readCloudForm);
-$('kCloud').textContent = CLOUD.on ? '켜짐' : '꺼짐';
+const SESSION_FOLDER = { study:'experiment', pilot:'pilot', rehearsal:'rehearsal' };
+const SESSION_NAME = { study:'본 실험', pilot:'본 실험 파일럿 (pilot 폴더)', rehearsal:'리허설 (rehearsal 폴더)' };
+let SRV_OK = false;
+function srvStatus(ok, text){ SRV_OK = ok; $('cMsg').className = 'check' + (ok ? '' : ' bad'); $('cMsg').textContent = text;
+  $('kCloud').textContent = ok ? '자동 저장' : '연결 안 됨'; $('kCloud').style.color = ok ? '' : 'var(--alert)'; }
 const cloudPut = (path, blob, type) => SRV.put(path, blob, type);
-$('cTest').onclick = async () => {
-  readCloudForm();
-  $('cMsg').className = 'check'; $('cMsg').textContent = '테스트 중…';
-  try{ await cloudPut(`_test/${SRV.stamp()}.txt`, new Blob(['gripspread upload test']), 'text/plain');
-    $('cMsg').textContent = '연결됨 · _test 폴더에 테스트 파일이 올라갔습니다'; }
-  catch(e){ $('cMsg').className = 'check bad'; $('cMsg').textContent = '실패: ' + e.message; }
-};
 window.GS_DEBUG.cloudSync = () => cloudSync();
 async function cloudSync(){
   if(!CLOUD.on || !SRV.ready() || !S.cfg || !window.JSZip) return;
@@ -1229,7 +1213,7 @@ async function cloudSync(){
       const label = final ? 'final' : `after-step-${S.stepIdx}`;
       if(blob.size > 45e6){ CLOUD.log.push({ label, at:new Date().toISOString(), ok:false, error:'file over 45 MB, kept local only' });
         $('kCloud').textContent = '파일이 커서 로컬에만 저장'; $('kCloud').style.color = 'var(--alert)'; continue; }
-      const path = `${S.practice ? 'practice' : 'experiment'}/${tag}/${(S.startedAt || '').replace(/[:.]/g,'-')}/${tag}_${String(++CLOUD.n).padStart(3,'0')}_${label}.zip`;
+      const path = `${SESSION_FOLDER[S.sessionType] || 'experiment'}/${tag}/${(S.startedAt || '').replace(/[:.]/g,'-')}/${tag}_${String(++CLOUD.n).padStart(3,'0')}_${label}.zip`;
       try{ await cloudPut(path, blob, 'application/zip'); CLOUD.log.push({ path, at:new Date().toISOString(), ok:true });
         $('kCloud').textContent = `올림 ${new Date().toLocaleTimeString().slice(0,-3)}`; $('kCloud').style.color = ''; }
       catch(e){ CLOUD.log.push({ path, at:new Date().toISOString(), ok:false, error:e.message }); CLOUD.n--;
@@ -1251,7 +1235,7 @@ async function makeZip(snap, light){
   if(snap.iso && snap.iso.length) z.file(`${tag}_iso.csv`, toCSV(ISO_HEAD, snap.iso));
   z.file(`${tag}_session.json`, JSON.stringify(ss, null, 2));
   const blob = await z.generateAsync({ type:'blob', compression:'DEFLATE' });
-  const name = `${ss.practice ? 'PRACTICE_' : ''}${tag}_gripspread_${(ss.started_at || '').slice(0,16).replace(/[:T]/g,'-')}.zip`;
+  const name = `${{ pilot:'PILOT_', rehearsal:'REHEARSAL_' }[ss.session_type] || ''}${tag}_gripspread_${(ss.started_at || '').slice(0,16).replace(/[:T]/g,'-')}.zip`;
   return { blob, name, tag };
 }
 async function downloadZip(snap){
@@ -1261,7 +1245,7 @@ async function downloadZip(snap){
   setTimeout(()=>URL.revokeObjectURL(a.href), 5000); $('hSaved').textContent = '저장: ' + name;
 }
 function sessionObj(){
-  return { practice:!!S.practice, pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
+  return { session_type:S.sessionType || 'study', pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
     tlx:S.tlx, seq:seqRows.slice(), iso:isoRows.slice(), calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
