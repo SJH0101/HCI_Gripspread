@@ -30,6 +30,7 @@ LATIN = [['none', '60', '90', '75'], ['60', '75', 'none', '90'], ['75', '90', '6
 def person(i, rng):
     pid = f'P{i:02d}'
     skill = rng.gauss(1, .15)
+    steady = {t: rng.lognormvariate(0, .35) for t in ('trackpad', 'gs')}   # how shaky this person's hand is, per technique
     row = (i - 1) % 4
     order = ['trackpad', 'gs'] if (row + (i - 1) // 4) % 2 == 0 else ['gs', 'trackpad']   # same rule as orderFor()
     trials, imu, step, seq, t = [], [], 0, 0, 0
@@ -53,8 +54,8 @@ def person(i, rng):
                                    tech_order='>'.join(order), latin_row='ABCD'[row]))
                 if cup == 'none':
                     continue
-                shake = (.6 + .5 * cupk) if tech == 'trackpad' else (.35 + .1 * cupk)   # deg/s scale
-                lean = (.8 * cupk if tech == 'trackpad' else .3 * cupk)                  # deg of tilt drift
+                shake = ((.6 + .5 * cupk) if tech == 'trackpad' else (.35 + .1 * cupk)) * steady[tech] * rng.lognormvariate(0, .3)   # deg/s scale
+                lean = (.8 * cupk if tech == 'trackpad' else .3 * cupk) * steady[tech] * rng.lognormvariate(0, .4) * mt / 1500   # deg of tilt drift, grows with trial length
                 n = max(20, int(mt / 10))
                 for s in range(n):
                     seq += 1; t += 10

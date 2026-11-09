@@ -663,7 +663,7 @@ function render(R){
     &nbsp;|&nbsp; <b>자료</b> <a href="#a-imu">IMU 시행 보기</a> · <a href="#a-dl">내려받기</a></nav>
   <h1 class="part">주 분석</h1>
   <section id="a-sum">  <h2>핵심 결과 (보고서용 문장)</h2>
-  <div class="card"><pre id="sentences">${sentences({ tp, loss, rms, lin, tilt, seqB, n:Math.min(tp.n, rms.n || tp.n), tlxRows })}</pre></div>
+  <div class="card"><pre id="sentences">${sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n:Math.min(tp.n, rms.n || tp.n), tlxRows })}</pre></div>
 
 </section>
   <section id="a-h1">  <h2>H1 · 성능 손실</h2>${loss.html}${tp.html}${mt.html}${er.html}
@@ -779,7 +779,7 @@ function lineChart(t, y, ymax, label, opt, col){
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${g}</svg>`;
 }
 
-function sentences({ tp, loss, rms, lin, tilt, seqB, n, tlxRows }){
+function sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n, tlxRows }){
   const d = (b, t, c, digits, pct) => { const x = b.desc[t + c]; return x && isFinite(x.m) ? (pct ? fmt(x.m*100, 1) + '%' : fmt(x.m, digits)) : '–'; };
   const eff = (A, k, b) => A ? `F(${fmt(A[k].df1*A[k].eps,2)}, ${fmt(A[k].df2*A[k].eps,1)}) = ${fmt(A[k].F)}, p ${A[k].p < .001 ? '< .001' : '= ' + fp(A[k].p)}, η²G = ${fmt(A[k].etaG,3)}` +
     (b && b.ART && (b.ART[k].p < .05) !== (A[k].p < .05) ? ` [주의: ART에서는 p = ${fp(b.ART[k].p)}]` : '') : '(검정 불가)';
@@ -790,9 +790,9 @@ function sentences({ tp, loss, rms, lin, tilt, seqB, n, tlxRows }){
     `90 mm 컵에서 컵 없음 대비 처리량은 트랙패드가 ${d(loss,'trackpad','90',1,true)}, GripSpread가 ${d(loss,'gs','90',1,true)} 줄었다.`,
     `처리량 손실에 대한 기법 × 컵 상호작용: ${eff(loss.A, '기법 × 컵', loss)}. 기법 주효과: ${eff(loss.A, '기법', loss)}.`,
     `처리량(컵 4조건)에 대한 기법 × 컵 상호작용: ${eff(tp.A, '기법 × 컵', tp)}.`,
-    `스크롤 중 컵 각속도 RMS 평균은 트랙패드 ${d(rms,'trackpad','90',2)}°/s, GripSpread ${d(rms,'gs','90',2)}°/s(90 mm 컵)였다. 기법 주효과: ${eff(rms.A, '기법', rms)}.`,
-    `선형 가속도 RMS(보조)에 대한 기법 주효과: ${eff(lin.A, '기법', lin)}.`,
-    `최대 기울기 변화에 대한 기법 × 컵 상호작용: ${eff(tilt.A, '기법 × 컵', tilt)}.`,
+    ...[[rms, '스크롤 중 컵 각속도 RMS', '°/s', 2], [lin, '선형 가속도 RMS(보조)', 'm/s²', 2], [tilt, '최대 기울기 변화', '°', 2], [tilt1, '1초 안 최대 기울기 변화', '°', 2]].filter(([b]) => b).map(([b, name, unit, dg]) =>
+      `${name}는 컵 지름 60 / 75 / 90 mm에서 트랙패드 ${CUPS3.map(c => d(b,'trackpad',c,dg)).join(' / ')} ${unit}, GripSpread ${CUPS3.map(c => d(b,'gs',c,dg)).join(' / ')} ${unit}였다. ` +
+      `기법 × 컵 상호작용: ${eff(b.A, '기법 × 컵', b)}. 기법 주효과: ${eff(b.A, '기법', b)}. 컵 주효과: ${eff(b.A, '컵', b)}.`),
     seqB.ART ? `SEQ(1–7, 높을수록 쉬움) 평균은 90 mm 컵에서 트랙패드 ${d(seqB,'trackpad','90',2)}, GripSpread ${d(seqB,'gs','90',2)}였다. 기법 × 컵 상호작용(ART): F = ${fmt(seqB.ART['기법 × 컵'].F)}, p ${seqB.ART['기법 × 컵'].p < .001 ? '< .001' : '= ' + fp(seqB.ART['기법 × 컵'].p)}.` : '',
     raw ? `Raw TLX 중앙값은 트랙패드 ${fmt(raw.mx,1)}, GripSpread ${fmt(raw.my,1)}였다(Wilcoxon W = ${fmt(raw.w.W,1)}, p ${raw.w.p < .001 ? '< .001' : '= ' + fp(raw.w.p)}, n = ${raw.n}).` : ''
   ].filter(Boolean).join('\n');
