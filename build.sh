@@ -9,4 +9,5 @@ python3 src/build_experiment.py src/pilot_template.html src/engine.js dist/grips
 cp src/imu_calib.html dist/gripspread_imu_calib.html
 cp src/analysis.html dist/gripspread_analysis.html
 cp src/index.html dist/index.html
-python3 src/inject_server.py dist/gripspread_experiment.html dist/gripspread_pilot.html dist/gripspread_imu_calib.html dist/gripspread_analysis.html
+cp src/admin.html dist/gripspread_admin.html
+python3 src/inject_server.py dist/gripspread_experiment.html dist/gripspread_pilot.html dist/gripspread_imu_calib.html dist/gripspread_analysis.html dist/gripspread_admin.html

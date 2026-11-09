@@ -48,6 +48,7 @@
     <p class="muted">서버의 <b>experiment</b> 폴더에서 참가자마다 마지막 전체 zip(…_final.zip), 없으면 가장 최근 중간 저장본을 가져옵니다. 비밀번호가 기억돼 있으면 페이지를 열 때 자동으로 불러옵니다.</p>
     <div class="form">
       <label>연구자 비밀번호<input id="cPw" class="srvPw" type="password" autocomplete="current-password"></label>
+      <label>데이터<select id="cKind"><option value="experiment">본 실험 (experiment)</option><option value="practice">리허설·테스트 (practice)</option></select></label>
     </div>
     <div class="actions"><button class="primary" id="cLoad">불러와서 분석</button><span id="cMsg" class="muted"></span></div>
   </div>
@@ -86,7 +87,7 @@ async function loadFromServer(){
   $('cLoad').disabled = true;
   try{
     msg('파일 목록 읽는 중…');
-    const j = await SRV.call('data', { kind:'experiment' });
+    const kind = $('cKind').value, j = await SRV.call('data', { kind });
     if(!j.files.length) throw new Error(j.bucket_empty ? '버킷이 비어 있습니다' : j.has_test ? '서버 연결은 정상입니다(_test 폴더가 보임). 아직 참가자 파일이 없습니다' : '참가자 파일이 없습니다');
     const got = [];
     for(const [i, f] of j.files.entries()){
@@ -95,12 +96,13 @@ async function loadFromServer(){
       if(!d.ok) throw new Error('내려받기 실패 ' + d.status + ' ' + f.path);
       got.push({ name:f.name, blob:await d.blob() });
     }
-    msg(`${j.files.length}명 파일을 불러왔습니다 (${j.files.filter(f => f.final).length}명은 최종본, 나머지는 중간 저장본) · ${new Date().toLocaleTimeString().slice(0,-3)}`);
+    msg(`${kind === 'practice' ? '[리허설·테스트] ' : ''}${j.files.length}명 파일을 불러왔습니다 (${j.files.filter(f => f.final).length}명은 최종본, 나머지는 중간 저장본) · ${new Date().toLocaleTimeString().slice(0,-3)}`);
     await load(got);
   }catch(e){ msg(e instanceof TypeError ? `서버에 연결하지 못했습니다(${e.message})` : e.message); }
   finally{ $('cLoad').disabled = false; }
 }
 $('cLoad').onclick = loadFromServer;
+$('cKind').onchange = () => { if(SRV.ready()) loadFromServer(); };
 if(SRV.ready()) setTimeout(loadFromServer, 0);
 
 // each experiment file is <tag>_trials.csv, <tag>_imu.csv, <tag>_tlx.csv, <tag>_session.json (frames are not needed)
@@ -283,6 +285,7 @@ function analyze(people){
       for(const c of cells.filter(c => c.pid === p.pid && c.tech === tech && c.cup !== 'none')){ c.tp_loss = tp0 ? 1 - c.tp / tp0.tp : NaN; c.tp_loss_ex = tp0 ? 1 - c.tp_ex / tp0.tp_ex : NaN; } }
     const ss = p.session || {};
     if(!p.session) warn.push('session.json 없음');
+    if(ss.practice) warn.push('⚠ 연습 세션(practice): 본 분석에 넣으면 안 됨');
     const nCond = new Set(meas.map(t => t.technique + t.cup)).size;
     if(nCond < 8) warn.push(`조건 ${nCond}/8개만 있음`);
     roster.push({ pid:p.pid, order:(ss.tech_order || []).join(' > ') || (p.trials[0] && p.trials[0].tech_order) || '', hand:ss.hand || '',

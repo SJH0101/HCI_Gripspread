@@ -4,10 +4,12 @@
 //
 // Storage layout (one bucket, one folder per kind):
 //   experiment/P01/<started>/P01_015_final.zip    study sessions (checkpoints + final zip)
+//   practice/P01/<started>/P01_015_final.zip      rehearsals and test runs (same format, never in the study analysis)
 //   pilot/pilot_T1_<time>.json                     pilot tuning results, one per pilot participant
 //   params/gripspread_params_<time>.json           merged pilot values the study loads (newest wins)
 //   imu_calib/imu_calib_<time>.json                cup IMU sensor calibration (newest wins)
 //   _test/<time>.txt                               connection tests
+//   _trash/<time>/<original path>                  files moved away on the admin page (restorable)
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -15,6 +17,7 @@ const BUCKET = process.env.SUPABASE_BUCKET || 'gripspread';
 const TS = '[0-9TZ-]{10,40}';
 const KINDS = {
   experiment: { dir: 'experiment', path: new RegExp(`^experiment/P\\d{2}/${TS}/P\\d{2}_\\d{3}_(final|after-step-\\d{1,3})\\.zip$`) },
+  practice:   { dir: 'practice',   path: new RegExp(`^practice/P\\d{2}/${TS}/P\\d{2}_\\d{3}_(final|after-step-\\d{1,3})\\.zip$`) },
   pilot:      { dir: 'pilot',      path: new RegExp(`^pilot/pilot_[A-Za-z0-9-]{1,20}_${TS}\\.json$`) },
   params:     { dir: 'params',     path: new RegExp(`^params/gripspread_params_${TS}\\.json$`) },
   imu_calib:  { dir: 'imu_calib',  path: new RegExp(`^imu_calib/imu_calib_${TS}\\.json$`) },

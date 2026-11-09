@@ -1,15 +1,15 @@
 // POST {password, kind} -> short-lived signed download URLs; the browser downloads the files straight from Supabase.
-//   kind 'experiment' (default): per participant folder, the newest final zip (or else the newest checkpoint)
+//   kind 'experiment' (default) or 'practice': per participant folder, the newest final zip (or else the newest checkpoint)
 //   kind 'pilot': every pilot result file
 const { sb, BUCKET, send, guard, list, isFolder } = require('./_sb');
 
-async function experimentFiles() {
+async function sessionFiles(dir) {
   const pick = [];
-  for (const p of (await list('experiment')).filter(isFolder)) {
+  for (const p of (await list(dir)).filter(isFolder)) {
     const files = [];
-    for (const s of (await list(`experiment/${p.name}`)).filter(isFolder))
-      for (const f of await list(`experiment/${p.name}/${s.name}`))
-        if (/\.zip$/.test(f.name)) files.push({ path: `experiment/${p.name}/${s.name}/${f.name}`, session: s.name, name: f.name });
+    for (const s of (await list(`${dir}/${p.name}`)).filter(isFolder))
+      for (const f of await list(`${dir}/${p.name}/${s.name}`))
+        if (/\.zip$/.test(f.name)) files.push({ path: `${dir}/${p.name}/${s.name}/${f.name}`, session: s.name, name: f.name });
     if (!files.length) continue;
     const finals = files.filter(f => /_final\.zip$/.test(f.name)).sort((x, y) => x.path.localeCompare(y.path));
     const pool = finals.length ? finals : files.sort((x, y) => (x.session + x.name).localeCompare(y.session + y.name));
@@ -23,9 +23,9 @@ async function pilotFiles() {
 
 module.exports = async (req, res) => {
   const b = guard(req, res); if (!b) return;
-  const kind = b.kind === 'pilot' ? 'pilot' : 'experiment';
+  const kind = ['pilot', 'practice'].includes(b.kind) ? b.kind : 'experiment';
   try {
-    const pick = kind === 'pilot' ? await pilotFiles() : await experimentFiles();
+    const pick = kind === 'pilot' ? await pilotFiles() : await sessionFiles(kind);
     let urls = [];
     if (pick.length) {
       const { data, error } = await sb().storage.from(BUCKET).createSignedUrls(pick.map(f => f.path), 600);

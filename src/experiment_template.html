@@ -323,6 +323,7 @@
             <label for="fPid">참여자 번호 (1–20)</label><input id="fPid" type="number" min="1" max="99" value="1">
             <label for="fHand">주손 (컵을 드는 손)</label><select id="fHand"><option value="R">오른손</option><option value="L">왼손</option></select>
             <label for="fStature">키 (cm)</label><input id="fStature" type="number" min="120" max="220" placeholder="본인에게 물어봄">
+            <label for="fPractice">리허설·테스트</label><span><label style="color:var(--ink)"><input id="fPractice" type="checkbox"> 이번 세션은 연습이다 (서버 <b>practice</b> 폴더로 가고 본 분석에 안 들어감)</label></span>
           </div>
           <div id="orderBox" class="order num"></div>
         </div>
@@ -574,7 +575,7 @@ function startSummary(){
     row('실험 값', paramsSource ? paramsSource.file : '기본값', !!paramsSource),
     row('컵 IMU', !imuConn ? '연결 안 됨' : (IMU_CAL ? '보정 있음' : '보정 없음') + (IMU_CHECK ? ' · 정지 확인 완료' : ' · 정지 확인 안 함'), !WZ_CHECK[2]()),
     row('클라우드', CLOUD.on ? '자동 업로드 켜짐' : '꺼짐 (로컬 저장만)', true),
-    row('참여자', `P${String(parseInt($('fPid').value) || '?').padStart(2,'0')} · ${$('fHand').value === 'R' ? '오른손' : '왼손'} · ${o.techOrder.map(t => TECH[t]).join(' → ')}`, !WZ_CHECK[4]()),
+    row('참여자', `P${String(parseInt($('fPid').value) || '?').padStart(2,'0')} · ${$('fHand').value === 'R' ? '오른손' : '왼손'} · ${o.techOrder.map(t => TECH[t]).join(' → ')}${$('fPractice').checked ? ' · <b>연습 세션 (practice)</b>' : ''}`, !WZ_CHECK[4]()),
     row('손 크기', `길이 ${m.len.mean ?? '–'}mm · span ${m.span.mean ?? '–'}mm`, !WZ_CHECK[5]()),
     row('설문', $('fAge').value ? `${$('fAge').value}세` : '미입력', !WZ_CHECK[6]()),
   ].join('<br>');
@@ -816,7 +817,7 @@ $('btnStart').onclick = () => {
   try{ localStorage.setItem(ENV_KEY, JSON.stringify({ device:env.device, os:env.macos, angle:env.screen_angle_deg })); }catch(e){}
   S.env = env; LID.startAngle = LID.angle;
   const hm = handMeas();
-  Object.assign(S, { pid, hand:$('fHand').value, stature_cm:+$('fStature').value || null, handLen:hm.len.mean, span:hm.span.mean,
+  Object.assign(S, { practice:$('fPractice').checked, pid, hand:$('fHand').value, stature_cm:+$('fStature').value || null, handLen:hm.len.mean, span:hm.span.mean,
     handRaw:{ length_mm:[hm.len.a, hm.len.b], span_mm:[hm.span.a, hm.span.b] },
     demo:{ age:+$('fAge').value || null, gender:$('fGender').value || null, pointer_main:$('fPointer').value || null, trackpad_days_per_week:$('fTpFreq').value || null, macbook_trackpad:$('fMacTp').value || null,
       gesture_exp:[...document.querySelectorAll('#fGesture input:checked')].map(i => i.value),
@@ -1209,7 +1210,7 @@ async function cloudSync(){
       const label = final ? 'final' : `after-step-${S.stepIdx}`;
       if(blob.size > 45e6){ CLOUD.log.push({ label, at:new Date().toISOString(), ok:false, error:'file over 45 MB, kept local only' });
         $('kCloud').textContent = '파일이 커서 로컬에만 저장'; $('kCloud').style.color = 'var(--alert)'; continue; }
-      const path = `experiment/${tag}/${(S.startedAt || '').replace(/[:.]/g,'-')}/${tag}_${String(++CLOUD.n).padStart(3,'0')}_${label}.zip`;
+      const path = `${S.practice ? 'practice' : 'experiment'}/${tag}/${(S.startedAt || '').replace(/[:.]/g,'-')}/${tag}_${String(++CLOUD.n).padStart(3,'0')}_${label}.zip`;
       try{ await cloudPut(path, blob, 'application/zip'); CLOUD.log.push({ path, at:new Date().toISOString(), ok:true });
         $('kCloud').textContent = `올림 ${new Date().toLocaleTimeString().slice(0,-3)}`; $('kCloud').style.color = ''; }
       catch(e){ CLOUD.log.push({ path, at:new Date().toISOString(), ok:false, error:e.message }); CLOUD.n--;
@@ -1230,7 +1231,7 @@ async function makeZip(snap, light){
   if(snap.seq && snap.seq.length) z.file(`${tag}_seq.csv`, toCSV(SEQ_HEAD, snap.seq));
   z.file(`${tag}_session.json`, JSON.stringify(ss, null, 2));
   const blob = await z.generateAsync({ type:'blob', compression:'DEFLATE' });
-  const name = `${tag}_gripspread_${(ss.started_at || '').slice(0,16).replace(/[:T]/g,'-')}.zip`;
+  const name = `${ss.practice ? 'PRACTICE_' : ''}${tag}_gripspread_${(ss.started_at || '').slice(0,16).replace(/[:T]/g,'-')}.zip`;
   return { blob, name, tag };
 }
 async function downloadZip(snap){
@@ -1240,7 +1241,7 @@ async function downloadZip(snap){
   setTimeout(()=>URL.revokeObjectURL(a.href), 5000); $('hSaved').textContent = '저장: ' + name;
 }
 function sessionObj(){
-  return { pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
+  return { practice:!!S.practice, pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
     tlx:S.tlx, seq:seqRows.slice(), calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };
