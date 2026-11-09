@@ -23,6 +23,7 @@
   table{border-collapse:collapse;width:100%;font-size:13px}
   th,td{border-bottom:1px solid var(--hair);padding:5px 8px;text-align:right;white-space:nowrap}
   th:first-child,td:first-child{text-align:left} th{color:var(--muted);font-weight:600}
+  .toc{position:sticky;top:0;z-index:5;font-size:13px;line-height:1.9} .toc a{color:inherit} h1.part{font-size:20px;margin:36px 0 4px;padding-top:12px;border-top:2px solid var(--ink)} section{scroll-margin-top:70px}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
   .chart svg{width:100%;height:auto;display:block}
   .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin:2px 0 0}
@@ -684,33 +685,47 @@ function render(R){
   const people = roster.map(r => `<tr><td>${r.pid}</td><td>${r.order}</td><td>${r.hand}</td><td class="num">${fmt(r.handLen,0)}</td><td class="num">${fmt(r.span,0)}</td><td class="num">${r.stature ?? '–'}</td><td class="num">${r.trials}</td><td class="num">${fmt(r.success*100,1)}%</td><td class="num">${r.outliers}</td><td class="num">${r.imuTrials}</td><td class="${r.warn.length ? 'w' : 'muted'}" style="text-align:left;white-space:normal">${r.warn.join(' · ') || '없음'}</td></tr>`).join('');
 
   $('out').innerHTML = (DEMO ? `<div class="card" style="border-color:#B00020;color:#B00020"><b>데모 · 가짜 데이터</b> 아래 숫자는 모두 지어낸 것이다. 표와 그림이 어떻게 나오는지 보는 용도.</div>` : '') + `
-  <h2>참가자</h2>
-  <div class="card scroll"><table><tr><th>참가자</th><th>기법 순서</th><th>손</th><th>손 길이(mm)</th><th>손 뼘(mm)</th><th>키(cm)</th><th>본 시행</th><th>성공</th><th>확인할 시행</th><th>IMU 시행</th><th style="text-align:left">확인할 것</th></tr>${people}</table>
-  <p class="muted">본 시행 = 연습·적응·건너뛴 시행을 뺀 시행. 확인할 시행 = 참가자 × 조건마다 이동 시간에 맞춘 강건한 Fitts 직선(Theil–Sen)에서 잔차의 강건 z(MAD 기준)가 3을 넘은 성공 시행. 빼지 않고 분석에 그대로 넣으며, 아래 "확인할 시행"과 "민감도 분석"에서 따로 본다.</p></div>
 
-  <h2>보고서용 문장</h2>
+  <nav class="card toc"><b>주 분석</b> <a href="#a-sum">핵심 결과</a> · <a href="#a-h1">H1 성능 손실</a> · <a href="#a-h23">H2·H3 컵 흔들림</a> · <a href="#a-subj">주관 평가</a>
+    &nbsp;|&nbsp; <b>설계 점검</b> <a href="#a-people">참가자</a> · <a href="#a-order">순서 효과</a> · <a href="#a-flag">이상 시행·민감도</a>
+    &nbsp;|&nbsp; <b>자료</b> <a href="#a-imu">IMU 시행 보기</a> · <a href="#a-dl">내려받기</a></nav>
+  <h1 class="part">주 분석</h1>
+  <section id="a-sum">  <h2>핵심 결과 (보고서용 문장)</h2>
   <div class="card"><pre id="sentences">${sentences({ tp, loss, rms, lin, tilt, seqB, n:Math.min(tp.n, rms.n || tp.n), tlxRows })}</pre></div>
 
-  <h2>H1 · 성능 손실</h2>${loss.html}${tp.html}${mt.html}${er.html}
-  <h2>H2, H3 · 컵 흔들림</h2>
+</section>
+  <section id="a-h1">  <h2>H1 · 성능 손실</h2>${loss.html}${tp.html}${mt.html}${er.html}
+</section>
+  <section id="a-h23">  <h2>H2, H3 · 컵 흔들림</h2>
   <div class="card">${IMU_FIG}</div>${rms.html}${lin.html}${tilt.html}${tilt1.html}
   <div class="card scroll"><h3>기울기와 이동 시간</h3>${tiltMtTable(R.tiltMt)}</div>
-  <h2>순서 효과: 기법 순서 상쇄 확인</h2>
-  <div class="card"><div class="actions"><label>지표 <select id="ordKey">${ORDER_KEYS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label></div><div id="ordOut"></div></div>
-  <h2>조건별 난이도 (SEQ)</h2>${seqB.html}
-  <h2>주관 평가 (NASA-TLX)</h2>
+</section>
+  <section id="a-subj">  <h2>주관 평가 · 조건별 난이도 (SEQ)</h2>${seqB.html}
+  <h2>주관 평가 · 작업 부하 (NASA-TLX)</h2>
   <div class="card">${dotPlot(tlxRows, { min:0, max:100, step:20, label:'0–100, 낮을수록 부담이 적음 (수행: 0 완벽 – 100 실패)' })}</div>
   <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩 받았으므로 대응 Wilcoxon 부호순위 검정(정확 p). 0–100점, 낮을수록 부담이 적다.</p></div>
-  <h2>장치 평가 (ISO 9241-9 설문)</h2>
+  <h2>주관 평가 · 장치 평가 (ISO 9241-9)</h2>
   <div class="card">${dotPlot(isoRows.map(r => ({ ...r, name:r.name.replace(/ \(.*\)$/, '') })), { min:1, max:5, step:1, label:'1–5 (왼쪽 끝 말 – 오른쪽 끝 말, 아래 표 참고). 초록 칸 = 좋은 쪽', idealOf:r => ({ mid:3, lo:1, hi:5 })[r.ideal] })}</div>
   <div class="card scroll"><table><tr><th style="text-align:left">항목</th><th>좋은 쪽</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th><th>Holm p</th><th>3에서 거리 p</th></tr>${isoRows.map((r, i) => `<tr><td style="text-align:left">${r.name}</td><td>${{ mid:'3 (적당)', lo:'1', hi:'5' }[r.ideal]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td><td class="num${stars(isoP[i])}">${fp(isoP[i])}</td><td class="num">${r.dist ? fp(r.dist.p) : '–'}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩, 13문항 전부(Douglas, Kirkpatrick &amp; MacKenzie, CHI 1999의 5점 형식). 대응 Wilcoxon 부호순위 검정(정확 p), 13문항에 Holm 보정. 힘·정신적 노력·신체적 노력·속도는 "너무 적음–너무 많음" 척도라 3이 가장 좋으므로, 3에서 얼마나 떨어졌는지(|값 − 3|)도 따로 비교한다.</p></div>
-  <h2>확인할 시행 (이동 시간이 그 사람의 Fitts 직선에서 크게 벗어남, 강건 z > 3)</h2>
+</section>
+  <h1 class="part">설계 점검</h1>
+  <section id="a-people">  <h2>참가자</h2>
+  <div class="card scroll"><table><tr><th>참가자</th><th>기법 순서</th><th>손</th><th>손 길이(mm)</th><th>손 뼘(mm)</th><th>키(cm)</th><th>본 시행</th><th>성공</th><th>확인할 시행</th><th>IMU 시행</th><th style="text-align:left">확인할 것</th></tr>${people}</table>
+  <p class="muted">본 시행 = 연습·적응·건너뛴 시행을 뺀 시행. 확인할 시행 = 참가자 × 조건마다 이동 시간에 맞춘 강건한 Fitts 직선(Theil–Sen)에서 잔차의 강건 z(MAD 기준)가 3을 넘은 성공 시행. 빼지 않고 분석에 그대로 넣으며, 아래 "확인할 시행"과 "민감도 분석"에서 따로 본다.</p></div>
+
+</section>
+  <section id="a-order">  <h2>순서 효과: 기법 순서 상쇄 확인</h2>
+  <div class="card"><div class="actions"><label>지표 <select id="ordKey">${ORDER_KEYS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label></div><div id="ordOut"></div></div>
+</section>
+  <section id="a-flag">  <h2>확인할 시행 (이동 시간이 그 사람의 Fitts 직선에서 크게 벗어남, 강건 z > 3)</h2>
   <div class="card scroll">${flaggedTable(R.flagged)}</div>
   <h2>민감도 분석 (확인할 시행을 뺐을 때)</h2>
   <div class="card scroll">${sensitivity(cells)}</div>
-  <h2>IMU 시행 보기</h2>
+</section>
+  <h1 class="part">자료</h1>
+  <section id="a-imu">  <h2>IMU 시행 보기</h2>
   <div class="card">
     <p class="muted">한 참가자의 같은 컵, 같은 순번 시행을 두 기법으로 나란히 봅니다. 세로축은 두 기법이 같게 맞춰 비교할 수 있게 했습니다. 점선 = 그 시행의 RMS, ▲ = 최대 기울기.</p>
     <div class="actions"><label>참가자 <select id="ivP"></select></label><label>컵 <select id="ivC"><option>60</option><option>75</option><option selected>90</option></select></label>
@@ -718,8 +733,8 @@ function render(R){
     <div id="ivOut" class="grid" style="margin-top:12px"></div>
   </div>
   <h2>기타</h2>${sb.html}
-  <h2>내려받기</h2>
-  <div class="card"><div class="actions"><button class="primary" id="dlCells">조건 요약 CSV (참가자 × 기법 × 컵)</button><button id="dlTrials">시행별 CSV (IMU 지표 포함)</button><button id="dlText">보고서용 문장 TXT</button></div></div>`;
+  </section><section id="a-dl"><h2>내려받기</h2>
+  <div class="card"><div class="actions"><button class="primary" id="dlCells">조건 요약 CSV (참가자 × 기법 × 컵)</button><button id="dlTrials">시행별 CSV (IMU 지표 포함)</button><button id="dlText">보고서용 문장 TXT</button></div></div></section>`;
   setupImuView(R.imuView);
   const drawOrder = () => $('ordOut').innerHTML = orderSection(cells, roster, $('ordKey').value); $('ordKey').onchange = drawOrder; drawOrder();
   $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','lin_rms','tilt_max','tilt_1s','seq','n_flagged','tp_ex','tp_loss_ex','mt_ms_ex','imu_rms_ex','lin_rms_ex','tilt_max_ex','tilt_1s_ex']));
