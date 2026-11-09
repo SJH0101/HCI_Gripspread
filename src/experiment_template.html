@@ -307,11 +307,8 @@
 
         <div class="wz" data-who="실험자 세팅 · 선택">
           <h1>클라우드 자동 저장</h1>
-          <p>켜 두면 조건이 끝날 때마다 가벼운 기록이, 실험이 끝나면 전체 데이터 zip이 Supabase에 올라갑니다. 로컬 zip 저장은 그대로 됩니다. 값은 이 브라우저에만 저장됩니다. <b>publishable 키만</b> 넣어 주세요(secret 키는 거부합니다). 쓰지 않으면 그냥 <b>다음</b>을 누르세요.</p>
+          <p>켜 두면 조건이 끝날 때마다 가벼운 기록이, 실험이 끝나면 전체 데이터 zip이 서버를 거쳐 Supabase에 올라갑니다. 키는 서버에만 있어서 여기서 넣을 것이 없습니다. 로컬 zip 저장은 그대로 됩니다. 시작 전에 <b>연결 테스트</b>를 한 번 눌러 주세요.</p>
         <div class="form">
-          <label for="cUrl">프로젝트 URL</label><input id="cUrl" placeholder="https://xxxx.supabase.co">
-          <label for="cKey">publishable 키</label><input id="cKey" type="password" placeholder="sb_publishable_… (또는 예전 anon 키 eyJ…)" autocomplete="off">
-          <label for="cBucket">버킷</label><input id="cBucket" value="gripspread">
           <label>사용</label><span><label style="color:var(--ink)"><input id="cOn" type="checkbox"> 자동 업로드 켜기</label> <button id="cTest" type="button" style="margin-left:8px">연결 테스트</button> <span id="cMsg" class="check"></span></span>
         </div>
 
@@ -1161,38 +1158,37 @@ async function backup(){
 // with frames and IMU. Every upload is a new object (no overwrite), so an insert-only policy is enough. This keeps
 // one participant at about one full zip (~10 MB) and 20+ people well inside the free plan's 1 GB.
 //   <bucket>/P01/<started>/P01_003_after-step-7.zip ... P01_015_final.zip
-const CLOUD_KEY = 'gripspread_cloud_v1';
-const CLOUD = { url:'', key:'', bucket:'gripspread', on:false, n:0, busy:false, again:false, log:[] };
-try{ Object.assign(CLOUD, JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}); }catch(e){}
-CLOUD.n = 0; CLOUD.busy = false; CLOUD.again = false; CLOUD.log = [];
-$('cUrl').value = CLOUD.url; $('cKey').value = CLOUD.key; $('cBucket').value = CLOUD.bucket || 'gripspread'; $('cOn').checked = !!CLOUD.on;
-function jwtRole(k){ try{ return JSON.parse(atob(k.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).role; }catch(e){ return null; } }
+const CLOUD_KEY = 'gripspread_cloud_v2';
+// The site's own /api/upload-url hands out a one-time signed URL per file; the zip then goes straight to Supabase.
+// No key ever reaches this page. Opened as a local file there is no /api, so uploads simply fail and stay local.
+const CLOUD = { on:true, n:0, busy:false, again:false, log:[] };
+try{ const c = JSON.parse(localStorage.getItem(CLOUD_KEY)); if(c && typeof c.on === 'boolean') CLOUD.on = c.on; }catch(e){}
+$('cOn').checked = CLOUD.on;
 function readCloudForm(){
-  CLOUD.url = $('cUrl').value.trim().replace(/\/+$/,''); CLOUD.key = $('cKey').value.trim(); CLOUD.bucket = $('cBucket').value.trim() || 'gripspread'; CLOUD.on = $('cOn').checked;
-  if(jwtRole(CLOUD.key) === 'service_role' || /^sb_secret_/.test(CLOUD.key)){ CLOUD.on = false; $('cOn').checked = false; CLOUD.key = ''; $('cKey').value = '';
-    $('cMsg').className = 'check bad'; $('cMsg').textContent = '비밀 키(secret/service_role)입니다. 절대 쓰면 안 됩니다. publishable(또는 anon) 키를 넣어 주세요'; }
-  try{ localStorage.setItem(CLOUD_KEY, JSON.stringify({ url:CLOUD.url, key:CLOUD.key, bucket:CLOUD.bucket, on:CLOUD.on })); }catch(e){}
+  CLOUD.on = $('cOn').checked;
+  try{ localStorage.setItem(CLOUD_KEY, JSON.stringify({ on:CLOUD.on })); }catch(e){}
   $('kCloud').textContent = CLOUD.on ? '켜짐' : '꺼짐';
 }
-['cUrl','cKey','cBucket','cOn'].forEach(id => $(id).addEventListener('change', readCloudForm));
+$('cOn').addEventListener('change', readCloudForm);
 $('kCloud').textContent = CLOUD.on ? '켜짐' : '꺼짐';
 async function cloudPut(path, blob, type){
-  const r = await fetch(`${CLOUD.url}/storage/v1/object/${encodeURIComponent(CLOUD.bucket)}/${path}`, {
-    // new publishable keys (sb_publishable_…) go only in apikey; legacy anon JWTs also go in Authorization
-    method:'POST', headers:{ apikey:CLOUD.key, ...(CLOUD.key.startsWith('sb_') ? {} : { Authorization:`Bearer ${CLOUD.key}` }), 'Content-Type':type, 'x-upsert':'false' }, body:blob });
-  if(!r.ok){ let m = ''; try{ m = (await r.json()).message || ''; }catch(e){} throw new Error(`${r.status} ${m}`.trim()); }
+  const a = await fetch('/api/upload-url', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ path }) });
+  const aj = await a.json().catch(() => ({}));
+  if(!a.ok) throw new Error(`서버 ${a.status} ${aj.error || ''}`.trim());
+  const r = await fetch(aj.url, { method:'PUT', headers:{ 'Content-Type':type, 'x-upsert':'false' }, body:blob });
+  if(!r.ok){ let m = ''; try{ m = (await r.json()).message || ''; }catch(e){} throw new Error(`업로드 ${r.status} ${m}`.trim()); }
 }
 $('cTest').onclick = async () => {
   readCloudForm();
-  if(!CLOUD.url || !CLOUD.key){ $('cMsg').className = 'check bad'; $('cMsg').textContent = 'URL과 anon 키를 넣어 주세요'; return; }
+  if(location.protocol === 'file:'){ $('cMsg').className = 'check bad'; $('cMsg').textContent = '파일로 연 페이지에서는 업로드가 안 됩니다. 사이트 주소로 열어 주세요'; return; }
   $('cMsg').className = 'check'; $('cMsg').textContent = '테스트 중…';
   try{ await cloudPut(`_test/${new Date().toISOString().replace(/[:.]/g,'-')}.txt`, new Blob(['gripspread upload test']), 'text/plain');
     $('cMsg').textContent = '연결됨 · _test 폴더에 테스트 파일이 올라갔습니다'; }
-  catch(e){ $('cMsg').className = 'check bad'; $('cMsg').textContent = '실패: ' + e.message + ' (버킷 이름, 업로드 권한 SQL, URL을 확인해 주세요)'; }
+  catch(e){ $('cMsg').className = 'check bad'; $('cMsg').textContent = '실패: ' + e.message; }
 };
 window.GS_DEBUG.cloudSync = () => cloudSync();
 async function cloudSync(){
-  if(!CLOUD.on || !CLOUD.url || !CLOUD.key || !S.cfg || !window.JSZip) return;
+  if(!CLOUD.on || location.protocol === 'file:' || !S.cfg || !window.JSZip) return;
   if(CLOUD.busy){ CLOUD.again = true; return; }          // a newer checkpoint will be sent right after
   CLOUD.busy = true;
   try{

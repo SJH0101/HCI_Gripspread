@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "name": "gripspread-site",
+  "description": "Static study pages in dist/ plus two Vercel functions in api/ that talk to Supabase with a server-only key.",
+  "engines": { "node": ">=18" },
+  "dependencies": { "@supabase/supabase-js": "2.117.3" }
+}

@@ -41,17 +41,13 @@
 <body>
 <main>
   <h1>GripSpread 분석</h1>
-  <p class="muted">실험 프로그램이 저장한 참가자 zip(또는 그 안의 csv·json)을 한꺼번에 올리면, 가설 H1–H3 분석과 그림을 바로 보여 줍니다. 파일은 이 브라우저 밖으로 나가지 않습니다.</p>
+  <p class="muted">실험 프로그램이 저장한 참가자 zip(또는 그 안의 csv·json)을 한꺼번에 올리면, 가설 H1–H3 분석과 그림을 바로 보여 줍니다. 끌어 놓은 파일은 이 브라우저 밖으로 나가지 않습니다.</p>
 
   <div class="card" id="cloudCard">
-    <b>클라우드에서 불러오기 (Supabase)</b>
-    <p class="muted">실험 프로그램이 올린 파일을 연구자 계정으로 가져옵니다. 참가자마다 마지막 전체 zip(…_final.zip), 없으면 가장 최근 중간 저장본을 씁니다. 비밀번호는 저장하지 않습니다.</p>
+    <b>클라우드에서 불러오기</b>
+    <p class="muted">실험 프로그램이 올린 파일을 서버에서 가져옵니다. 참가자마다 마지막 전체 zip(…_final.zip), 없으면 가장 최근 중간 저장본을 씁니다. 연구자 비밀번호는 이 브라우저에만 기억됩니다.</p>
     <div class="form">
-      <label>프로젝트 URL<input id="cUrl" placeholder="https://xxxx.supabase.co"></label>
-      <label>publishable 키<input id="cKey" placeholder="sb_publishable_…"></label>
-      <label>버킷<input id="cBucket" value="gripspread"></label>
-      <label>연구자 이메일<input id="cEmail" type="email" autocomplete="username"></label>
-      <label>비밀번호<input id="cPw" type="password" autocomplete="current-password"></label>
+      <label>연구자 비밀번호<input id="cPw" type="password" autocomplete="current-password"></label>
     </div>
     <div class="actions"><button class="primary" id="cLoad">불러와서 분석</button><span id="cMsg" class="muted"></span></div>
   </div>
@@ -80,51 +76,34 @@ drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); load([...e.dataTransfer.files]); };
 fileIn.onchange = () => load([...fileIn.files]);
 
-// ====================================================================== cloud (Supabase Storage)
-// Uploads stay anon insert-only; reading needs a signed-in researcher (select policy limited to their emails, see README).
-// URL, key and bucket are shared with the experiment program's settings in this browser; the password is never stored.
-const CLOUD_KEY = 'gripspread_cloud_v1';
-try{ const c = JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}; $('cUrl').value = c.url || ''; $('cKey').value = c.key || ''; $('cBucket').value = c.bucket || 'gripspread'; $('cEmail').value = c.email || ''; }catch(e){}
+// ====================================================================== cloud (via the site's /api/data)
+// The server holds the Supabase key and checks the researcher password; it returns short-lived signed URLs
+// and the files are downloaded straight from Supabase.
+const PW_KEY = 'gripspread_researcher_pw_v1';
+try{ $('cPw').value = localStorage.getItem(PW_KEY) || ''; }catch(e){}
 $('cLoad').onclick = async () => {
-  const url = $('cUrl').value.trim().replace(/\/+$/, ''), key = $('cKey').value.trim(), bucket = $('cBucket').value.trim() || 'gripspread', email = $('cEmail').value.trim(), pw = $('cPw').value;
-  const msg = t => $('cMsg').textContent = t;
-  if(!url || !key || !email || !pw) return msg('URL, 키, 이메일, 비밀번호를 모두 넣어 주세요');
-  if(/^sb_secret_/.test(key)) return msg('secret 키는 쓰지 않습니다. publishable 키를 넣어 주세요');
-  try{ const c = JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}; localStorage.setItem(CLOUD_KEY, JSON.stringify({ ...c, url, key, bucket, email })); }catch(e){}
+  const pw = $('cPw').value, msg = t => $('cMsg').textContent = t;
+  if(location.protocol === 'file:') return msg('파일로 연 페이지에서는 불러올 수 없습니다. 사이트 주소로 열거나 zip을 아래에 끌어 놓으세요');
+  if(!pw) return msg('연구자 비밀번호를 넣어 주세요');
   $('cLoad').disabled = true;
   try{
-    msg('로그인 중…');
-    const a = await fetch(`${url}/auth/v1/token?grant_type=password`, { method:'POST', headers:{ apikey:key, 'Content-Type':'application/json' }, body:JSON.stringify({ email, password:pw }) });
-    const aj = await a.json().catch(() => ({}));
-    if(!a.ok) throw new Error('로그인 실패: ' + (aj.error_description || aj.msg || a.status));
-    const H = { apikey:key, Authorization:`Bearer ${aj.access_token}` };
-    const list = async prefix => { const r = await fetch(`${url}/storage/v1/object/list/${encodeURIComponent(bucket)}`, { method:'POST', headers:{ ...H, 'Content-Type':'application/json' },
-      body:JSON.stringify({ prefix, limit:1000, offset:0, sortBy:{ column:'name', order:'asc' } }) }); if(!r.ok) throw new Error('목록 실패 ' + r.status + ' (읽기 권한 SQL 확인)'); return r.json(); };
     msg('파일 목록 읽는 중…');
-    const pick = [], top = await list('');
-    // an empty listing can mean an empty bucket OR a read policy that does not match (RLS hides rows, no error)
-    if(!top.length) throw new Error('버킷에서 아무것도 안 보입니다. 정말 비었거나, 읽기 정책의 이메일이 로그인한 이메일과 다릅니다(대소문자 포함)');
-    for(const p of top.filter(e => e.id == null && !e.name.startsWith('_'))){          // participant folders
-      const files = [];
-      for(const s of (await list(p.name + '/')).filter(e => e.id == null))                          // session folders
-        for(const f of await list(`${p.name}/${s.name}/`)) if(/\.zip$/.test(f.name)) files.push({ path:`${p.name}/${s.name}/${f.name}`, session:s.name, name:f.name });
-      if(!files.length) continue;
-      const finals = files.filter(f => /_final\.zip$/.test(f.name)).sort((x,y) => x.path.localeCompare(y.path));
-      const pool = finals.length ? finals : files.sort((x,y) => (x.session + x.name).localeCompare(y.session + y.name));
-      pick.push(pool[pool.length - 1]);
-    }
-    if(!pick.length) throw new Error(top.some(e => e.name === '_test') ? '로그인과 읽기 권한은 정상입니다(_test 폴더가 보임). 아직 참가자 파일이 없습니다' : '참가자 파일이 없습니다');
+    const r = await fetch('/api/data', { method:'POST', headers:{ 'Content-Type':'application/json' }, body:JSON.stringify({ password:pw }) });
+    const j = await r.json().catch(() => ({}));
+    if(r.status === 401){ try{ localStorage.removeItem(PW_KEY); }catch(e){} throw new Error('비밀번호가 틀렸습니다'); }
+    if(!r.ok) throw new Error('서버 오류 ' + r.status + ' ' + (j.error || ''));
+    try{ localStorage.setItem(PW_KEY, pw); }catch(e){}
+    if(!j.files.length) throw new Error(j.bucket_empty ? '버킷이 비어 있습니다' : j.has_test ? '서버 연결은 정상입니다(_test 폴더가 보임). 아직 참가자 파일이 없습니다' : '참가자 파일이 없습니다');
     const got = [];
-    for(const [i, f] of pick.entries()){
-      msg(`내려받는 중… ${i+1}/${pick.length} (${f.path})`);
-      const r = await fetch(`${url}/storage/v1/object/authenticated/${encodeURIComponent(bucket)}/${f.path}`, { headers:H });
-      if(!r.ok) throw new Error('내려받기 실패 ' + r.status + ' ' + f.path);
-      got.push({ name:f.name, blob:await r.blob() });
+    for(const [i, f] of j.files.entries()){
+      msg(`내려받는 중… ${i+1}/${j.files.length} (${f.path})`);
+      const d = await fetch(f.url);
+      if(!d.ok) throw new Error('내려받기 실패 ' + d.status + ' ' + f.path);
+      got.push({ name:f.name, blob:await d.blob() });
     }
-    msg(`${pick.length}명 파일을 불러왔습니다 (${pick.filter(f => /_final/.test(f.name)).length}명은 최종본, 나머지는 중간 저장본)`);
-    $('cPw').value = '';
+    msg(`${j.files.length}명 파일을 불러왔습니다 (${j.files.filter(f => f.final).length}명은 최종본, 나머지는 중간 저장본)`);
     await load(got);
-  }catch(e){ msg(e instanceof TypeError ? `요청이 서버까지 가지 못했습니다(${e.message}). 휴대폰에서 파일로 연 페이지는 외부 연결이 막힐 수 있습니다. 맥북 크롬에서 열어 주세요` : e.message); }
+  }catch(e){ msg(e instanceof TypeError ? `서버에 연결하지 못했습니다(${e.message})` : e.message); }
   finally{ $('cLoad').disabled = false; }
 };
 

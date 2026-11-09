@@ -29,25 +29,23 @@ CSE333 HCI개론 (UNIST, 2026 가을) Team 10 프로젝트.
 
 켜 두면 조건이 끝날 때마다 가벼운 zip(시행 결과, TLX, 세션 정보, 수 KB)이, 실험이 끝날 때 프레임·IMU까지 들어간 전체 zip이 Supabase Storage에 새 파일로 올라간다 (`P01/<시작시각>/P01_003_after-step-7.zip` … `P01_015_final.zip`). 참가자 한 명에 전체 zip 하나(약 10 MB 안팎)라서 무료 플랜 1 GB 안에 20명 이상 충분히 들어간다. 45 MB가 넘는 파일은 올리지 않고 로컬에만 둔다. 로컬 zip과 브라우저 백업은 그대로라서, 인터넷이 끊겨도 데이터는 남는다. 업로드 기록은 `session.json`의 `cloud_uploads`에 남는다.
 
-**설정 (한 번)**
-1. Supabase 대시보드 › Storage › New bucket: 이름 `gripspread`, **Private**.
-2. SQL Editor에서 실행 (익명 키로 올리기만 허용, 읽기·덮어쓰기·삭제는 안 됨):
-   ```sql
-   create policy "gripspread: anon can upload"
-   on storage.objects for insert to anon
-   with check ( bucket_id = 'gripspread' );
-   ```
-3. 실험 프로그램 시작 화면 **클라우드 자동 저장**에 프로젝트 URL과 **publishable 키**(`sb_publishable_…`, 예전 이름 anon)를 넣고 **연결 테스트** → **자동 업로드 켜기**. 값은 그 브라우저에만 저장되고 레포에는 안 들어간다. secret(`sb_secret_…`)·service_role 키는 넣으면 거부한다.
+**구조:** Supabase 키는 Vercel 서버(`api/`)에만 있고 페이지에는 아무 키도 없다. 실험 프로그램은 `/api/upload-url`에서 파일 하나짜리 일회용 업로드 주소를 받아 zip을 Supabase로 바로 올린다(Vercel 함수는 4.5 MB까지만 받아서 큰 파일은 서버를 거치지 않음). 서버는 실험 프로그램이 만드는 파일 이름만 받고, 이미 있는 파일은 덮어쓰지 않는다. 분석 페이지는 `/api/data`에 연구자 비밀번호를 보내고, 맞으면 참가자별 zip의 10분짜리 내려받기 주소를 받는다. 파일로 연 페이지(file://)에서는 `/api`가 없어서 업로드가 안 되고 로컬 저장만 된다.
 
-**분석 페이지에서 바로 불러오기 (연구자만 읽기)**
-4. Authentication › Users › Add user로 연구자 계정을 만든다(이메일 + 비밀번호, Auto Confirm). Authentication › Sign In / Providers에서 **새 가입 허용(Allow new users to sign up)은 끈다.**
-5. SQL Editor에서 실행 (로그인한 연구자 이메일만 읽기 허용. 이메일은 실제 계정으로 바꿔서 실행하고 레포에는 적지 않는다):
+**설정 (한 번)**
+1. Supabase 대시보드 › Storage › New bucket: 이름 `gripspread`, **Private**. (Bucket 설정에서 파일 크기 제한을 50 MB로 두면 좋다.)
+2. Supabase › Project Settings › API Keys에서 **secret 키**(`sb_secret_…`, 예전 이름 service_role)를 복사한다. 이 키는 Vercel 환경 변수에만 넣고 다른 데는 절대 붙이지 않는다.
+3. Vercel › 프로젝트 › Settings › Environment Variables에 넣고 다시 배포(Deployments › Redeploy):
+   - `SUPABASE_URL` = `https://xxxx.supabase.co`
+   - `SUPABASE_SECRET_KEY` = 2의 secret 키
+   - `RESEARCHER_PASSWORD` = 팀끼리 정한 분석 페이지 비밀번호
+   - (`SUPABASE_BUCKET`은 버킷 이름이 `gripspread`가 아닐 때만)
+4. 예전 방식에서 만든 정책은 이제 필요 없다. 익명 업로드 정책은 지워 두는 게 안전하다(SQL Editor):
    ```sql
-   create policy "gripspread: researchers can read"
-   on storage.objects for select to authenticated
-   using ( bucket_id = 'gripspread' and (auth.jwt() ->> 'email') in ('연구자1@메일', '연구자2@메일') );
+   drop policy if exists "gripspread: anon can upload" on storage.objects;
+   drop policy if exists "gripspread: researchers can read" on storage.objects;
    ```
-6. `gripspread_analysis.html`의 **클라우드에서 불러오기**에 URL, publishable 키, 연구자 이메일·비밀번호를 넣고 **불러와서 분석**. 참가자 폴더마다 `…_final.zip`(없으면 가장 최근 중간 저장본)을 받아 바로 분석한다. 비밀번호는 저장하지 않는다. 같은 브라우저면 URL과 키는 실험 프로그램 설정을 그대로 가져온다.
+5. 실험 프로그램 시작 화면 **클라우드 자동 저장**에서 **연결 테스트** → `_test` 폴더에 파일이 올라가면 됨. 자동 업로드는 기본으로 켜져 있다.
+6. 분석 페이지 **클라우드에서 불러오기**에 연구자 비밀번호를 넣고 **불러와서 분석**. 비밀번호는 그 브라우저에 기억된다.
 
 받은 파일은 대시보드 Storage에서도 내려받을 수 있다. 무료 프로젝트는 일주일 넘게 안 쓰면 일시정지되니까 실험 기간 전에 대시보드에서 깨워 둔다.
 
@@ -559,7 +557,7 @@ velocity   v ← v + (u − v) · (1 − exp(−Δt / τ))     first-order low-p
 
 `dist/`를 그대로 정적 사이트로 올린다(`vercel.json`, 빌드 없음). `dist/index.html`이 다섯 페이지로 가는 첫 화면이다.
 
-1. vercel.com → Add New → Project → GitHub의 `SJH0101/HCI_Gripspread` Import → Deploy (설정은 `vercel.json`이 정함).
+1. vercel.com → Add New → Project → GitHub의 `SJH0101/HCI_Gripspread` Import → Environment Variables에 위의 세 값 넣기 → Deploy (나머지 설정은 `vercel.json`이 정함).
 2. 이후 `main`에 push하면 자동으로 다시 배포된다. 코드를 고치면 `bash build.sh`로 `dist/`를 다시 만들어 같이 커밋할 것.
 3. HTTPS라 카메라·Web Bluetooth가 그대로 된다. 폰에서도 분석 페이지 클라우드 불러오기가 된다(file://에서 막히던 문제 없음).
-4. 브라우저 저장값(Supabase 키 등)은 주소마다 따로라 새 주소에서 한 번 다시 넣어야 한다. 키는 사이트 파일에 들어가지 않는다.
+4. Supabase 연결은 서버가 한다(위 **클라우드 자동 저장** 설정 3번의 환경 변수). 페이지에서 넣을 키는 없다.
