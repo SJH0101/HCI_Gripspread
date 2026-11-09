@@ -91,6 +91,11 @@
   .ln{position:absolute;left:2px;width:50px;height:30px;margin-top:-15px;text-align:right;font:500 24px/30px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8E949B;pointer-events:none}   /* big grey numbers on both sides, as in ScrollTest */
   .ln.r{left:auto;right:2px;text-align:left}
   .ln.tgt{}   /* not highlighted */
+  /* target marking (Hinckley et al. 2002; Moscovich & Hughes 2004: a marked target line moved into a marked frame).
+     The coloured bar is exactly the target geometry used for the inside-the-frame test, so what you see is what counts.
+     No feedback when it is inside, as in ScrollTest. */
+  #content.marked #target{visibility:visible;background:#D97706;border-radius:2px}
+  #content.marked .ln.tgt{color:#1F2328;font-weight:700}
   #doneMark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.9);background:#2F7D4F;color:#fff;font-weight:600;font-size:14px;border-radius:8px;padding:5px 12px;opacity:0;pointer-events:none;transition:opacity .12s, transform .12s;z-index:5}
   #doneMark.show{opacity:1;transform:translate(-50%,-50%) scale(1)} #doneMark.miss{background:#6B7178}
   @keyframes cuepop{0%{transform:translateX(-50%) scale(1.18)}100%{transform:translateX(-50%) scale(1)}}
@@ -1496,13 +1501,15 @@ function buildTrials(st){
 const track = $('track'), content = $('content'), target = $('target'), frameEl = $('frame'), dwellBar = $('dwellBar'), taskMsg = $('taskMsg');
 const CONTENT_H = 12000;
 const TARGET_HALF = 4;   // #target is 8px tall
+const MARK_TARGET = true;   // colour the target line (Hinckley 2002 style); false = number only (ScrollTest known / Lavenant et al. CHI'26)
+if(MARK_TARGET) content.classList.add('marked');
 content.style.height = CONTENT_H + 'px';
 // numbered lines: line k (1-based) sits at y = (k-1)*PITCH + LINE_Y (centre of the grey bar in #content's background)
 const PITCH = 36, LINE_Y = 26, N_LINES = Math.floor((CONTENT_H - LINE_Y) / PITCH) + 1;
 const lineY = k => (k - 1) * PITCH + LINE_Y;
 const lnEls = [null];
 { const frag = document.createDocumentFragment();
-  for(let k = 1; k <= N_LINES; k++){ const s = document.createElement('span'); s.className = 'ln'; s.style.top = lineY(k) + 'px'; s.textContent = k; frag.appendChild(s); lnEls.push(s); const r = s.cloneNode(true); r.className = 'ln r'; frag.appendChild(r); }
+  for(let k = 1; k <= N_LINES; k++){ const s = document.createElement('span'); s.className = 'ln'; s.style.top = lineY(k) + 'px'; s.textContent = k; frag.appendChild(s); lnEls.push(s); const r = s.cloneNode(true); r.className = 'ln r'; frag.appendChild(r); s.pair = r; }
   content.appendChild(frag); }
 let tgtLn = null;
 let run = null; // current step runtime
@@ -1541,8 +1548,8 @@ function nextTrial(){
   const kMin = Math.ceil((lo + off - LINE_Y) / PITCH) + 1, kMax = Math.max(kMin, Math.floor((hi + off - LINE_Y) / PITCH) + 1);
   const line = kMin + Math.floor(Math.random() * (kMax - kMin + 1));
   const T = lineY(line), S0 = T - off;
-  if(tgtLn) tgtLn.classList.remove('tgt');
-  tgtLn = lnEls[line]; if(tgtLn) tgtLn.classList.add('tgt');
+  if(tgtLn){ tgtLn.classList.remove('tgt'); tgtLn.pair.classList.remove('tgt'); }
+  tgtLn = lnEls[line]; if(tgtLn){ tgtLn.classList.add('tgt'); tgtLn.pair.classList.add('tgt'); }
   run.trial = { ...t, uid: `${run.st.type[0]}${S.stepIdx}-${run.i}`, S0, T, line, shownAt: performance.now(), startT:null, firstMoveT:null,
     dwellStart:null, endT:null, success:0, switchbacks:0, lastDir:0, minRem: t.D, prevTop: S0, sgn: t.dir === 'down' ? 1 : -1 };
   track.scrollTop = S0;
@@ -1809,7 +1816,7 @@ async function downloadZip(snap){
   setTimeout(()=>URL.revokeObjectURL(a.href), 5000); $('hSaved').textContent = '저장: ' + name;
 }
 function sessionObj(){
-  return { session_type:S.sessionType || 'study', pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
+  return { session_type:S.sessionType || 'study', target_marked:MARK_TARGET, pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
     tlx:S.tlx, seq:seqRows.slice(), iso:isoRows.slice(), interview:interviewRows.slice(), calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), user_agent:navigator.userAgent };

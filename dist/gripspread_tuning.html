@@ -87,6 +87,11 @@
   .ln{position:absolute;left:2px;width:50px;height:30px;margin-top:-15px;text-align:right;font:500 24px/30px ui-monospace,SFMono-Regular,Menlo,monospace;color:#8E949B;pointer-events:none}   /* big grey numbers on both sides, as in ScrollTest */
   .ln.r{left:auto;right:2px;text-align:left}
   .ln.tgt{}
+  /* target marking (Hinckley et al. 2002; Moscovich & Hughes 2004: a marked target line moved into a marked frame).
+     The coloured bar is exactly the target geometry used for the inside-the-frame test, so what you see is what counts.
+     No feedback when it is inside, as in ScrollTest. */
+  #content.marked #target{visibility:visible;background:#D97706;border-radius:2px}
+  #content.marked .ln.tgt{color:#1F2328;font-weight:700}
   #doneMark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.9);background:#2F7D4F;color:#fff;font-weight:600;font-size:14px;border-radius:8px;padding:5px 12px;opacity:0;pointer-events:none;transition:opacity .12s, transform .12s;z-index:5}
   #doneMark.show{opacity:1;transform:translate(-50%,-50%) scale(1)} #doneMark.miss{background:#6B7178}
   @keyframes cuepop{0%{transform:translateX(-50%) scale(1.18)}100%{transform:translateX(-50%) scale(1)}}
@@ -604,7 +609,7 @@ function finishTuning(){
   T.finished = new Date().toISOString();
 }
 $('tSave').onclick = async () => {
-  const out = { tuning_id:T.id, cup:T.cup, trials_per_version:T.n, practice_trials:T.practice_trials || 0, started:T.started, finished:T.finished, calibration:T.calib,
+  const out = { tuning_id:T.id, target_marked:MARK_TARGET, cup:T.cup, trials_per_version:T.n, practice_trials:T.practice_trials || 0, started:T.started, finished:T.finished, calibration:T.calib,
     start_values:Object.fromEntries(T.keys.map(k => [k, BASE[k]])), final_values:Object.fromEntries(T.keys.map(k => [k, T.values[k]])),
     all_engine_values:T.values, comparisons:T.comparisons, trials:T.trials };
   download(`tuning_${T.id}_${T.started.slice(0,10)}.json`, out);
@@ -621,7 +626,9 @@ const STOP_MS = 66, TIMEOUT = 15000, ITI = 500;
 const lineY = k => (k - 1) * PITCH + LINE_Y;
 content.style.height = CONTENT_H + 'px';
 const lnEls = [null];
-{ const f = document.createDocumentFragment(); for(let k=1;k<=N_LINES;k++){ const s = document.createElement('span'); s.className = 'ln'; s.style.top = lineY(k)+'px'; s.textContent = k; f.appendChild(s); lnEls.push(s); const r = s.cloneNode(true); r.className = 'ln r'; f.appendChild(r); } content.appendChild(f); }
+{ const f = document.createDocumentFragment(); for(let k=1;k<=N_LINES;k++){ const s = document.createElement('span'); s.className = 'ln'; s.style.top = lineY(k)+'px'; s.textContent = k; f.appendChild(s); lnEls.push(s); const r = s.cloneNode(true); r.className = 'ln r'; f.appendChild(r); s.pair = r; } content.appendChild(f); }
+const MARK_TARGET = true;   // same as the study page: colour the target line
+if(MARK_TARGET) content.classList.add('marked');
 let tgtLn = null;
 // Same D and W as the study (D 400/1200/3600 px x W 40/120 px). n = 6 covers every D x W pair once per version.
 function makeTrials(n){
@@ -644,7 +651,7 @@ function nextTrial(){
   const off = fc + (t.dir === 'down' ? t.D : -t.D);
   const kMin = Math.ceil((lo + off - LINE_Y) / PITCH) + 1, kMax = Math.max(kMin, Math.floor((hi + off - LINE_Y) / PITCH) + 1);
   const line = kMin + Math.floor(Math.random() * (kMax - kMin + 1)), Tt = lineY(line), S0 = Tt - off;
-  if(tgtLn) tgtLn.classList.remove('tgt'); tgtLn = lnEls[line]; if(tgtLn) tgtLn.classList.add('tgt');
+  if(tgtLn){ tgtLn.classList.remove('tgt'); tgtLn.pair.classList.remove('tgt'); } tgtLn = lnEls[line]; if(tgtLn){ tgtLn.classList.add('tgt'); tgtLn.pair.classList.add('tgt'); }
   run.trial = { ...t, line, T:Tt, S0, startT:null, dwellStart:null, switchbacks:0, lastDir:0, minRem:t.D, prevTop:S0, sgn: t.dir === 'down' ? 1 : -1, lastTick:null };
   track.scrollTop = S0; target.style.top = Tt + 'px';
   frameEl.style.height = t.W + 'px'; frameEl.style.top = (fc - t.W/2) + 'px'; frameEl.classList.remove('in'); dwellBar.style.width = '0';

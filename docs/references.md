@@ -20,6 +20,10 @@ GripSpread 기획, 실험 설계, 파일럿 절차에서 근거로 쓴 자료. �
 
 ## 속도 조작 방식 (rate control)
 
+- **Moscovich, T., & Hughes, J. F. (2004).** Navigating documents with the virtual scroll ring. *Proc. UIST 2004*. https://www.moscovich.net/papers/scrollring04.pdf
+  - 쓴 곳 (2026-11-09 목표 줄 표시): Hinckley et al. (2002)의 왕복 과제를 그대로 따랐다고 밝히며, "두 개의 표시된 줄(marked lines)을 번갈아 표시된 세로 틀 안에" 넣게 함. 목표 줄을 색으로 표시한 근거. 틀 안 피드백은 없고, 틀 밖에서 확정하면 벨.
+- **Lavenant, S., Goguey, A., Malacria, S., Nigay, L., & Pietrzak, T. (2026).** Investigating single-handed microgesture scrolling techniques. *Proc. CHI 2026*. https://doi.org/10.1145/3772318.3791215
+  - 쓴 곳: 가장 최근의 가까운 선행연구. 한 손 미세 제스처(Tap, Hold, Drag)로 1D 스크롤, 위치/속도 조작 4기법, 24명. Drag + 속도 조작이 가장 효과적. 물건을 든 상황은 다루지 않음(우리와의 차이). 목표 제시는 0–999 번호 목록 + 오른쪽에 목표 번호(목표 줄 색 표시 없음), 가운데 고정 커서가 가리키는 줄을 회색 표시, 500 ms 머물면 선택(머무는 동안 배경색이 차오르는 피드포워드). 변환 함수 상수는 외부 참가자 4명과 시행착오로 정함. 우리는 목표 줄 표시 쪽(Hinckley 방식)을 골랐고, 번호만 쓰는 방식은 ScrollTest와 이 논문.
 - **Zhai, S. (1998).** User performance in relation to 3D input device design. *Computer Graphics*, 32(4), 50–54. https://www.dgp.toronto.edu/public_user/BillBuxton/SIGGRAPHQ/shumin
   - 쓴 곳: 속도 조작은 놓으면 제자리로 돌아오는(self-centering) 입력에서 잘 맞는다는 근거와 그 한계. 편한 V를 중립으로 두고 멈춤 구간을 둔 이유.
 - **Lee, B., Nancel, M., & Oulasvirta, A. (2017).** AutoGain: Gain function adaptation with submovement efficiency optimization. *Proc. CHI 2017*. https://arxiv.org/abs/1611.08154
