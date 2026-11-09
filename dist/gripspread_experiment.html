@@ -179,7 +179,7 @@
 <body>
 <div class="app">
   <header>
-    <span class="brand">GripSpread 실험</span> <span id="testBadge">테스트 모드 · 저장 안 함</span>
+    <span class="brand">GripSpread 실험</span> <span id="testBadge">테스트 모드 · 저장 안 함</span> <span id="sessionBadge" style="display:none;background:#2F6FDB;color:#fff;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600"></span>
     <span id="hCond" class="cond"></span>
     <span id="hProg" class="prog num"></span>
     <span class="spacer"></span>
@@ -1733,6 +1733,11 @@ const CLOUD_KEY = 'gripspread_cloud_v2';
 const CLOUD = { on:true, n:0, busy:false, again:false, log:[] };
 const SESSION_FOLDER = { study:'experiment', pilot:'pilot', rehearsal:'rehearsal' };
 const SESSION_NAME = { study:'본 실험', pilot:'본 실험 파일럿 (pilot 폴더)', rehearsal:'리허설 (rehearsal 폴더)' };
+// the site's start page opens this page with ?session=pilot for pilot sessions
+{ const q = new URLSearchParams(location.search).get('session'); if(SESSION_FOLDER[q]) $('fType').value = q; }
+const syncSessionBadge = () => { const t = $('fType').value; document.title = t === 'study' ? 'GripSpread 실험' : `GripSpread ${SESSION_NAME[t].split(' (')[0]}`;
+  const b = $('sessionBadge'); if(b){ b.textContent = t === 'study' ? '' : SESSION_NAME[t].split(' (')[0]; b.style.display = t === 'study' ? 'none' : ''; } };
+$('fType').addEventListener('change', syncSessionBadge); syncSessionBadge();
 let SRV_OK = false;
 function srvStatus(ok, text){ SRV_OK = ok; $('cMsg').className = 'check' + (ok ? '' : ' bad'); $('cMsg').textContent = text;
   $('kCloud').textContent = ok ? '자동 저장' : '연결 안 됨'; $('kCloud').style.color = ok ? '' : 'var(--alert)'; }
