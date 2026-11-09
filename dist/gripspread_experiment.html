@@ -256,7 +256,7 @@
             <span id="lidLive" class="lidlive">센서 없음</span>
             <span class="check" style="display:block;margin-top:4px">맥북 힌지의 각도 센서를 크롬으로 바로 읽습니다(창에서 <b>Apple 기기</b>를 고르면 됨). 목표 ±2° 안이면 초록. 센서가 없는 모델이면 아이폰 측정 앱 수평계를 화면 뒷면에 대고 <b id="eAngleTilt">15</b>°가 나오게 맞춥니다.</span></span>
           <label>카메라 (자동)</label><span id="camInfo" class="check">카메라 준비 중…</span>
-          <label for="cPw">서버 자동 저장</label><span><input id="cPw" class="srvPw" type="password" autocomplete="current-password" placeholder="연구자 비밀번호 (이 브라우저에서 한 번만)" style="width:260px"> <span id="cMsg" class="check">확인 중…</span></span>
+          <label for="cPw">서버 자동 저장</label><span><input id="cPw" class="srvPw" type="password" autocomplete="current-password" placeholder="연구자 비밀번호 (이 브라우저에서 한 번만)" style="width:260px"> <button id="cTest" type="button">업로드 테스트</button> <span id="cMsg" class="check">확인 중…</span></span>
           <label>확인</label><span class="checks" id="eChecks">
             <label><input type="checkbox" value="natural_scroll_on"> 트랙패드 기본값: 자연스러운 스크롤 켬 (트랙패드 › 스크롤 및 확대/축소)</label>
             <label><input type="checkbox" value="inertia_on"> 트랙패드 기본값: 스크롤할 때 관성 사용 켬 (손쉬운 사용 › 포인터 제어 › 트랙패드 옵션)</label>
@@ -1755,6 +1755,14 @@ let SRV_OK = false;
 function srvStatus(ok, text){ SRV_OK = ok; $('cMsg').className = 'check' + (ok ? '' : ' bad'); $('cMsg').textContent = text;
   $('kCloud').textContent = ok ? '자동 저장' : '연결 안 됨'; $('kCloud').style.color = ok ? '' : 'var(--alert)'; }
 const cloudPut = (path, blob, type) => SRV.put(path, blob, type);
+// real write test: puts a small file in _test/ (the admin page lists and clears them); the page-open check only reads
+$('cTest').onclick = async () => {
+  srvStatus(SRV_OK, '업로드 테스트 중…');
+  try{ const path = `_test/${SRV.stamp()}.txt`;
+    await cloudPut(path, new Blob([`gripspread upload test ${new Date().toISOString()} ${navigator.userAgent}`]), 'text/plain');
+    srvStatus(true, `업로드 테스트 성공 · ${path} (파일 관리의 "연결 테스트" 탭에서 보임)`); }
+  catch(e){ srvStatus(false, '업로드 테스트 실패: ' + e.message + ' (로컬 zip은 저장됨)'); }
+};
 window.GS_DEBUG.cloudSync = () => cloudSync();
 async function cloudSync(){
   if(!CLOUD.on || !SRV.ready() || !S.cfg || !window.JSZip) return;
