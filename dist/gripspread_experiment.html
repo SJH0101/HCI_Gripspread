@@ -317,7 +317,7 @@
           <label for="fWarm">조건마다 적응 시행</label><input id="fWarm" type="number" min="0" max="6" value="2">
           <label for="fDwell">멈춤 판정 (ms)</label><input id="fDwell" type="number" min="30" max="1500" step="1" value="66" title="표적이 회색 영역 안에 완전히 들어온 채 이 시간 동안 스크롤이 안 움직이면 선택 (ScrollTest 2022: 66ms)">
           <label for="fTimeout">시간 초과 (초)</label><input id="fTimeout" type="number" min="5" max="60" value="15">
-          <label for="fPrac">연습 시행 (최소, 최대)</label><input id="fPrac" value="10, 30">
+          <label for="fPrac">연습 시행 (최소, 최대)</label><input id="fPrac" value="12, 24">
           <label for="fSave">파일 저장</label><select id="fSave"><option value="1">끝날 때 zip 하나로 저장 (본 실험)</option><option value="0">저장 안 함 · 테스트 모드 (N/K 건너뛰기 켜짐)</option></select>
           <label for="fFrames">프레임 기록</label><select id="fFrames"><option value="1">켜기</option><option value="2">켜기 + 손 랜드마크</option><option value="0">끄기</option></select>
         </div>
@@ -868,7 +868,8 @@ function buildSteps(){
   o.techOrder.forEach((tech, bi) => {
     let lastCup = null;   // GripSpread: calibrate range + neutral whenever the cup changes
     const add = st => { if(tech === 'gs' && st.cup !== lastCup){ steps.push({ type:'calib', tech, cup:st.cup }); lastCup = st.cup; } steps.push(st); };
-    add({ type:'practice', tech, cup:'none' });
+    // one practice block per technique, holding the middle (75 mm) cup: most measured conditions are with a cup;
+    // the per-cup GripSpread calibration and the 2 warm-up trials of every condition cover what is left
     add({ type:'practice', tech, cup:'75' });
     // SEQ (Sauro & Dumas 2009) right after every measured condition: one 7-point item, so workload can be read per cup
     o.cups.forEach((cup, ci) => { add({ type:'measure', tech, cup, condIndex: ci+1 }); steps.push({ type:'seq', tech, cup }); });
@@ -1390,7 +1391,7 @@ $('btnStart').onclick = () => {
   const o = orderFor(pid); Object.assign(S, { seq:o.seq, techOrder:o.techOrder, latinRow:LATIN_NAME[o.latinRow] });
   const [pMin, pMax] = parseList($('fPrac').value);
   S.cfg = { D:parseList($('fD').value), W:parseList($('fW').value), reps:+$('fReps').value, warmup:+$('fWarm').value,
-    stopMs:+$('fDwell').value, timeout:+$('fTimeout').value*1000, pracMin:pMin||10, pracMax:pMax||30, frames:+$('fFrames').value, save:+$('fSave').value,
+    stopMs:+$('fDwell').value, timeout:+$('fTimeout').value*1000, pracMin:pMin||12, pracMax:pMax||24, frames:+$('fFrames').value, save:+$('fSave').value,
     itiMs:500 };
   Object.assign(E.P, { dead:+$('gDead').value, gain:+$('gGain').value, gamma:+$('gGamma').value, curlMax:+$('gCurl').value, holdMs:+$('gHold').value,
     boostMax:+$('gBoost').value, boostMs:+$('gBoostMs').value, boostOn:+$('gBoostOn').value, minSide:+$('gMinSide').value, accMs:+$('gAcc').value, brakeMs:+$('gBrake').value });
@@ -1565,12 +1566,11 @@ function nextTrial(){
 function practiceCriterion(){
   const done = stepTrials.length;
   if(run.pracDone) return true;   // experimenter ended it (S key), even before the minimum
-  if(done < S.cfg.pracMin) return false;
+  if(done < S.cfg.pracMin) return false;   // 12 = each of the 6 D x W cells twice
   if(done >= S.cfg.pracMax) return true;
-  if(done < 20) return false;
   const mt = stepTrials.map(r=>r.success ? r.mt_ms : S.cfg.timeout);
-  const last = mt.slice(-10).reduce((a,b)=>a+b,0)/10, prev = mt.slice(-20,-10).reduce((a,b)=>a+b,0)/10;
-  return last >= prev * 0.9; // no longer improving by 10%
+  const last = mt.slice(-6).reduce((a,b)=>a+b,0)/6, prev = mt.slice(-12,-6).reduce((a,b)=>a+b,0)/6;
+  return last >= prev * 0.9; // the last 6 are no longer 10% faster than the 6 before
 }
 
 let wheelAcc = 0;
