@@ -209,12 +209,15 @@ function imuPerTrial(text, cal){
   let v = null, prevT = null, dSum = 0, dN = 0;
   for(const r of rows){
     const dt = prevT == null ? Infinity : ((r.t - prevT) >>> 0) / 1e6; prevT = r.t;
-    if(!v || !(dt > 0 && dt <= .2)){ v = unit(r.a); r.g = v; continue; }
+    if(!v || !(dt > 0 && dt <= .2)){ v = unit(r.a); r.g = v; r.lin = 0; continue; }
     const w = r.w.map(x => x * Math.PI / 180);
     const cr = [w[1]*v[2]-w[2]*v[1], w[2]*v[0]-w[0]*v[2], w[0]*v[1]-w[1]*v[0]];                  // w x v
     const an = Math.hypot(...r.a), trust = Math.max(0, 1 - Math.abs(an - 1) / .05), au = unit(r.a), k = trust * dt / 1.0;
     v = unit(v.map((e,i) => e - cr[i]*dt + k*(au[i] - e)));
     r.g = v;
+    // linear (translational) acceleration = accelerometer minus the filtered gravity (1 g along v), in m/s^2:
+    // the cup being pushed or jerked sideways without turning, which also sloshes the drink
+    r.lin = Math.hypot(r.a[0] - v[0], r.a[1] - v[1], r.a[2] - v[2]) * 9.80665;
     // self-check: while the cup is near 1 g, the filtered gravity should sit on the accelerometer's direction. A persistent
     // gap means the gyro axes or sign disagree with the accelerometer (then tilt cannot be trusted).
     if(trust > .8){ dSum += Math.acos(Math.min(1, Math.max(-1, v[0]*au[0] + v[1]*au[1] + v[2]*au[2]))) * 180 / Math.PI; dN++; }
@@ -224,10 +227,10 @@ function imuPerTrial(text, cal){
   const out = new Map();
   for(const [uid, rs] of byUid){
     if(rs.length < 10) continue;
-    let s2 = 0; for(const r of rs) s2 += r.w[0]**2 + r.w[1]**2 + r.w[2]**2;
+    let s2 = 0, l2 = 0; for(const r of rs){ s2 += r.w[0]**2 + r.w[1]**2 + r.w[2]**2; l2 += r.lin**2; }
     const g0 = rs[0].g; let maxTilt = 0;
     for(const r of rs){ const c = g0[0]*r.g[0] + g0[1]*r.g[1] + g0[2]*r.g[2]; maxTilt = Math.max(maxTilt, Math.acos(Math.min(1, Math.max(-1, c))) * 180 / Math.PI); }
-    out.set(uid, { rms:Math.sqrt(s2 / rs.length), tilt:maxTilt, n:rs.length });
+    out.set(uid, { rms:Math.sqrt(s2 / rs.length), lin:Math.sqrt(l2 / rs.length), tilt:maxTilt, n:rs.length });
   }
   out.agreeDeg = dN ? dSum / dN : NaN;
   return out;
@@ -269,11 +272,11 @@ function analyze(people){
       const cell = { pid:p.pid, tech, cup, n:rows.length, n_ok:ok.length, error_rate:1 - ok.length / rows.length,
         mt_ms:mean(kept.map(t => +t.mt_ms)), plan_ms:mean(kept.map(t => numOr(t.plan_ms)).filter(x => x != null)),
         tp:mean(tps), switchbacks:mean(kept.map(t => +t.switchbacks)), overshoot_px:mean(kept.map(t => +t.overshoot_px)),
-        imu_rms:cup === 'none' || !im.length ? NaN : mean(im.map(x => x.rms)), tilt_max:cup === 'none' || !im.length ? NaN : mean(im.map(x => x.tilt)) };
+        imu_rms:cup === 'none' || !im.length ? NaN : mean(im.map(x => x.rms)), lin_rms:cup === 'none' || !im.length ? NaN : mean(im.map(x => x.lin)), tilt_max:cup === 'none' || !im.length ? NaN : mean(im.map(x => x.tilt)) };
       cells.push(cell);
       for(const t of rows){ const x = imu && imu.get(t.trial_uid);
         trialsOut.push({ pid:p.pid, technique:tech, cup, trial_uid:t.trial_uid, D:t.D, W:t.W, ID:t.ID, success:truthy(t.success) ? 1 : 0, mt_ms:t.mt_ms, plan_ms:t.plan_ms,
-          switchbacks:t.switchbacks, overshoot_px:t.overshoot_px, kept: kept.includes(t) ? 1 : 0, imu_rms_dps: x ? x.rms.toFixed(3) : '', imu_tilt_max_deg: x ? x.tilt.toFixed(2) : '' }); }
+          switchbacks:t.switchbacks, overshoot_px:t.overshoot_px, kept: kept.includes(t) ? 1 : 0, imu_rms_dps: x ? x.rms.toFixed(3) : '', imu_lin_rms_ms2: x ? x.lin.toFixed(4) : '', imu_tilt_max_deg: x ? x.tilt.toFixed(2) : '' }); }
     }
     for(const tech of TECHS){ const tp0 = cells.find(c => c.pid === p.pid && c.tech === tech && c.cup === 'none');
       for(const c of cells.filter(c => c.pid === p.pid && c.tech === tech && c.cup !== 'none')) c.tp_loss = tp0 ? 1 - c.tp / tp0.tp : NaN; }
@@ -453,6 +456,7 @@ function render(R){
   const mt = block('이동 시간 (ms, 첫 움직임 → 멈춤)', cells, 'mt_ms', CUPS, { yLabel:'이동 시간 (ms)', digits:0 });
   const er = block('실패율 (15초 초과)', cells, 'error_rate', CUPS, { yLabel:'실패율', pct:true, digits:1 });
   const rms = block('컵 각속도 RMS (°/s, H2)', cells, 'imu_rms', CUPS3, { yLabel:'각속도 RMS (°/s)', digits:2 });
+  const lin = block('컵 선형 가속도 RMS (m/s², 보조: 회전 없이 밀리는 떨림)', cells, 'lin_rms', CUPS3, { yLabel:'선형 가속도 RMS (m/s²)', digits:3 });
   const tilt = block('컵 최대 기울기 변화 (°, H3)', cells, 'tilt_max', CUPS3, { yLabel:'최대 기울기 변화 (°)', digits:2 });
   const sb = block('방향 전환 횟수', cells, 'switchbacks', CUPS, { yLabel:'방향 전환 (회)', digits:2 });
 
@@ -470,21 +474,22 @@ function render(R){
   <p class="muted">본 시행 = 연습·적응·건너뛴 시행을 뺀 시행. 제외(3SD) = 참가자 × 조건마다 이동 시간을 ID에 회귀한 Fitts 직선에서 잔차가 3SD를 넘은 성공 시행.</p></div>
 
   <h2>보고서용 문장</h2>
-  <div class="card"><pre id="sentences">${sentences({ tp, loss, rms, tilt, n:Math.min(tp.n, rms.n || tp.n), tlxRows })}</pre></div>
+  <div class="card"><pre id="sentences">${sentences({ tp, loss, rms, lin, tilt, n:Math.min(tp.n, rms.n || tp.n), tlxRows })}</pre></div>
 
   <h2>H1 · 성능 손실</h2>${loss.html}${tp.html}${mt.html}${er.html}
-  <h2>H2, H3 · 컵 흔들림</h2>${rms.html}${tilt.html}
+  <h2>H2, H3 · 컵 흔들림</h2>
+  <p class="muted">떨림은 세 가지로 본다: 회전 떨림(각속도 RMS, 주 지표), 회전 없이 밀리는 떨림(선형 가속도 RMS, 보조), 기울기(최대 기울기 변화).</p>${rms.html}${lin.html}${tilt.html}
   <h2>주관 평가 (NASA-TLX)</h2>
   <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩 받았으므로 대응 Wilcoxon 부호순위 검정(정확 p). 0–100점, 낮을수록 부담이 적다.</p></div>
   <h2>기타</h2>${sb.html}
   <h2>내려받기</h2>
   <div class="card"><div class="actions"><button class="primary" id="dlCells">조건 요약 CSV (참가자 × 기법 × 컵)</button><button id="dlTrials">시행별 CSV (IMU 지표 포함)</button><button id="dlText">보고서용 문장 TXT</button></div></div>`;
-  $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','tilt_max']));
+  $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','lin_rms','tilt_max']));
   $('dlTrials').onclick = () => download('gripspread_trials_all.csv', toCSV(R.trialsOut, Object.keys(R.trialsOut[0] || {})));
   $('dlText').onclick = () => download('gripspread_results.txt', $('sentences').textContent);
 }
-function sentences({ tp, loss, rms, tilt, n, tlxRows }){
+function sentences({ tp, loss, rms, lin, tilt, n, tlxRows }){
   const d = (b, t, c, digits, pct) => { const x = b.desc[t + c]; return x && isFinite(x.m) ? (pct ? fmt(x.m*100, 1) + '%' : fmt(x.m, digits)) : '–'; };
   const eff = (A, k, b) => A ? `F(${fmt(A[k].df1*A[k].eps,2)}, ${fmt(A[k].df2*A[k].eps,1)}) = ${fmt(A[k].F)}, p ${A[k].p < .001 ? '< .001' : '= ' + fp(A[k].p)}, η²G = ${fmt(A[k].etaG,3)}` +
     (b && b.ART && (b.ART[k].p < .05) !== (A[k].p < .05) ? ` [주의: ART에서는 p = ${fp(b.ART[k].p)}]` : '') : '(검정 불가)';
@@ -496,6 +501,7 @@ function sentences({ tp, loss, rms, tilt, n, tlxRows }){
     `처리량 손실에 대한 기법 × 컵 상호작용: ${eff(loss.A, '기법 × 컵', loss)}. 기법 주효과: ${eff(loss.A, '기법', loss)}.`,
     `처리량(컵 4조건)에 대한 기법 × 컵 상호작용: ${eff(tp.A, '기법 × 컵', tp)}.`,
     `스크롤 중 컵 각속도 RMS 평균은 트랙패드 ${d(rms,'trackpad','90',2)}°/s, GripSpread ${d(rms,'gs','90',2)}°/s(90 mm 컵)였다. 기법 주효과: ${eff(rms.A, '기법', rms)}.`,
+    `선형 가속도 RMS(보조)에 대한 기법 주효과: ${eff(lin.A, '기법', lin)}.`,
     `최대 기울기 변화에 대한 기법 × 컵 상호작용: ${eff(tilt.A, '기법 × 컵', tilt)}.`,
     raw ? `Raw TLX 중앙값은 트랙패드 ${fmt(raw.mx,1)}, GripSpread ${fmt(raw.my,1)}였다(Wilcoxon W = ${fmt(raw.w.W,1)}, p ${raw.w.p < .001 ? '< .001' : '= ' + fp(raw.w.p)}, n = ${raw.n}).` : ''
   ].filter(Boolean).join('\n');
