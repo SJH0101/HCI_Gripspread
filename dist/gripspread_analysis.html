@@ -310,7 +310,7 @@ function analyze(people){
       for(const t of flaggedT){ const x = imu && imu.get(t.trial_uid);
         flagged.push({ pid:p.pid, tech, cup, uid:t.trial_uid, D:+t.D, W:+t.W, mt:+t.mt_ms, z:zOf.get(t), plan:numOr(t.plan_ms), sb:+t.switchbacks, os:+t.overshoot_px,
           rms:x ? x.rms : NaN, tilt:x ? x.tilt : NaN, condMt:all.mt_ms, condRms:all.imu_rms }); }
-      const cell = { pid:p.pid, tech, cup, n:rows.length, n_ok:ok.length, n_flagged:flaggedT.length, error_rate:1 - ok.length / rows.length, ...all,
+      const cell = { pid:p.pid, tech, cup, cond_index:numOr(rows[0].cond_index, NaN), n:rows.length, n_ok:ok.length, n_flagged:flaggedT.length, error_rate:1 - ok.length / rows.length, ...all,
         ...Object.fromEntries(['tp','mt_ms','imu_rms','lin_rms','tilt_max','tilt_1s'].map(k => [k + '_ex', ex[k]])) };
       delete cell.nImu;
       const sq = p.seq.find(r => r.technique === tech && String(r.cup) === cup); cell.seq = sq ? numOr(sq.seq, NaN) : NaN;
@@ -319,6 +319,8 @@ function analyze(people){
         trialsOut.push({ pid:p.pid, technique:tech, cup, trial_uid:t.trial_uid, D:t.D, W:t.W, ID:t.ID, success:truthy(t.success) ? 1 : 0, mt_ms:t.mt_ms, plan_ms:t.plan_ms,
           switchbacks:t.switchbacks, overshoot_px:t.overshoot_px, fitts_resid_z: zOf.has(t) ? zOf.get(t).toFixed(2) : '', flagged: zOf.has(t) && Math.abs(zOf.get(t)) > 3 ? 1 : 0, imu_rms_dps: x ? x.rms.toFixed(3) : '', imu_lin_rms_ms2: x ? x.lin.toFixed(4) : '', imu_tilt_max_deg: x ? x.tilt.toFixed(2) : '', imu_tilt_1s_deg: x ? x.tilt1.toFixed(2) : '' }); }
     }
+    for(const tech of TECHS){ const mine = cells.filter(c => c.pid === p.pid && c.tech === tech).sort((x, y) => x.cond_index - y.cond_index);
+      mine.forEach((c, i) => c.pos = isFinite(c.cond_index) ? i + 1 : NaN); }   // serial position of the cup condition inside the technique block
     for(const tech of TECHS){ const tp0 = cells.find(c => c.pid === p.pid && c.tech === tech && c.cup === 'none');
       for(const c of cells.filter(c => c.pid === p.pid && c.tech === tech && c.cup !== 'none')){ c.tp_loss = tp0 ? 1 - c.tp / tp0.tp : NaN; c.tp_loss_ex = tp0 ? 1 - c.tp_ex / tp0.tp_ex : NaN; } }
     const ss = p.session || {};
@@ -327,7 +329,7 @@ function analyze(people){
     if(stype !== 'study') warn.push(`⚠ ${{ pilot:'본 실험 파일럿', rehearsal:'리허설' }[stype] || stype} 세션: 본 분석에 넣으면 안 됨`);
     const nCond = new Set(meas.map(t => t.technique + t.cup)).size;
     if(nCond < 8) warn.push(`조건 ${nCond}/8개만 있음`);
-    roster.push({ pid:p.pid, order:(ss.tech_order || []).join(' > ') || (p.trials[0] && p.trials[0].tech_order) || '', hand:ss.hand || '',
+    roster.push({ pid:p.pid, latin:String(ss.latin_row ?? (p.trials[0] && p.trials[0].latin_row) ?? ''), order:(ss.tech_order || []).join(' > ') || (p.trials[0] && p.trials[0].tech_order) || '', hand:ss.hand || '',
       handLen:ss.hand_length_mm, span:ss.span_mm, stature:ss.stature_cm, demo:ss.demographics || {}, trials:meas.length,
       success:meas.length ? meas.filter(t => truthy(t.success)).length / meas.length : NaN, outliers, imuTrials:imuHit, warn });
   }
@@ -456,6 +458,26 @@ function describe(cells, key, cups){
 // interaction = groups compared on the GripSpread - trackpad difference, order main effect = groups compared on the
 // mean of both; F = t^2 with df (1, n - 2). A significant interaction means counterbalancing did not cancel the
 // transfer between techniques, so the technique effect must be reported per order group as well.
+// Split-plot (mixed) ANOVA, one within factor (k levels) x one between factor (groups). Greenhouse-Geisser epsilon from the
+// pooled within-group covariance of orthonormal contrasts. Used for the Latin-square check: cup (within) x Latin row (between).
+function mixedAnova(Y, grp){
+  const n = Y.length, k = Y[0].length, G = [...new Set(grp)], g = G.length, gm = mean(Y.flat());
+  const gMean = Object.fromEntries(G.map(q => [q, Y.filter((_, i) => grp[i] === q)])), cellM = {}, nG = {};
+  for(const q of G){ const ys = gMean[q]; nG[q] = ys.length; cellM[q] = Array.from({ length:k }, (_, l) => mean(ys.map(y => y[l]))); }
+  const gm_ = q => mean(cellM[q]), lvl = Array.from({ length:k }, (_, l) => mean(Y.map(y => y[l])));
+  const ssG = k * G.reduce((s, q) => s + nG[q] * (gm_(q) - gm) ** 2, 0), ssSg = k * Y.reduce((s, y, i) => s + (mean(y) - gm_(grp[i])) ** 2, 0);
+  const ssL = n * lvl.reduce((s, m) => s + (m - gm) ** 2, 0);
+  const ssI = G.reduce((s, q) => s + nG[q] * cellM[q].reduce((t, c, l) => t + (c - gm_(q) - lvl[l] + gm) ** 2, 0), 0);
+  const ssE = Y.reduce((s, y, i) => s + y.reduce((t, v, l) => t + (v - cellM[grp[i]][l] - mean(y) + gm_(grp[i])) ** 2, 0), 0);
+  const C = helmert(k), Z = Y.map((y, i) => C.map(c => c.reduce((s, w, l) => s + w * (y[l] - cellM[grp[i]][l]), 0)));
+  const S = C.map((_, a) => C.map((__, b) => Z.reduce((s, z) => s + z[a] * z[b], 0) / (n - g)));
+  const trS = S.reduce((s, r, i) => s + r[i], 0), trS2 = S.reduce((s, r) => s + r.reduce((t, x) => t + x * x, 0), 0);
+  const eps = k === 2 ? 1 : Math.max(1 / (k - 1), Math.min(1, trS * trS / ((k - 1) * trS2)));
+  const dfE = (n - g) * (k - 1), within = (ss, df) => { const F = (ss / df) / (ssE / dfE); return { F, df1:df, df2:dfE, eps, p:pF(F, df * eps, dfE * eps), eta:ss / (ss + ssE), etaG:ss / (ss + ssSg + ssE) }; };
+  const Fg = (ssG / (g - 1)) / (ssSg / (n - g));
+  return { group:{ F:Fg, df1:g - 1, df2:n - g, eps:1, p:pF(Fg, g - 1, n - g), eta:ssG / (ssG + ssSg), etaG:ssG / (ssG + ssSg + ssE) },
+    level:within(ssL, k - 1), inter:within(ssI, (g - 1) * (k - 1)), cellM, groups:G, nG };
+}
 function studentT(a, b){ const n1 = a.length, n2 = b.length; if(n1 < 2 || n2 < 2) return null;
   const sp2 = ((n1-1)*sd(a)**2 + (n2-1)*sd(b)**2) / (n1+n2-2), t = (mean(a) - mean(b)) / Math.sqrt(sp2 * (1/n1 + 1/n2)), df = n1+n2-2, F = t*t;
   return { t, df, F, p:pT2(t, df), pEta:F / (F + df) }; }
@@ -524,6 +546,68 @@ function dotPlot(rows, { min, max, step, label, idealOf = () => null }){
       g += `<line x1="${x(quant(v, .25))}" x2="${x(quant(v, .75))}" y1="${yc + dy}" y2="${yc + dy}" stroke="${col}" stroke-width="2"/>` +
            `<circle cx="${x(quant(v, .5))}" cy="${yc + dy}" r="4.5" fill="${col}"><title>${TECH_NAME[t]} 중앙값 ${fmt(quant(v, .5), 1)} (IQR ${fmt(quant(v, .25), 1)}–${fmt(quant(v, .75), 1)}, n=${v.length})</title></circle>`; }); });
   return `<svg viewBox="0 0 ${W} ${H}" role="img" style="max-width:760px">${g}</svg><div class="legend"><span><i style="background:var(--tp)"></i>트랙패드</span><span><i style="background:var(--gs)"></i>GripSpread</span><span>점 = 중앙값, 막대 = 사분위 범위(25–75%)</span></div>`;
+}
+// ---------- order effects, the way the design was counterbalanced ----------
+// Two counterbalancing schemes, checked separately and never averaged away:
+//  (1) technique order (half did the trackpad first): technique x order group, cup by cup (Student t on the GripSpread -
+//      trackpad difference, F = t^2);
+//  (2) cup order = 4x4 balanced Latin square (rows A-D): for each technique, cup (within) x Latin row (between) mixed ANOVA.
+//      A cup x row interaction means the cup effect depends on the order the cups came in;
+//  (3) serial position inside a technique block (1st..4th condition, whatever the cup): technique x position RM-ANOVA,
+//      which shows learning or fatigue that the Latin square spreads evenly over the cups.
+const ORDER_KEYS = [['tp','처리량 (bits/s)'], ['mt_ms','이동 시간 (ms)'], ['error_rate','실패율'], ['imu_rms','각속도 RMS (°/s)'], ['tilt_1s','1초 안 최대 기울기 (°)'], ['seq','SEQ']];
+const IMU_KEYS = ['imu_rms','lin_rms','tilt_max','tilt_1s'];
+const ROW_COL = ['#2F6FDB', '#C8372D', '#2F7D4F', '#8E44AD', '#B7791F', '#6B7178'];
+function linePlot({ xs, series, yLabel, title, W = 300, H = 200 }){   // series: [{ name, col, dash, ys:[...] }]
+  const L = 46, R = 10, T = title ? 24 : 10, B = 28, v = series.flatMap(s => s.ys).filter(isFinite); if(!v.length) return '';
+  let lo = Math.min(...v), hi = Math.max(...v); const pad = (hi - lo || Math.abs(hi) || 1) * .2; lo -= pad; hi += pad;
+  const x = i => L + (i + .5) * (W - L - R) / xs.length, y = val => T + (H - T - B) * (1 - (val - lo) / (hi - lo));
+  let g = title ? `<text x="${W/2}" y="14" text-anchor="middle" font-size="12" font-weight="600" fill="#1F2328">${title}</text>` : '';
+  [lo + (hi-lo)*.15, (lo+hi)/2, hi - (hi-lo)*.15].forEach(t => g += `<line x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}" stroke="#ECEEF0"/><text x="${L-4}" y="${y(t)+4}" text-anchor="end" font-size="10" fill="#6B7178">${+t.toPrecision(3)}</text>`);
+  xs.forEach((t, i) => g += `<text x="${x(i)}" y="${H-10}" text-anchor="middle" font-size="11" fill="#1F2328">${t}</text>`);
+  for(const s of series){ const pts = s.ys.map((v, i) => isFinite(v) ? [x(i), y(v), v] : null).filter(Boolean);
+    g += `<path d="${pts.map((p, i) => (i ? 'L' : 'M') + p[0] + ',' + p[1]).join('')}" fill="none" stroke="${s.col}" stroke-width="1.8" stroke-dasharray="${s.dash || '0'}"/>` +
+      pts.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3.2" fill="${s.col}"><title>${s.name}: ${fmt(p[2], 3)}</title></circle>`).join(''); }
+  return `<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`;
+}
+const fRow = (name, r) => `<tr><td>${name}</td><td class="num">${fmt(r.F)}</td><td class="num">${fmt(r.df1*r.eps,2)}, ${fmt(r.df2*r.eps,1)}</td><td class="num">${r.df1 > 1 && r.eps < 1 ? fmt(r.eps) : '–'}</td><td class="num${stars(r.p)}">${fp(r.p)}</td><td class="num">${fmt(r.eta,3)}</td></tr>`;
+const fHead = '<table><tr><th>효과</th><th>F</th><th>df</th><th>GG ε</th><th>p</th><th>부분 η²</th></tr>';
+function orderSection(cells, roster, key){
+  const cups = IMU_KEYS.includes(key) ? CUPS3 : CUPS, name = ORDER_KEYS.find(k => k[0] === key)[1];
+  const val = (pid, t, c) => { const x = cells.find(e => e.pid === pid && e.tech === t && e.cup === c); return x ? x[key] : NaN; };
+  const first = Object.fromEntries(roster.map(r => [r.pid, (r.order.split('>')[0] || '').trim()]));
+  const latin = Object.fromEntries(roster.map(r => [r.pid, r.latin]));
+  const pids = [...new Set(cells.map(c => c.pid))];
+  // (1) technique order, per cup
+  let out = `<h3>① 기법 순서 (트랙패드 먼저 / GripSpread 먼저), 컵마다</h3><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">`;
+  const rows1 = [];
+  for(const c of cups){ const A = pids.filter(p => first[p] === 'trackpad'), B = pids.filter(p => first[p] === 'gs');
+    const m = (P, t) => mean(P.map(p => val(p, t, c)).filter(isFinite)), d = P => P.map(p => val(p, 'gs', c) - val(p, 'trackpad', c)).filter(isFinite);
+    out += linePlot({ xs:['트랙패드', 'GripSpread'], title:CUP_NAME[c], W:220, H:170, series:[{ name:'트랙패드 먼저', col:'#1F2328', ys:[m(A,'trackpad'), m(A,'gs')] }, { name:'GripSpread 먼저', col:'#1F2328', dash:'5 4', ys:[m(B,'trackpad'), m(B,'gs')] }] });
+    const r = studentT(d(A), d(B)); rows1.push([CUP_NAME[c], r, A.length, B.length]); }
+  out += `</div><div class="legend"><span>실선 = 트랙패드 먼저</span><span>점선 = GripSpread 먼저</span><span>두 선이 평행하면 기법 순서의 영향이 대칭</span></div>
+    <table><tr><th>컵</th><th>n (트랙패드 먼저 / GripSpread 먼저)</th><th>기법 × 순서</th><th>부분 η²</th></tr>${rows1.map(([c, r, a, b]) => `<tr><td>${c}</td><td class="num">${a} / ${b}</td><td class="num${r && r.p < .05 ? ' w' : ''}">${r ? `F(1, ${r.df}) = ${fmt(r.F,2)}, p ${fp(r.p)}` : '각 그룹 2명 이상 필요'}</td><td class="num">${r ? fmt(r.pEta,3) : '–'}</td></tr>`).join('')}</table>`;
+  // (2) Latin square rows, per technique
+  out += `<h3 style="margin-top:20px">② 컵 순서 (4×4 균형 라틴 방격, 행 A–D), 기법마다</h3><div class="grid">`;
+  const tabs2 = [];
+  for(const t of TECHS){ const P = pids.filter(p => latin[p] !== '' && cups.every(c => isFinite(val(p, t, c)))), Y = P.map(p => cups.map(c => val(p, t, c))), grp = P.map(p => latin[p]);
+    const G = [...new Set(grp)].sort();
+    out += `<div>${linePlot({ xs:cups.map(c => CUP_NAME[c]), title:TECH_NAME[t], W:340, H:210, series:G.map((q, i) => ({ name:`행 ${q} (n=${grp.filter(x => x === q).length})`, col:ROW_COL[i % ROW_COL.length], ys:cups.map((_, l) => mean(Y.filter((_, j) => grp[j] === q).map(y => y[l]))) })) })}
+      <div class="legend">${G.map((q, i) => `<span><i style="background:${ROW_COL[i % ROW_COL.length]}"></i>행 ${q} (${grp.filter(x => x === q).length}명)</span>`).join('')}</div></div>`;
+    const ok = G.length >= 2 && G.every(q => grp.filter(x => x === q).length >= 2);
+    tabs2.push(ok ? (A => `<p><b>${TECH_NAME[t]}</b></p>${fHead}${fRow('라틴 행 (참가자 간)', A.group)}${fRow('컵', A.level)}${fRow('컵 × 라틴 행', A.inter)}</table>`)(mixedAnova(Y, grp))
+                  : `<p class="muted"><b>${TECH_NAME[t]}</b>: 라틴 행마다 2명 이상 필요</p>`); }
+  out += `</div>${tabs2.join('')}<p class="muted">혼합 ANOVA: 컵(참가자 내) × 라틴 행(참가자 간). 컵 × 라틴 행이 유의하면 컵 효과가 컵을 받은 순서에 따라 달라진 것(비대칭 전이)이라 보고서에 적는다. 라틴 행 주효과는 행마다 사람이 다르니 개인차가 섞인다.</p>`;
+  // (3) serial position
+  const Yp = [], usedP = [];
+  for(const p of pids){ const row = TECHS.flatMap(t => [1, 2, 3, 4].map(k => { const x = cells.find(e => e.pid === p && e.tech === t && e.pos === k); return x ? x[key] : NaN; }));
+    if(row.every(isFinite)){ Yp.push(row); usedP.push(p); } }
+  out += `<h3 style="margin-top:20px">③ 기법 블록 안에서 몇 번째 조건이었나 (컵과 무관, 학습·피로)</h3>`;
+  if(Yp.length >= 3){ const A = rmAnova2(Yp, 2, 4), rename = { '기법':'기법', '컵':'위치', '기법 × 컵':'기법 × 위치' };
+    out += `<div class="grid"><div>${linePlot({ xs:['1번째', '2번째', '3번째', '4번째'], W:340, H:210, series:TECHS.map((t, ti) => ({ name:TECH_NAME[t], col:t === 'gs' ? 'var(--gs)' : 'var(--tp)', ys:[0,1,2,3].map(k => mean(Yp.map(y => y[ti*4 + k]))) })) })}${legend.replace('점 = 평균, 막대 = 피험자 내 95% 신뢰구간', '점 = 평균')}</div>
+      <div>${fHead}${Object.entries(A).map(([k, r]) => fRow(rename[k], r)).join('')}</table><p class="muted">반복측정 ANOVA, n = ${Yp.length}. 위치 효과가 있으면 학습(뒤로 갈수록 좋아짐)이나 피로(나빠짐)가 있다는 뜻. 라틴 방격이 컵마다 위치를 고르게 나눴으므로 컵 비교를 치우치게 하지는 않지만, 보고서에 적는다.</p></div></div>`; }
+  else out += '<p class="muted">모든 위치가 있는 참가자가 3명 이상 필요합니다(컵이 없는 지표는 위치 4개가 다 안 나옴).</p>';
+  return `<p class="muted">지표: <b>${name}</b>. 우리 설계는 기법 순서(반반)와 컵 순서(라틴 방격)를 따로 균형 맞췄으므로, 순서 효과도 그 두 가지를 평균 내지 않고 따로 본다.</p>` + out;
 }
 // order check as interaction plots: x = technique, one line per order group
 function orderPlots(cells, roster){
@@ -610,8 +694,7 @@ function render(R){
   <div class="card">${IMU_FIG}</div>${rms.html}${lin.html}${tilt.html}${tilt1.html}
   <div class="card scroll"><h3>기울기와 이동 시간</h3>${tiltMtTable(R.tiltMt)}</div>
   <h2>순서 효과 (비대칭 학습 전이)</h2>
-  <div class="card">${orderPlots(cells, roster)}</div>
-  <div class="card scroll">${orderTable(cells, roster)}</div>
+  <div class="card"><div class="actions"><label>지표 <select id="ordKey">${ORDER_KEYS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label></div><div id="ordOut"></div></div>
   <h2>조건별 난이도 (SEQ)</h2>${seqB.html}
   <h2>주관 평가 (NASA-TLX)</h2>
   <div class="card">${dotPlot(tlxRows, { min:0, max:100, step:20, label:'0–100, 낮을수록 부담이 적음 (수행: 0 완벽 – 100 실패)' })}</div>
@@ -636,6 +719,7 @@ function render(R){
   <h2>내려받기</h2>
   <div class="card"><div class="actions"><button class="primary" id="dlCells">조건 요약 CSV (참가자 × 기법 × 컵)</button><button id="dlTrials">시행별 CSV (IMU 지표 포함)</button><button id="dlText">보고서용 문장 TXT</button></div></div>`;
   setupImuView(R.imuView);
+  const drawOrder = () => $('ordOut').innerHTML = orderSection(cells, roster, $('ordKey').value); $('ordKey').onchange = drawOrder; drawOrder();
   $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','lin_rms','tilt_max','tilt_1s','seq','n_flagged','tp_ex','tp_loss_ex','mt_ms_ex','imu_rms_ex','lin_rms_ex','tilt_max_ex','tilt_1s_ex']));
   $('dlTrials').onclick = () => download('gripspread_trials_all.csv', toCSV(R.trialsOut, Object.keys(R.trialsOut[0] || {})));
   $('dlText').onclick = () => download('gripspread_results.txt', $('sentences').textContent);
@@ -715,7 +799,7 @@ function sentences({ tp, loss, rms, lin, tilt, seqB, n, tlxRows }){
 function toCSV(rows, keys){ return [keys.join(',')].concat(rows.map(r => keys.map(k => { const v = r[k]; return v == null || (typeof v === 'number' && !isFinite(v)) ? '' : typeof v === 'number' ? +v.toFixed(5) : String(v).includes(',') ? `"${v}"` : v; }).join(','))).join('\n'); }
 function download(name, text){ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type:'text/plain;charset=utf-8' })); a.download = name; a.click(); }
 
-window.GS_ANALYSIS = { rmAnova2, artAnova2, wilcoxon, pairedT, holm, pF, pT2, imuPerTrial, orderCheck, studentT, spearman };   // console/testing
+window.GS_ANALYSIS = { rmAnova2, artAnova2, wilcoxon, pairedT, holm, pF, pT2, imuPerTrial, orderCheck, studentT, spearman, mixedAnova };   // console/testing
 </script>
 </body>
 </html>

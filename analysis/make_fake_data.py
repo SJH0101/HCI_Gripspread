@@ -22,13 +22,17 @@ def csv(head, rows):
     return '\n'.join([','.join(head)] + [','.join(str(r.get(h, '')) for h in head) for r in rows])
 
 
+LATIN = [['none', '60', '90', '75'], ['60', '75', 'none', '90'], ['75', '90', '60', 'none'], ['90', 'none', '75', '60']]   # as in the study program
+
+
 def person(i, rng):
     pid = f'P{i:02d}'
     skill = rng.gauss(1, .15)
-    order = ['trackpad', 'gs'] if i % 2 else ['gs', 'trackpad']
+    row = (i - 1) % 4
+    order = ['trackpad', 'gs'] if (row + (i - 1) // 4) % 2 == 0 else ['gs', 'trackpad']   # same rule as orderFor()
     trials, imu, step, seq, t = [], [], 0, 0, 0
     for tech in order:
-        for cup in ['none', '60', '75', '90']:
+        for ci, cup in enumerate(LATIN[row]):
             step += 1
             cupk = {'none': 0, '60': 1, '75': 2, '90': 3}[cup]
             for k in range(2 + 36):          # 2 warm-up + 6 D x W cells x 6 reps (as in the study)
@@ -36,15 +40,15 @@ def person(i, rng):
                 ID = math.log2(D / W + 1)
                 base_tp = (3.2 if tech == 'trackpad' else 2.4) * skill
                 loss = (.07 * cupk if tech == 'trackpad' else .025 * cupk)
-                mt = ID / (base_tp * (1 - loss)) * 1000 * rng.lognormvariate(0, .18)
+                mt = ID / (base_tp * (1 - loss)) * 1000 * rng.lognormvariate(0, .18) * (1 - .03 * ci)   # small practice effect over the block
                 if rng.random() < .03: mt *= 3          # occasional lost-hand / regrip trial
                 ok = rng.random() > (.03 + .015 * cupk * (tech == 'trackpad'))
                 uid = f'm{step}-{k}'
-                trials.append(dict(pid=pid, technique=tech, cup=cup, step='measure', cond_index=step, trial_index=k, trial_uid=uid,
+                trials.append(dict(pid=pid, technique=tech, cup=cup, step='measure', cond_index=ci + 1, trial_index=k, trial_uid=uid,
                                    warmup=1 if k < 2 else 0, D=D, W=W, ID=round(ID, 4), direction='down' if k % 2 else 'up', target_line=10 + k,
                                    plan_ms=round(rng.gauss(450, 80)), mt_ms=round(mt) if ok else '', success='true' if ok else 'false', skipped=0,
                                    switchbacks=max(0, round(rng.gauss(1.2 if tech == 'trackpad' else 2.1, .8))), overshoot_px=max(0, round(rng.gauss(15, 10))),
-                                   tech_order='>'.join(order), latin_row=i % 4))
+                                   tech_order='>'.join(order), latin_row='ABCD'[row]))
                 if cup == 'none':
                     continue
                 shake = (.6 + .5 * cupk) if tech == 'trackpad' else (.35 + .1 * cupk)   # deg/s scale
