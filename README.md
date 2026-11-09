@@ -554,3 +554,12 @@ velocity   v ← v + (u − v) · (1 − exp(−Δt / τ))     first-order low-p
 | 5° | −1.00 | 1.00 | 800 px/s down | 2,000 px/s |
 
 **Parameters to retune in the pilot:** `dead` 0.15, `gain` 800 px/s, `gamma` 2.2, `boostOn` 0.6, `boostMax` 2.5×, `boostMs` 1.2 s, `boostDecayMs` 0.2 s, `accMs` 0.25 s, `brakeMs` 0.06 s, `minSide` 10°, `holdMs` 0.7 s, `smooth` 0.35, `curlMax` 80°.
+
+## 사이트로 열기 (Vercel)
+
+`dist/`를 그대로 정적 사이트로 올린다(`vercel.json`, 빌드 없음). `dist/index.html`이 다섯 페이지로 가는 첫 화면이다.
+
+1. vercel.com → Add New → Project → GitHub의 `SJH0101/HCI_Gripspread` Import → Deploy (설정은 `vercel.json`이 정함).
+2. 이후 `main`에 push하면 자동으로 다시 배포된다. 코드를 고치면 `bash build.sh`로 `dist/`를 다시 만들어 같이 커밋할 것.
+3. HTTPS라 카메라·Web Bluetooth가 그대로 된다. 폰에서도 분석 페이지 클라우드 불러오기가 된다(file://에서 막히던 문제 없음).
+4. 브라우저 저장값(Supabase 키 등)은 주소마다 따로라 새 주소에서 한 번 다시 넣어야 한다. 키는 사이트 파일에 들어가지 않는다.

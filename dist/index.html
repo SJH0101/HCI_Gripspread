@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>GripSpread</title>
+<style>
+  :root { --bg:#fafaf9; --fg:#1f2328; --mute:#6b7178; --line:#e3e3e0; --card:#fff; --acc:#2f6fdb; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#16181b; --fg:#e8e8e6; --mute:#9aa1a9; --line:#2c3035; --card:#1e2125; --acc:#7aa7ff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.5 -apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:48px 16px; }
+  h1 { font-size:28px; margin:0 0 4px; }
+  p.sub { color:var(--mute); margin:0 0 32px; }
+  h2 { font-size:13px; letter-spacing:.06em; color:var(--mute); margin:28px 0 8px; font-weight:600; }
+  a.card { display:block; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:8px; color:inherit; text-decoration:none; }
+  a.card:hover { border-color:var(--acc); }
+  a.card b { display:block; font-size:16px; }
+  a.card span { color:var(--mute); font-size:14px; }
+  footer { margin-top:40px; color:var(--mute); font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>GripSpread</h1>
+  <p class="sub">CSE333 HCI개론 Team 10 · 컵을 든 손으로 검지·중지를 벌려 스크롤</p>
+
+  <h2>실험</h2>
+  <a class="card" href="gripspread_experiment.html"><b>본 실험</b><span>트랙패드 vs GripSpread × 컵 조건, TLX·SEQ, 업로드</span></a>
+  <a class="card" href="gripspread_pilot.html"><b>파일럿</b><span>dead·gain·gamma 조정, 버전 비교</span></a>
+  <a class="card" href="gripspread_imu_calib.html"><b>IMU 보정</b><span>컵 IMU 센서 보정</span></a>
+
+  <h2>분석</h2>
+  <a class="card" href="gripspread_analysis.html"><b>분석 페이지</b><span>zip 끌어놓기 또는 Supabase에서 불러오기</span></a>
+
+  <h2>데모</h2>
+  <a class="card" href="gripspread_core.html"><b>GripSpread 데모</b><span>문서 읽으며 손가락 스크롤 체험</span></a>
+
+  <footer>Chrome에서 열 것 (카메라·Web Bluetooth). Supabase 키는 이 브라우저에만 저장되며 사이트에는 들어 있지 않다.</footer>
+</main>
+</body>
+</html>

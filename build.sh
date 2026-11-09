@@ -8,3 +8,4 @@ python3 src/inject_calib.py dist/gripspread_experiment.html
 python3 src/build_experiment.py src/pilot_template.html src/engine.js dist/gripspread_pilot.html
 cp src/imu_calib.html dist/gripspread_imu_calib.html
 cp src/analysis.html dist/gripspread_analysis.html
+cp src/index.html dist/index.html
