@@ -90,7 +90,7 @@
   /* target marking (Hinckley et al. 2002; Moscovich & Hughes 2004: a marked target line moved into a marked frame).
      The coloured bar is exactly the target geometry used for the inside-the-frame test, so what you see is what counts.
      No feedback when it is inside, as in ScrollTest. */
-  #content.marked #target{visibility:visible;background:#D97706;border-radius:2px}
+  #content.marked #target{visibility:visible;background:#D97706;border-radius:2px;left:56px;right:56px}   /* same span as the grey line stripes, clear of the numbers on both sides */
   #content.marked .ln.tgt{color:#1F2328;font-weight:700}
   #doneMark{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(.9);background:#2F7D4F;color:#fff;font-weight:600;font-size:14px;border-radius:8px;padding:5px 12px;opacity:0;pointer-events:none;transition:opacity .12s, transform .12s;z-index:5}
   #doneMark.show{opacity:1;transform:translate(-50%,-50%) scale(1)} #doneMark.miss{background:#6B7178}
