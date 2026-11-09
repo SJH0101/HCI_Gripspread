@@ -550,7 +550,7 @@ function orderSection(cells, roster, key){
   const latin = Object.fromEntries(roster.map(r => [r.pid, r.latin]));
   const pids = [...new Set(cells.map(c => c.pid))];
   // (1) technique order, per cup
-  let out = `<h3>① 기법 순서 (트랙패드 먼저 / GripSpread 먼저), 컵마다</h3><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">`;
+  let out = `<h3>기법 순서 (트랙패드 먼저 / GripSpread 먼저): 순서 효과가 상쇄됐나, 컵마다</h3><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">`;
   const rows1 = [];
   for(const c of cups){ const A = pids.filter(p => first[p] === 'trackpad'), B = pids.filter(p => first[p] === 'gs');
     const m = (P, t) => mean(P.map(p => val(p, t, c)).filter(isFinite)), d = P => P.map(p => val(p, 'gs', c) - val(p, 'trackpad', c)).filter(isFinite);
@@ -559,7 +559,8 @@ function orderSection(cells, roster, key){
   out += `</div><div class="legend"><span>실선 = 트랙패드 먼저</span><span>점선 = GripSpread 먼저</span><span>두 선이 평행하면 기법 순서의 영향이 대칭</span></div>
     <table><tr><th>컵</th><th>n (트랙패드 먼저 / GripSpread 먼저)</th><th>기법 × 순서</th><th>부분 η²</th></tr>${rows1.map(([c, r, a, b]) => `<tr><td>${c}</td><td class="num">${a} / ${b}</td><td class="num${r && r.p < .05 ? ' w' : ''}">${r ? `F(1, ${r.df}) = ${fmt(r.F,2)}, p ${fp(r.p)}` : '각 그룹 2명 이상 필요'}</td><td class="num">${r ? fmt(r.pEta,3) : '–'}</td></tr>`).join('')}</table>`;
   // (2) Latin square rows, per technique
-  out += `<h3 style="margin-top:20px">② 컵 순서 (4×4 균형 라틴 방격, 행 A–D), 기법마다</h3><div class="grid">`;
+  out += `<details style="margin-top:18px"><summary style="cursor:pointer;font-weight:600">보조: 라틴 방격 점검 (블록 안 컵 순서) — 펼치기</summary>
+    <h3 style="margin-top:14px">컵 순서 (4×4 균형 라틴 방격, 행 A–D), 기법마다</h3><div class="grid">`;
   const tabs2 = [];
   for(const t of TECHS){ const P = pids.filter(p => latin[p] !== '' && cups.every(c => isFinite(val(p, t, c)))), Y = P.map(p => cups.map(c => val(p, t, c))), grp = P.map(p => latin[p]);
     const G = [...new Set(grp)].sort();
@@ -573,12 +574,13 @@ function orderSection(cells, roster, key){
   const Yp = [], usedP = [];
   for(const p of pids){ const row = TECHS.flatMap(t => [1, 2, 3, 4].map(k => { const x = cells.find(e => e.pid === p && e.tech === t && e.pos === k); return x ? x[key] : NaN; }));
     if(row.every(isFinite)){ Yp.push(row); usedP.push(p); } }
-  out += `<h3 style="margin-top:20px">③ 기법 블록 안에서 몇 번째 조건이었나 (컵과 무관, 학습·피로)</h3>`;
+  out += `<h3 style="margin-top:20px">블록 안 위치: 몇 번째 조건이었나 (컵과 무관, 학습·피로)</h3>`;
   if(Yp.length >= 3){ const A = rmAnova2(Yp, 2, 4), rename = { '기법':'기법', '컵':'위치', '기법 × 컵':'기법 × 위치' };
     out += `<div class="grid"><div>${linePlot({ xs:['1번째', '2번째', '3번째', '4번째'], W:340, H:210, series:TECHS.map((t, ti) => ({ name:TECH_NAME[t], col:t === 'gs' ? 'var(--gs)' : 'var(--tp)', ys:[0,1,2,3].map(k => mean(Yp.map(y => y[ti*4 + k]))) })) })}${legend.replace('점 = 평균, 막대 = 피험자 내 95% 신뢰구간', '점 = 평균')}</div>
       <div>${fHead}${Object.entries(A).map(([k, r]) => fRow(rename[k], r)).join('')}</table><p class="muted">반복측정 ANOVA, n = ${Yp.length}. 위치 효과가 있으면 학습(뒤로 갈수록 좋아짐)이나 피로(나빠짐)가 있다는 뜻. 라틴 방격이 컵마다 위치를 고르게 나눴으므로 컵 비교를 치우치게 하지는 않지만, 보고서에 적는다.</p></div></div>`; }
   else out += '<p class="muted">모든 위치가 있는 참가자가 3명 이상 필요합니다(컵이 없는 지표는 위치 4개가 다 안 나옴).</p>';
-  return `<p class="muted">지표: <b>${name}</b>. 우리 설계는 기법 순서(반반)와 컵 순서(라틴 방격)를 따로 균형 맞췄으므로, 순서 효과도 그 두 가지를 평균 내지 않고 따로 본다.</p>` + out;
+  out += '</details>';
+  return `<p class="muted">지표: <b>${name}</b>. 주 비교(트랙패드 vs GripSpread)의 순서는 참가자 절반씩 반대로 배정했다. 기법 × 순서 상호작용이 없으면 순서 효과가 상쇄된 것이다. 각 기법 블록 안의 컵 순서는 라틴 방격으로 배정했고, 그 점검은 아래 접힌 칸에 있다.</p>` + out;
 }
 // order check as interaction plots: x = technique, one line per order group
 function orderPlots(cells, roster){
@@ -664,7 +666,7 @@ function render(R){
   <h2>H2, H3 · 컵 흔들림</h2>
   <div class="card">${IMU_FIG}</div>${rms.html}${lin.html}${tilt.html}${tilt1.html}
   <div class="card scroll"><h3>기울기와 이동 시간</h3>${tiltMtTable(R.tiltMt)}</div>
-  <h2>순서 효과 (비대칭 학습 전이)</h2>
+  <h2>순서 효과: 기법 순서 상쇄 확인</h2>
   <div class="card"><div class="actions"><label>지표 <select id="ordKey">${ORDER_KEYS.map(([k, n]) => `<option value="${k}">${n}</option>`).join('')}</select></label></div><div id="ordOut"></div></div>
   <h2>조건별 난이도 (SEQ)</h2>${seqB.html}
   <h2>주관 평가 (NASA-TLX)</h2>
