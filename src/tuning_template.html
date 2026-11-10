@@ -546,16 +546,33 @@ async function loadPilotsFromServer(){
 }
 $('sumLoad').onclick = loadPilotsFromServer;
 if(SRV.ready()) loadPilotsFromServer();
+// Which files go into the mean: by default the newest file per person (tuning_id), done with the back-of-hand
+// angle (apparatus.angle_mode 'dorsal', 11/10 on). Older test runs and repeats are listed but unticked.
+let PILOTS = [];
 function mergePilots(data){
-  const ok = data.filter(d => d.final_values);
-  if(!ok.length){ $('sumTable').innerHTML = '<p class="bad">결과 파일이 아닙니다</p>'; return; }
-  const keys = PARAMS.map(p => p.k).filter(k => ok.some(d => k in d.final_values));
-  const mean = k => { const v = ok.filter(d => k in d.final_values).map(d => d.final_values[k]); return v.reduce((a,b)=>a+b,0)/v.length; };
-  merged = { from:ok.map(d => d.tuning_id || d.pilot_id), n:ok.length, merged_at:new Date().toISOString(), rule:'mean of each researcher\'s final value from blind A/B tuning (procedure after Fashimpaur et al., CHI 2023)', values:{} };
-  keys.forEach(k => { const p = PARAMS.find(x=>x.k===k); merged.values[k] = +mean(k).toFixed(p.dec); });
-  $('sumTable').innerHTML = '<table><tr><th>값</th>' + ok.map(d => `<th>${d.tuning_id || d.pilot_id}</th>`).join('') + '<th>평균 (고정값)</th></tr>' +
-    keys.map(k => { const p = PARAMS.find(x=>x.k===k); return `<tr><td>${p.name}</td>` + ok.map(d => `<td>${d.final_values[k] ?? '–'}</td>`).join('') + `<td><b>${merged.values[k]}</b></td></tr>`; }).join('') + '</table>';
-  $('sumSave').disabled = false;
+  PILOTS = data.filter(d => d.final_values).sort((x, y) => String(y.finished || y.started || '').localeCompare(String(x.finished || x.started || '')));
+  if(!PILOTS.length){ $('sumTable').innerHTML = '<p class="bad">결과 파일이 아닙니다</p>'; return; }
+  const seen = new Set();
+  PILOTS.forEach(d => { const id = d.tuning_id || d.pilot_id || '?', dorsal = d.apparatus && d.apparatus.angle_mode === 'dorsal';
+    d._use = dorsal && !seen.has(id); if(d._use) seen.add(id); });
+  renderMerge();
+}
+function renderMerge(){
+  const ok = PILOTS.filter(d => d._use);
+  const keys = PARAMS.map(p => p.k);
+  const mean = k => { const v = ok.filter(d => k in d.final_values).map(d => d.final_values[k]); return v.length ? v.reduce((a,b)=>a+b,0)/v.length : null; };
+  merged = { from:ok.map(d => d.tuning_id || d.pilot_id), files:ok.map(d => `${d.tuning_id || d.pilot_id} ${d.finished || d.started || ''}`), n:ok.length, merged_at:new Date().toISOString(), rule:'mean of each researcher\'s final value from blind A/B tuning (procedure after Fashimpaur et al., CHI 2023)', values:{} };
+  keys.forEach(k => { const p = PARAMS.find(x=>x.k===k), m = mean(k); if(m != null) merged.values[k] = +m.toFixed(p.dec); });
+  const when = d => { const t = d.finished || d.started; return t ? new Date(t).toLocaleString('ko-KR', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit', hour12:false }) : '–'; };
+  $('sumTable').innerHTML = '<p class="muted">체크한 파일만 평균에 들어갑니다. 기본: 사람마다 가장 최근 파일 하나, 손등 방식(11/10 이후)으로 한 것만. 테스트로 한 건 체크를 빼세요.</p>'
+    + '<table><tr><th></th><th>사람</th><th>끝난 시각</th><th>방식</th>' + keys.map(k => `<th>${PARAMS.find(x=>x.k===k).name}</th>`).join('') + '</tr>'
+    + PILOTS.map((d, i) => `<tr${d._use ? '' : ' style="color:var(--muted)"'}><td><input type="checkbox" data-i="${i}"${d._use ? ' checked' : ''}></td><td>${d.tuning_id || d.pilot_id || '?'}</td><td>${when(d)}</td><td>${d.apparatus && d.apparatus.angle_mode === 'dorsal' ? '손등' : '예전'}</td>`
+        + keys.map(k => `<td>${d.final_values[k] ?? '–'}</td>`).join('') + '</tr>').join('')
+    + `<tr><td></td><td colspan="3"><b>평균 (${ok.length}명) → 본 실험 값</b></td>` + keys.map(k => `<td><b>${merged.values[k] ?? '–'}</b></td>`).join('') + '</tr></table>'
+    + (new Set(merged.from).size !== ok.length ? '<p class="bad">같은 사람 파일이 두 개 이상 체크돼 있습니다</p>' : '')
+    + (ok.length && ok.length !== 4 ? `<p class="bad">체크된 사람이 ${ok.length}명입니다 (계획 4명)</p>` : '');
+  document.querySelectorAll('#sumTable input[data-i]').forEach(b => b.onchange = () => { PILOTS[+b.dataset.i]._use = b.checked; renderMerge(); });
+  $('sumSave').disabled = !ok.length;
 }
 $('sumSave').onclick = async () => {
   if(!merged) return;
