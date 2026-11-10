@@ -109,7 +109,7 @@
         <label>가속 반응 (ms)<output id="accMsO"></output><input id="accMs" type="range" min="20" max="800" step="10" value="250"></label>
         <label>감속 반응 (ms)<output id="brakeMsO"></output><input id="brakeMs" type="range" min="10" max="400" step="10" value="60"></label>
         <label>활성화 대기 (ms)<output id="holdMsO"></output><input id="holdMs" type="range" min="300" max="1500" step="50" value="700"></label>
-        <label>굽힘 허용 한계 (검지·중지 마디 합)<output id="curlMaxO"></output><input id="curlMax" type="range" min="20" max="150" step="5" value="80"></label>
+        <label>굽힘 허용 한계 (예전 손끝 방식용, 지금은 안 씀)<output id="curlMaxO"></output><input id="curlMax" type="range" min="20" max="150" step="5" value="80"></label>
         <label>스무딩<output id="smoothO"></output><input id="smooth" type="range" min="0.05" max="0.9" step="0.05" value="0.35"></label>
         <div class="row">
           <button id="btnMirror">좌우 반전 켜짐</button>
@@ -352,7 +352,10 @@ function spreadAngle(world){
       x += W[s] * sg * dot(u, k); y += W[s] * sg * fy; }
     return Math.atan2(x, y) * 180 / Math.PI; };
   const deg = abd(9) - abd(5);
-  return { deg, rawDeg:deg, degTips, folded:false, facing, extI, extM };
+  // fold (same as engine.js): in-plane share of the first bone; below 0.4 (knuckle bent > ~66°, a fist) = folded
+  const base = b => norm(proj(unit(sub(world[b+1], world[b]))));
+  const baseI = base(5), baseM = base(9);
+  return { deg, rawDeg:deg, degTips, folded:Math.min(baseI, baseM) < 0.4, baseI, baseM, facing, extI, extM };
 }
 
 // Joint bend (deg, 0 = straight) summed over PIP and DIP, used to tell a V grip from fingers wrapped around the object.
@@ -498,7 +501,7 @@ function showDiag(f){
   diagEl.innerHTML = f ? `
     <span>펴짐 3D</span><b>${f2(f.extI)} / ${f2(f.extM)}</b>
     <span>펴짐 2D</span><b>${f2(f.ext2I)} / ${f2(f.ext2M)}</b>
-    <span>마디 굽힘</span><b style="color:${Math.max(f.curlI,f.curlM) > P.curlMax ? 'var(--alert)' : 'inherit'}">${f2(f.curlI,0)}° / ${f2(f.curlM,0)}° (한계 ${P.curlMax}°)</b>
+    <span>첫 마디 펴짐 (0.4↑)</span><b style="color:${Math.min(f.baseI,f.baseM) < 0.4 ? 'var(--alert)' : 'inherit'}">${f2(f.baseI)} / ${f2(f.baseM)}</b>
     <span>손등 방향</span><b>${f2(f.facing)}</b>
     <span>인식 점수</span><b>${f2(f.score)}</b>` : '<span>손이 보이면 표시됩니다</span>';
 }
@@ -560,7 +563,7 @@ function loop(){
       lastSeen = now;
       const m = spreadAngle(world);
       feat = m ? {
-        theta: m.rawDeg, facing: m.facing, extI: m.extI, extM: m.extM,
+        theta: m.rawDeg, facing: m.facing, extI: m.extI, extM: m.extM, baseI: m.baseI, baseM: m.baseM,
         curlI: fingerCurl(world, 5), curlM: fingerCurl(world, 9),
         ext2I: tipExt2D(lm, 5), ext2M: tipExt2D(lm, 9),
         score: res.handedness && res.handedness[0] && res.handedness[0][0] ? res.handedness[0][0].score : null
@@ -577,13 +580,19 @@ function loop(){
         if(rSmooth != null && Math.abs(m.deg - rSmooth) > JUMP_MAX && ++jumpCount < 3){ /* skip frame */ }
         else { jumpCount = 0; rSmooth = rSmooth == null ? m.deg : rSmooth + P.smooth * (m.deg - rSmooth); }
       }
-    } else { reliable = false; unreliableReason = null; feat = null; showDiag(null); }
-    hist.push({t:now, r: lm && reliable ? rSmooth : null});
+    } else {
+      // dropout bridging (same as engine.js): keep the last angle 0.25 s any way, up to 1.5 s if it was on the closing side
+      feat = null; showDiag(null);
+      const gap = now - lastSeen, closing = r0 != null && rSmooth != null && rSmooth < r0;
+      reliable = !calib.step && state === 'ACTIVE' && rSmooth != null && (gap <= 250 || (closing && gap <= 1500));
+      unreliableReason = reliable ? 'coast' : null;
+    }
+    hist.push({t:now, r: reliable ? rSmooth : null});
     showReliability(lm);
     if(calib.step){
       if(!lm) calibTick(now, null); else if(reliable) calibTick(now, rSmooth);
     } else if(!lm){
-      if(now - lastSeen > 500){
+      if(now - lastSeen > (state === 'ACTIVE' ? 1500 : 500)){
         if(r0 != null && (state === 'ACTIVE' || state === 'PAUSE')) setState('PAUSE');   // keep the neutral
         else { setState('IDLE'); needHandDown = false; }
         rSmooth = null;
@@ -623,7 +632,7 @@ async function init(){
     const fileset = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
     const opts = (delegate) => ({
       baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate },
-      runningMode:"VIDEO", numHands:1, minHandDetectionConfidence:0.5, minHandPresenceConfidence:0.5, minTrackingConfidence:0.5
+      runningMode:"VIDEO", numHands:1, minHandDetectionConfidence:0.4, minHandPresenceConfidence:0.3, minTrackingConfidence:0.3
     });
     try{ landmarker = await HandLandmarker.createFromOptions(fileset, opts("GPU")); }
     catch(e){ landmarker = await HandLandmarker.createFromOptions(fileset, opts("CPU")); }
