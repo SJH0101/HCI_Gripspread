@@ -207,7 +207,8 @@ import { HandLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@m
 const GripEngine = (() => {
   // ---------- tunable parameters (pilot values) ----------
   const P = { dead:0.15, gain:800, gamma:2.2, holdMs:700, smooth:0.35, curlMax:80,
-    boostMax:2.5, boostMs:1200, boostOn:0.6, boostDecayMs:200, accMs:250, brakeMs:60, minSide:10, minSpeed:15 };
+    boostMax:2.5, boostMs:1200, boostOn:0.6, boostDecayMs:200, accMs:250, brakeMs:60, minSide:10, minSpeed:15,
+    angleMode:'dorsal' };  // 'dorsal' (11/10): back of the hand faces the camera; 'tips': the earlier tip-based V
   const FOLD_PERSIST = 6; // frames (~0.1 s) a 'folded' reading must last before input freezes
   const EXT_MIN = 0.55;    // in-plane knuckle->tip length / palm length below this = fingers folded
   const JUMP_MAX = 20;     // deg per frame; bigger jumps are dropped unless they persist 3 frames
@@ -223,7 +224,7 @@ const GripEngine = (() => {
   //   - after GAP_MS: PAUSE as before (the spread must come back to the dead zone to resume)
   // Frames logged with reason 'coast' are bridged frames.
   const COAST_MS = 250, GAP_MS = 1500;
-  const RANGE_KEY = 'gripspread_range_deg_v1';
+  const RANGE_KEY = 'gripspread_range_deg_v2';   // v2: dorsal θ (11/10); v1 ranges were tip-based
 
   const E = {
     P, dirSign:-1, state:'IDLE', r0:null, range:null, theta:null, reliable:false, reason:null,
@@ -241,9 +242,29 @@ const GripEngine = (() => {
   const angBetween = (u,v) => Math.acos(Math.max(-1, Math.min(1, dot(u,v)/(norm(u)*norm(v)+1e-12)))) * 180 / Math.PI;
   const bend = (w,a,b,c) => angBetween(sub(w[b],w[a]), sub(w[c],w[b]));
   const fingerCurl = (w, mcp) => bend(w,mcp,mcp+1,mcp+2) + bend(w,mcp+1,mcp+2,mcp+3);
-  // Visible V angle: from the midpoint of knuckles 5 and 9, the angle between fingertips 8 and 12,
-  // measured inside the palm plane (0,5,17) so finger flexion is projected out. Tips touching -> 0 deg.
+  // Two ways to read the V angle; P.angleMode picks which one drives θ (both are computed and kept in E.feat).
+  //  'tips'   (until 11/10): from the midpoint of knuckles 5 and 9, the angle between fingertips 8 and 12, in the
+  //           palm plane (0,5,17). Needs both tips in view.
+  //  'dorsal' (from 11/10): the back of the hand faces the camera and the cup sits in the palm, so the knuckles and
+  //           the first finger bones are what the camera sees well; the fingertips curl round the cup, behind it.
+  //           θ is the difference of the two fingers' sideways (abduction) angles at the knuckles:
+  //             k  = knuckle line, index knuckle 5 -> little-finger knuckle 17 (long baseline, seen on the back)
+  //             d  = finger direction from its joints, weighted to the knuckle end (MCP->PIP 0.6, PIP->DIP 0.3,
+  //                  DIP->tip 0.1), so the hidden tips hardly count
+  //             abduction = the finger's angle in the back-of-hand plane (0,5,17), measured from the direction
+  //                  across the knuckle line: atan2(d·k, d·f), f = in-plane, perpendicular to k, toward the fingers.
+  //                  Bending a finger toward the palm (wrapping the cup) only adds a component along the plane's
+  //                  normal, which the projection drops, so grip depth barely moves θ (exact for bending about an
+  //                  axis across the finger; per-person calibration absorbs the rest).
+  //             θ  = abduction(middle) − abduction(index): grows as the V opens, ~0 when the fingers lie side by
+  //                  side, below 0 if they cross. Fingertips are barely used.
+  //           The fold check is off in this mode (curled fingers are the normal grip); facing still applies.
+  const unit = v => { const l = norm(v) || 1e-12; return {x:v.x/l, y:v.y/l, z:v.z/l}; };
+  const add = (a,b,k=1) => ({x:a.x+k*b.x, y:a.y+k*b.y, z:a.z+k*b.z});
+  const W_SEG = [0.6, 0.3, 0.1];
+  function fingerDir(w, mcp){ let d = {x:0,y:0,z:0}; for(let s=0; s<3; s++) d = add(d, unit(sub(w[mcp+s+1], w[mcp+s])), W_SEG[s]); return unit(d); }
   function spreadAngle(world){
+    // palm plane: facing check, and the 'tips' angle
     const n0 = cross(sub(world[5], world[0]), sub(world[17], world[0])), nl = norm(n0);
     if(nl < 1e-9) return null;
     const n = {x:n0.x/nl, y:n0.y/nl, z:n0.z/nl};
@@ -251,8 +272,15 @@ const GripEngine = (() => {
     const m = {x:(world[5].x+world[9].x)/2, y:(world[5].y+world[9].y)/2, z:(world[5].z+world[9].z)/2};
     const a = proj(sub(world[8], m)), b = proj(sub(world[12], m)), la = norm(a), lb = norm(b);
     const palmLen = norm(sub(world[9], world[0]));
-    const deg = Math.acos(Math.max(-1, Math.min(1, dot(a,b)/(la*lb+1e-12)))) * 180 / Math.PI;
-    return { deg, facing:Math.abs(n.z), extI:la/palmLen, extM:lb/palmLen };
+    const degTips = Math.acos(Math.max(-1, Math.min(1, dot(a,b)/(la*lb+1e-12)))) * 180 / Math.PI;
+    // dorsal: abduction of each finger along the knuckle line
+    const k = unit(proj(sub(world[17], world[5])));
+    let f = unit(cross(n, k)); if(dot(f, sub(world[9], world[0])) < 0) f = {x:-f.x, y:-f.y, z:-f.z};
+    const abd = d => Math.atan2(dot(d, k), dot(d, f)) * 180 / Math.PI;
+    const abdI = abd(fingerDir(world, 5)), abdM = abd(fingerDir(world, 9));
+    const degDorsal = abdM - abdI;
+    const deg = P.angleMode === 'tips' ? degTips : degDorsal;
+    return { deg, degTips, degDorsal, abdI, abdM, facing:Math.abs(n.z), extI:la/palmLen, extM:lb/palmLen };
   }
 
   // ---------- state machine ----------
@@ -386,7 +414,7 @@ const GripEngine = (() => {
       const m = spreadAngle(world);
       E.feat = m ? { ...m, curlI:fingerCurl(world,5), curlM:fingerCurl(world,9),
         score: res.handedness && res.handedness[0] && res.handedness[0][0] ? res.handedness[0][0].score : null } : null;
-      const folded = m && (Math.min(m.extI, m.extM) < EXT_MIN || Math.max(E.feat.curlI, E.feat.curlM) > P.curlMax);
+      const folded = m && P.angleMode === 'tips' && (Math.min(m.extI, m.extM) < EXT_MIN || Math.max(E.feat.curlI, E.feat.curlM) > P.curlMax);
       foldFrames = folded ? foldFrames + 1 : 0;
       E.reason = !m ? 'lost' : m.facing < FACING_MIN ? 'facing' : foldFrames >= FOLD_PERSIST ? 'folded' : null;
       E.reliable = !E.reason;
@@ -490,9 +518,14 @@ const video = $('video'), overlay = $('overlay'), oc = overlay.getContext('2d');
 function drawOverlay(){
   overlay.width = video.videoWidth || 640; overlay.height = video.videoHeight || 480; oc.clearRect(0,0,overlay.width,overlay.height);
   const lm = E.lm; if(!lm) return;
-  const X = p => p.x*overlay.width, Y = p => p.y*overlay.height, mx = (X(lm[5])+X(lm[9]))/2, my = (Y(lm[5])+Y(lm[9]))/2;
+  const X = p => p.x*overlay.width, Y = p => p.y*overlay.height;
   oc.strokeStyle = E.reliable ? '#F5D020' : '#C8372D'; oc.lineWidth = 4;
-  for(const t of [8,12]){ oc.beginPath(); oc.moveTo(mx,my); oc.lineTo(X(lm[t]),Y(lm[t])); oc.stroke(); }
+  if(E.P.angleMode === 'tips'){ const mx = (X(lm[5])+X(lm[9]))/2, my = (Y(lm[5])+Y(lm[9]))/2;
+    for(const t of [8,12]){ oc.beginPath(); oc.moveTo(mx,my); oc.lineTo(X(lm[t]),Y(lm[t])); oc.stroke(); } return; }
+  // dorsal: knuckle line (thin) and the index/middle lines through knuckle -> DIP, drawn a bit past the joints
+  oc.lineWidth = 2; oc.beginPath(); oc.moveTo(X(lm[5]),Y(lm[5])); oc.lineTo(X(lm[17]),Y(lm[17])); oc.stroke(); oc.lineWidth = 4;
+  for(const b of [5,9]){ const x0 = X(lm[b]), y0 = Y(lm[b]), x1 = X(lm[b+2]), y1 = Y(lm[b+2]);
+    oc.beginPath(); oc.moveTo(x0,y0); oc.lineTo(x0 + 1.6*(x1-x0), y0 + 1.6*(y1-y0)); oc.stroke(); }
 }
 
 // ======================================================================
