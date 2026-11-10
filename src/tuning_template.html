@@ -462,10 +462,9 @@ function nextTrial(){
   lineCue.textContent = `${line}번 줄을 회색 영역 안에`; popCue(lineCue);
   run.phase = 'arming'; run.trial.armSince = null; taskMsg.textContent = '';   // same clutch as the study
 }
-// Clutch at each trial start. A trackpad has a natural clutch (fingers off = no input); GripSpread does not, so any
-// spread at the moment the next target appears would move the content before it is read. The target is shown at
-// once, but GS input is engaged only after the spread has been in the dead zone with no motion for ARM_MS.
-// A reflexive spread at the switch just delays engaging.
+// Clutch at each trial start. GripSpread input is engaged ARM_MS after the target appears (GripSpread must be on).
+// 11/10: it no longer waits for the spread to rest in the dead zone (that felt like the technique not responding);
+// a fixed delay as in Fashimpaur et al. Whether the hand was at rest at engage is kept per trial (start_rest).
 // ARM_MS = 150 ms, following Fashimpaur et al. (CHI 2023), who added a 0.15 s delay between activating a freehand
 // scroll technique (pinch) and list movement, for freehand techniques only. Likewise only GripSpread gets this clutch;
 // the trackpad is live as soon as the target appears (its fingers-off state is already a clutch).
@@ -486,9 +485,9 @@ function tickTask(now){
   const tr = run.trial, fc = track.clientHeight / 2;
   if(run.phase === 'arming'){
     track.scrollTop = tr.S0; tr.pos = tr.S0;
-    if(E.state === 'ACTIVE' && gsRest()){ if(tr.armSince == null) tr.armSince = now; } else tr.armSince = null;
-    if(tr.armSince != null && now - tr.armSince >= ARM_MS){ run.phase = 'running'; tr.startT = now; taskMsg.textContent = ''; }
-    else taskMsg.textContent = E.state !== 'ACTIVE' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '편한 V로 잠깐 멈추면 시작합니다';
+    if(E.state === 'ACTIVE'){ if(tr.armSince == null) tr.armSince = now; } else tr.armSince = null;
+    if(tr.armSince != null && now - tr.armSince >= ARM_MS){ run.phase = 'running'; tr.startT = now; tr.startRest = gsRest() ? 1 : 0; taskMsg.textContent = ''; }
+    else taskMsg.textContent = E.state !== 'ACTIVE' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '';
   }
   else if(run.phase === 'running'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); tr.pos += E.velocity * dt; track.scrollTop = tr.pos; tr.pos = Math.max(0, Math.min(track.scrollHeight - track.clientHeight, tr.pos)); }   // float position: scrollTop rounds to whole px and would swallow slow motion
   tr.lastTick = now;
@@ -519,7 +518,7 @@ function endTrial(now, success){
   trialDoneCue(success);
   T.trials.push({ ...(cmp ? { cmp:cmp.idx, param:cmp.param, version:run.vi + 1, replay:run.replay ? 1 : 0, value:cmp.versions[run.vi], is_changed: cmp.versions[run.vi] === cmp.cand ? 1 : 0 }
                           : { practice:1 }),
-    D:tr.D, W:tr.W, direction:tr.dir, success, mt_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '', switchbacks:tr.switchbacks,
+    D:tr.D, W:tr.W, direction:tr.dir, start_rest:tr.startRest ?? "", success, mt_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '', switchbacks:tr.switchbacks,
     overshoot_px: Math.max(0, Math.round(-tr.minRem - tr.W/2)) });
   setTimeout(() => { if(run) nextTrial(); }, ITI);
 }

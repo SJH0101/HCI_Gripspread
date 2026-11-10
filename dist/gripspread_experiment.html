@@ -1664,8 +1664,10 @@ document.addEventListener('keydown', e => {
 
 // Clutch at each trial start. A trackpad has a natural clutch (fingers off = no input); GripSpread does not, so any
 // spread at the moment the next target appears would move the content before it is read. The target is shown at
-// once, but GS input is engaged only after the spread has been in the dead zone with no motion for ARM_MS.
-// A reflexive spread at the switch just delays engaging.
+// once, and GS input is engaged ARM_MS after it appears (GripSpread must be on).
+// 11/10: until then engaging also required the spread to rest in the dead zone. In use that felt like the
+// technique not responding (moving the hand during the wait kept postponing the start), so it is a fixed delay
+// now, as in Fashimpaur et al. Whether the hand was at rest when input engaged is logged per trial (gs_start_rest).
 // ARM_MS = 150 ms, following Fashimpaur et al. (CHI 2023), who added a 0.15 s delay between activating a freehand
 // scroll technique (pinch) and list movement, for freehand techniques only. Likewise only GripSpread gets this clutch;
 // the trackpad is live as soon as the target appears (its fingers-off state is already a clutch).
@@ -1686,10 +1688,10 @@ function tickTask(now){
   const tr = run.trial, st = run.st, fc = frameCenter();
   if(run.phase === 'arming'){
     track.scrollTop = tr.S0; tr.pos = tr.S0;
-    const rest = st.tech !== 'gs' || (E.state === 'ACTIVE' && gsRest());
-    if(rest){ if(tr.armSince == null) tr.armSince = now; } else tr.armSince = null;
-    if(tr.armSince != null && (st.tech !== 'gs' || now - tr.armSince >= ARM_MS)){ run.phase = 'running'; tr.startT = now; taskMsg.textContent = ''; }
-    else taskMsg.textContent = st.tech === 'gs' && E.state !== 'ACTIVE' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '편한 V로 잠깐 멈추면 시작합니다';
+    const on = st.tech !== 'gs' || E.state === 'ACTIVE';
+    if(on){ if(tr.armSince == null) tr.armSince = Math.max(now, tr.shownAt); } else tr.armSince = null;
+    if(tr.armSince != null && (st.tech !== 'gs' || now - tr.armSince >= ARM_MS)){ run.phase = 'running'; tr.startT = now; tr.startRest = st.tech === 'gs' ? (gsRest() ? 1 : 0) : ''; taskMsg.textContent = ''; }
+    else taskMsg.textContent = st.tech === 'gs' && E.state !== 'ACTIVE' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '';
   } else if(run.phase === 'running'){
     if(st.tech === 'gs'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); tr.pos += E.velocity * dt; track.scrollTop = tr.pos; tr.pos = Math.max(0, Math.min(track.scrollHeight - track.clientHeight, tr.pos)); }   // float position: scrollTop rounds to whole px and would swallow slow motion
   }
@@ -1764,7 +1766,7 @@ function finishTrial(now, success){
     plan_ms: tr.firstMoveT ? Math.round(tr.firstMoveT - tr.startT) : '',                  // input engaged (after the arm clutch) -> first movement
     mt_ms: success && tr.firstMoveT ? Math.round(tr.dwellStart - tr.firstMoveT) : '',     // first movement -> scrolling stopped inside the frame
     total_ms: success ? Math.round(tr.dwellStart - tr.startT) : '',
-    success, skipped: tr.skipped || 0, switchbacks: tr.switchbacks, overshoot_px: Math.max(0, Math.round(-tr.minRem - tr.W/2)),
+    gs_start_rest: tr.startRest ?? '', success, skipped: tr.skipped || 0, switchbacks: tr.switchbacks, overshoot_px: Math.max(0, Math.round(-tr.minRem - tr.W/2)),
     gs_r0: E.r0 == null ? '' : E.r0.toFixed(2), gs_range_min: E.range ? E.range.min.toFixed(1) : '', gs_range_max: E.range ? E.range.max.toFixed(1) : '',
     gs_dead:E.P.dead, gs_gain:E.P.gain, gs_gamma:E.P.gamma, gs_boost_max:E.P.boostMax, gs_boost_ms:E.P.boostMs, gs_acc_ms:E.P.accMs, gs_brake_ms:E.P.brakeMs, gs_dir:E.dirSign, tech_order:S.techOrder.join('>'), latin_row:S.latinRow,
   };
@@ -1793,7 +1795,7 @@ function endStep(){
 // ---------- files ----------
 // Data stays in memory, is backed up to IndexedDB after every step, and leaves the browser as ONE zip per participant.
 function toCSV(head, rows){ return [head.join(',')].concat(rows.map(r => (Array.isArray(r) ? r : head.map(h=>r[h])).map(v => v == null ? '' : String(v).includes(',') ? `"${v}"` : v).join(','))).join('\n'); }
-const TRIAL_HEAD = ['pid','technique','cup','step','cond_index','trial_index','trial_uid','warmup','D','W','ID','direction','target_line','shown_ms','arm_ms','start_ms','first_move_ms','end_ms','plan_ms','mt_ms','total_ms','success','skipped','switchbacks','overshoot_px','gs_r0','gs_range_min','gs_range_max','gs_dead','gs_gain','gs_gamma','gs_boost_max','gs_boost_ms','gs_acc_ms','gs_brake_ms','gs_dir','tech_order','latin_row'];
+const TRIAL_HEAD = ['pid','technique','cup','step','cond_index','trial_index','trial_uid','warmup','D','W','ID','direction','target_line','shown_ms','arm_ms','start_ms','first_move_ms','end_ms','plan_ms','mt_ms','total_ms','gs_start_rest','success','skipped','switchbacks','overshoot_px','gs_r0','gs_range_min','gs_range_max','gs_dead','gs_gain','gs_gamma','gs_boost_max','gs_boost_ms','gs_acc_ms','gs_brake_ms','gs_dir','tech_order','latin_row'];
 function frameHead(cfgFrames){ const h = ['t_ms','technique','cup','step','trial_uid','phase','scroll_top','target_offset_px','in_frame','wheel_dy','gs_state','gs_theta','gs_velocity','gs_command','gs_boost','gs_reliable','gs_reason'];
   if(cfgFrames === 2) for(let i=0;i<21;i++) h.push(`w${i}_x`,`w${i}_y`,`w${i}_z`); return h; }
 const IMU_HEAD = ['t_ms','technique','cup','step','trial_uid','phase','seq','t_us','ax_raw','ay_raw','az_raw','gx_raw','gy_raw','gz_raw','tilt_deg','ref_ready','connection_id'];
