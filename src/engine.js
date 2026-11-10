@@ -94,7 +94,7 @@ const GripEngine = (() => {
   }
 
   // ---------- state machine ----------
-  const STATE_TEXT = { IDLE:'컵을 쥔 손을 카메라 앞에 올려 주세요', HOLD:'편한 V로 잠깐 멈춰 주세요', ACTIVE:'켜짐', PAUSE:'편한 V로 돌아오면 다시 켜집니다' };
+  const STATE_TEXT = { IDLE:'컵을 쥔 손을 손등이 카메라를 보게 올려 주세요', HOLD:'편한 V로 잠깐 멈춰 주세요', ACTIVE:'켜짐', PAUSE:'편한 V로 돌아오면 다시 켜집니다' };
   const WARN_TEXT = { facing:'손등을 카메라 쪽으로 돌려 주세요 (입력 멈춤)', folded:'손가락 접힘 (입력 멈춤)', lost:'손 인식이 불안정합니다 (입력 멈춤)' };
   let holdStart = 0, holdBuf = [], lastSeen = 0, needHandDown = false, jumpCount = 0, foldFrames = 0, rearmStart = 0;
   function status(){

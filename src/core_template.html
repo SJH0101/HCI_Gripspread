@@ -149,7 +149,7 @@
       <canvas id="graph"></canvas>
     </div>
     <div class="foot">
-      처음 쓰는 분은 <b>손 범위 재기</b>로 최대로 벌린 폭과 오므린 폭을 먼저 재 주세요. 그다음 컵을 쥔 손을 올리고 편한 V로 잠깐 멈추면 켜집니다. 오므리면 아래로, 벌리면 위로 스크롤되고, 노란 멈춤 구간 안에서는 멈춥니다. 손을 내리면 잠시 멈추고, 다시 올려서 편한 V로 돌아오면 이어집니다.
+      처음 쓰는 분은 <b>손 범위 재기</b>로 최대로 벌린 폭과 오므린 폭을 먼저 재 주세요. 그다음 컵을 쥔 손을 <b>손등이 카메라를 보게</b> 올리고 편한 V로 잠깐 멈추면 켜집니다. 오므리면 아래로, 벌리면 위로 스크롤되고, 노란 멈춤 구간 안에서는 멈춥니다. 손을 내리면 잠시 멈추고, 다시 올려서 편한 V로 돌아오면 이어집니다.
       <div id="err" class="err"></div>
     </div>
   </aside>
@@ -208,7 +208,7 @@ document.addEventListener('click', () => { try{ actx = actx || new AudioContext(
 let state = 'IDLE', holdStart = 0, rearmStart = 0, r0 = null, lastSeen = 0, rSmooth = null, velocity = 0;
 const holdBuf = [];
 const stateText = document.getElementById('stateText'), holdFill = document.getElementById('holdFill');
-const STATE_TEXT = {IDLE:'컵을 쥔 손을 카메라 앞에 올려 주세요', HOLD:'편한 V로 잠깐 멈춰 주세요', ACTIVE:'켜짐. 오므리면 아래로, 벌리면 위로', PAUSE:'편한 V로 돌아오면 다시 켜집니다'};
+const STATE_TEXT = {IDLE:'컵을 쥔 손을 손등이 카메라를 보게 올려 주세요', HOLD:'편한 V로 잠깐 멈춰 주세요', ACTIVE:'켜짐. 오므리면 아래로, 벌리면 위로', PAUSE:'편한 V로 돌아오면 다시 켜집니다'};
 function setStatusClass(c){ statusEl.className = 'status ' + c; }
 function setState(s){
   if(s === state) return;
@@ -459,7 +459,7 @@ const oc = overlay.getContext('2d');
 const CONN = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
 // Only the landmarks that feed the angle are drawn strongly; thumb, ring and pinky (unused, often occluded by the cup) stay faint.
 const USED_CONN = [[0,5],[5,9],[9,13],[13,17],[0,17],[5,6],[6,7],[7,8],[9,10],[10,11],[11,12]];
-const USED_PTS = [0,5,9,17,8,12];
+const USED_PTS = [0,5,6,7,9,10,11,17];   // 11/10: knuckles and the first bones (dorsal angle)
 function drawOverlay(lm){
   overlay.width = video.videoWidth; overlay.height = video.videoHeight;
   oc.clearRect(0,0,overlay.width,overlay.height);
@@ -472,10 +472,11 @@ function drawOverlay(lm){
   for(const [a,b] of USED_CONN){ oc.beginPath(); oc.moveTo(X(lm[a]),Y(lm[a])); oc.lineTo(X(lm[b]),Y(lm[b])); oc.stroke(); }
   oc.fillStyle = 'rgba(255,255,255,.12)';
   oc.beginPath(); oc.moveTo(X(lm[0]),Y(lm[0])); oc.lineTo(X(lm[5]),Y(lm[5])); oc.lineTo(X(lm[17]),Y(lm[17])); oc.closePath(); oc.fill();
-  const mx = (X(lm[5])+X(lm[9]))/2, my = (Y(lm[5])+Y(lm[9]))/2;
-  oc.strokeStyle = reliable ? C.mark : '#C8372D'; oc.lineWidth = 4;
-  for(const t of [8,12]){ oc.beginPath(); oc.moveTo(mx,my); oc.lineTo(X(lm[t]),Y(lm[t])); oc.stroke(); }
-  for(const i of USED_PTS){ const key = i===8||i===12;
+  oc.strokeStyle = reliable ? C.mark : '#C8372D';
+  // dorsal: knuckle line (thin) and the index/middle bones joint by joint; the first bone (weighs most) is thickest
+  oc.lineWidth = 2; oc.beginPath(); oc.moveTo(X(lm[5]),Y(lm[5])); oc.lineTo(X(lm[17]),Y(lm[17])); oc.stroke();
+  for(const b of [5,9]) for(let s=0; s<3; s++){ oc.lineWidth = [6,4,2][s]; oc.beginPath(); oc.moveTo(X(lm[b+s]),Y(lm[b+s])); oc.lineTo(X(lm[b+s+1]),Y(lm[b+s+1])); oc.stroke(); }
+  for(const i of USED_PTS){ const key = i===5||i===9;
     oc.fillStyle = key ? C.mark : '#fff'; oc.beginPath(); oc.arc(X(lm[i]),Y(lm[i]), key?7:4, 0, 7); oc.fill(); }
 }
 
@@ -488,7 +489,7 @@ function showDiag(f){
     <span>펴짐 3D</span><b>${f2(f.extI)} / ${f2(f.extM)}</b>
     <span>펴짐 2D</span><b>${f2(f.ext2I)} / ${f2(f.ext2M)}</b>
     <span>마디 굽힘</span><b style="color:${Math.max(f.curlI,f.curlM) > P.curlMax ? 'var(--alert)' : 'inherit'}">${f2(f.curlI,0)}° / ${f2(f.curlM,0)}° (한계 ${P.curlMax}°)</b>
-    <span>손바닥 방향</span><b>${f2(f.facing)}</b>
+    <span>손등 방향</span><b>${f2(f.facing)}</b>
     <span>인식 점수</span><b>${f2(f.score)}</b>` : '<span>손이 보이면 표시됩니다</span>';
 }
 showDiag(null);

@@ -649,7 +649,7 @@ const GripEngine = (() => {
   }
 
   // ---------- state machine ----------
-  const STATE_TEXT = { IDLE:'컵을 쥔 손을 카메라 앞에 올려 주세요', HOLD:'편한 V로 잠깐 멈춰 주세요', ACTIVE:'켜짐', PAUSE:'편한 V로 돌아오면 다시 켜집니다' };
+  const STATE_TEXT = { IDLE:'컵을 쥔 손을 손등이 카메라를 보게 올려 주세요', HOLD:'편한 V로 잠깐 멈춰 주세요', ACTIVE:'켜짐', PAUSE:'편한 V로 돌아오면 다시 켜집니다' };
   const WARN_TEXT = { facing:'손등을 카메라 쪽으로 돌려 주세요 (입력 멈춤)', folded:'손가락 접힘 (입력 멈춤)', lost:'손 인식이 불안정합니다 (입력 멈춤)' };
   let holdStart = 0, holdBuf = [], lastSeen = 0, needHandDown = false, jumpCount = 0, foldFrames = 0, rearmStart = 0;
   function status(){
@@ -892,10 +892,9 @@ function drawOverlay(){
   oc.strokeStyle = E.reliable ? '#F5D020' : '#C8372D'; oc.lineWidth = 4;
   if(E.P.angleMode === 'tips'){ const mx = (X(lm[5])+X(lm[9]))/2, my = (Y(lm[5])+Y(lm[9]))/2;
     for(const t of [8,12]){ oc.beginPath(); oc.moveTo(mx,my); oc.lineTo(X(lm[t]),Y(lm[t])); oc.stroke(); } return; }
-  // dorsal: knuckle line (thin) and the index/middle lines through knuckle -> DIP, drawn a bit past the joints
-  oc.lineWidth = 2; oc.beginPath(); oc.moveTo(X(lm[5]),Y(lm[5])); oc.lineTo(X(lm[17]),Y(lm[17])); oc.stroke(); oc.lineWidth = 4;
-  for(const b of [5,9]){ const x0 = X(lm[b]), y0 = Y(lm[b]), x1 = X(lm[b+2]), y1 = Y(lm[b+2]);
-    oc.beginPath(); oc.moveTo(x0,y0); oc.lineTo(x0 + 1.6*(x1-x0), y0 + 1.6*(y1-y0)); oc.stroke(); }
+  // dorsal: knuckle line (thin) and the index/middle bones joint by joint; the first bone (weighs most) is thickest
+  oc.lineWidth = 2; oc.beginPath(); oc.moveTo(X(lm[5]),Y(lm[5])); oc.lineTo(X(lm[17]),Y(lm[17])); oc.stroke();
+  for(const b of [5,9]) for(let s=0; s<3; s++){ oc.lineWidth = [6,4,2][s]; oc.beginPath(); oc.moveTo(X(lm[b+s]),Y(lm[b+s])); oc.lineTo(X(lm[b+s+1]),Y(lm[b+s+1])); oc.stroke(); }
 }
 
 // ---------- session ----------
@@ -1500,7 +1499,7 @@ function showBrief(st){
   $('bKind').textContent = st.type === 'practice' ? '연습' : `본 측정 · 조건 ${st.condIndex}/4`;
   $('bTitle').textContent = `${TECH[st.tech]} · ${CUPS[st.cup]}`;
   const how = st.tech === 'gs'
-    ? '컵을 쥔 손을 카메라 앞에 올리고 편한 V로 멈추면 켜집니다. 오므리면 아래로, 벌리면 위로 움직입니다. 위에 나온 번호의 주황색 줄을 가운데 회색 영역 안에 넣고 잠깐 멈추면 다음으로 넘어갑니다. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있습니다.'
+    ? '컵을 쥔 손을 손등이 카메라를 보게 올리고 편한 V로 멈추면 켜집니다. 오므리면 아래로, 벌리면 위로 움직입니다. 위에 나온 번호의 주황색 줄을 가운데 회색 영역 안에 넣고 잠깐 멈추면 다음으로 넘어갑니다. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있습니다.'
     : '컵을 쥔 손 그대로, 편한 손가락으로 트랙패드를 써 주세요. 위에 나온 번호의 주황색 줄을 가운데 회색 영역 안에 넣고 잠깐 멈추면 다음으로 넘어갑니다. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있습니다.';
   $('bText').textContent = how + (st.type === 'practice' ? ' 연습은 익숙해질 때까지 계속됩니다.' : ' 최대한 빠르고 정확하게 해 주세요.');
   const checks = [];

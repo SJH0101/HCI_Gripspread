@@ -31,7 +31,7 @@
 <body>
 <main>
   <h1>손 인식 테스트</h1>
-  <p class="muted">손등을 카메라 쪽으로, 컵을 쥔 채 검지·중지를 벌렸다 오므려 보세요. 노란 선 = 마디 선과 두 손가락 선. 빨간 선 = 입력 멈춤.</p>
+  <p class="muted">손등을 카메라 쪽으로, 컵을 쥔 채 검지·중지를 벌렸다 오므려 보세요. 노란 선 = 손등 마디 선(가는 선)과 검지·중지 마디(뿌리 쪽이 굵음). 빨간 선 = 입력 멈춤.</p>
   <div class="cam"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
   <div class="row"><button class="primary" id="bStart">카메라 켜기</button></div>
   <p id="err"></p>
@@ -91,8 +91,9 @@ function draw(){
   oc.fillStyle = 'rgba(255,255,255,.7)'; for(const p of lm){ oc.beginPath(); oc.arc(X(p), Y(p), 3, 0, 7); oc.fill(); }
   oc.strokeStyle = E.reliable ? '#F5D020' : '#C8372D';
   if(E.P.angleMode === 'tips'){ oc.lineWidth = 4; const mx = (X(lm[5])+X(lm[9]))/2, my = (Y(lm[5])+Y(lm[9]))/2; for(const t of [8,12]){ oc.beginPath(); oc.moveTo(mx,my); oc.lineTo(X(lm[t]),Y(lm[t])); oc.stroke(); } return; }
-  oc.lineWidth = 2; oc.beginPath(); oc.moveTo(X(lm[5]),Y(lm[5])); oc.lineTo(X(lm[17]),Y(lm[17])); oc.stroke(); oc.lineWidth = 5;
-  for(const b of [5,9]){ const x0 = X(lm[b]), y0 = Y(lm[b]), x1 = X(lm[b+2]), y1 = Y(lm[b+2]); oc.beginPath(); oc.moveTo(x0,y0); oc.lineTo(x0+1.6*(x1-x0), y0+1.6*(y1-y0)); oc.stroke(); }
+  // dorsal: knuckle line (thin) and the index/middle bones joint by joint; the first bone (weighs most) is thickest
+  oc.lineWidth = 2; oc.beginPath(); oc.moveTo(X(lm[5]),Y(lm[5])); oc.lineTo(X(lm[17]),Y(lm[17])); oc.stroke();
+  for(const b of [5,9]) for(let s=0; s<3; s++){ oc.lineWidth = [6,4,2][s]; oc.beginPath(); oc.moveTo(X(lm[b+s]),Y(lm[b+s])); oc.lineTo(X(lm[b+s+1]),Y(lm[b+s+1])); oc.stroke(); }
 }
 function plot(now){
   const c = $('plot'), r = devicePixelRatio || 1, W = c.clientWidth, H = c.clientHeight;
