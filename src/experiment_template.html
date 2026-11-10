@@ -911,7 +911,7 @@ function showBrief(st){
     : '컵을 쥔 손 그대로, 편한 손가락으로 트랙패드를 써 주세요. 위에 나온 번호의 주황색 줄을 가운데 회색 영역 안에 넣고 잠깐 멈추면 다음으로 넘어갑니다. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있습니다.';
   $('bText').textContent = how + (st.type === 'practice' ? ' 연습은 익숙해질 때까지 계속됩니다.' : ' 최대한 빠르고 정확하게 해 주세요.');
   const checks = [];
-  if(st.cup !== 'none') checks.push(`${CUPS[st.cup]} 준비, 비즈가 입구 1cm 아래까지 차 있는지 확인`);
+  if(st.cup !== 'none') checks.push(`${CUPS[st.cup]} 준비, 바닥 센서가 단단히 붙어 있는지 확인`);
   else checks.push('컵 없이 빈손');
   checks.push('반대손은 손목 스트랩으로 고정');
   if(imuConn) checks.push('컵 IMU: 컵을 바꿨으면 왼쪽 <b>컵 수직 기준 다시 잡기</b>를 누르고 컵을 세워 1초 가만히 두세요');
