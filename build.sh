@@ -6,6 +6,7 @@ python3 src/build.py assets/sample_doc_pages src/core_template.html dist/gripspr
 python3 src/build_experiment.py src/experiment_template.html src/engine.js dist/gripspread_experiment.html
 python3 src/inject_calib.py dist/gripspread_experiment.html
 python3 src/build_experiment.py src/tuning_template.html src/engine.js dist/gripspread_tuning.html
+python3 src/build_experiment.py src/handtest_template.html src/engine.js dist/gripspread_handtest.html
 cp src/imu_calib.html dist/gripspread_imu_calib.html
 cp src/analysis.html dist/gripspread_analysis.html
 cp src/index.html dist/index.html
