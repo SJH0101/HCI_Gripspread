@@ -23,6 +23,11 @@ const GripEngine = (() => {
   //   - after GAP_MS: PAUSE as before (the spread must come back to the dead zone to resume)
   // Frames logged with reason 'coast' are bridged frames.
   const COAST_MS = 250, GAP_MS = 1500;
+  // Dead zone floor in degrees, each side. The dorsal angle spans fewer degrees than the old tip angle (a range of
+  // about 10° on the opening side is normal), so dead = 0.15 of it was ~1.5°: hand jitter kept leaving the zone, the
+  // command never sat at 0, and a trial could not arm (the scroll did not move at all). The zone is now at least
+  // DEAD_MIN_DEG wide on each side; with the old tip angle's larger ranges this floor never applies.
+  const DEAD_MIN_DEG = 3;
   const RANGE_KEY = 'gripspread_range_deg_v2';   // v2: dorsal θ (11/10); v1 ranges were tip-based
 
   const E = {
@@ -147,6 +152,9 @@ const GripEngine = (() => {
 
   // ---------- mapping ----------
   // Normalized deviation e in [-1, 1]: opening side divided by (max - r0), closing side by (r0 - min).
+  const sideDen = s => !E.range ? 15 : s >= 0 ? Math.max(P.minSide, E.range.max - E.r0) : Math.max(P.minSide, E.r0 - E.range.min);
+  const deadFrac = s => Math.min(0.9, Math.max(P.dead, DEAD_MIN_DEG / sideDen(s)));   // dead zone as a share of that side
+  const deadDeg = s => deadFrac(s) * sideDen(s);
   function normDev(v){
     const e = v - E.r0;
     if(!E.range) return Math.max(-1, Math.min(1, e / 15));
@@ -155,8 +163,7 @@ const GripEngine = (() => {
   }
   E.deadBand = () => {
     if(E.r0 == null) return null;
-    if(!E.range) return [E.r0 - P.dead*15, E.r0 + P.dead*15];
-    return [E.r0 - P.dead*Math.max(P.minSide, E.r0 - E.range.min), E.r0 + P.dead*Math.max(P.minSide, E.range.max - E.r0)];
+    return [E.r0 - deadDeg(-1), E.r0 + deadDeg(1)];
   };
   // Velocity with acceleration, not a direct angle->speed map:
   //  1. command speed = gain * mag^gamma, multiplied by a hold-time boost (1 -> boostMax, linear over boostMs,
@@ -173,7 +180,7 @@ const GripEngine = (() => {
     let cmd = 0;
     if(E.state === 'ACTIVE' && E.theta != null && E.r0 != null && E.reliable){
       const e = normDev(E.theta);
-      const mag = Math.max(0, Math.abs(e) - P.dead) / Math.max(0.01, 1 - P.dead);
+      const dz = deadFrac(e), mag = Math.max(0, Math.abs(e) - dz) / Math.max(0.01, 1 - dz);
       const dir = mag > 0 ? Math.sign(e) * E.dirSign : 0;
       if(dir !== holdDir){ holdDir = dir; B = 1; }
       if(dir && mag >= P.boostOn) B = Math.min(P.boostMax, B + (P.boostMax - 1) * dtMs / P.boostMs);

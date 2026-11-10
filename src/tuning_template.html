@@ -488,7 +488,7 @@ function tickTask(now){
     track.scrollTop = tr.S0; tr.pos = tr.S0;
     if(E.state === 'ACTIVE' && gsRest()){ if(tr.armSince == null) tr.armSince = now; } else tr.armSince = null;
     if(tr.armSince != null && now - tr.armSince >= ARM_MS){ run.phase = 'running'; tr.startT = now; taskMsg.textContent = ''; }
-    else taskMsg.textContent = E.state !== 'ACTIVE' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '';
+    else taskMsg.textContent = E.state !== 'ACTIVE' ? 'GripSpread를 켜 주세요 (편한 V로 잠깐 멈추기)' : '편한 V로 잠깐 멈추면 시작합니다';
   }
   else if(run.phase === 'running'){ const dt = Math.min(0.05, (now - (tr.lastTick || now)) / 1000); tr.pos += E.velocity * dt; track.scrollTop = tr.pos; tr.pos = Math.max(0, Math.min(track.scrollHeight - track.clientHeight, tr.pos)); }   // float position: scrollTop rounds to whole px and would swallow slow motion
   tr.lastTick = now;

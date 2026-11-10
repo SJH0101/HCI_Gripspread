@@ -300,11 +300,13 @@ function normDev(sv){
   const den = e >= 0 ? Math.max(MIN_SIDE, range.max - r0) : Math.max(MIN_SIDE, r0 - range.min);
   return Math.max(-1, Math.min(1, e / den));
 }
+// dead zone at least 3° each side (same as engine.js DEAD_MIN_DEG: the dorsal angle has small ranges)
+const sideDen = s => !range ? 15 : s >= 0 ? Math.max(MIN_SIDE, range.max - r0) : Math.max(MIN_SIDE, r0 - range.min);
+const deadFrac = s => Math.min(0.9, Math.max(P.dead, 3 / sideDen(s)));
 // dead-zone band edges in s units (asymmetric)
 function deadBand(){
   if(r0 == null) return null;
-  if(!range) return [r0 - P.dead*15, r0 + P.dead*15];
-  return [r0 - P.dead*Math.max(MIN_SIDE, r0 - range.min), r0 + P.dead*Math.max(MIN_SIDE, range.max - r0)];
+  return [r0 - deadFrac(-1)*sideDen(-1), r0 + deadFrac(1)*sideDen(1)];
 }
 
 // ---------- geometry ----------
@@ -366,7 +368,7 @@ function scrollTick(now){
   let cmd = 0;
   if(state === 'ACTIVE' && rSmooth != null && r0 != null && reliable){
     const e = normDev(rSmooth);
-    const mag = Math.max(0, Math.abs(e) - P.dead) / Math.max(0.01, 1 - P.dead);
+    const dz = deadFrac(e), mag = Math.max(0, Math.abs(e) - dz) / Math.max(0.01, 1 - dz);
     const dir = mag > 0 ? Math.sign(e) * dirSign : 0;
     if(dir !== holdDir){ holdDir = dir; B = 1; }
     // boost builds only while pushed hard, and drains as soon as the finger eases off
