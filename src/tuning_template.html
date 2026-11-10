@@ -142,6 +142,19 @@
           <label for="tCup">컵</label><select id="tCup"><option value="75">75mm 컵</option><option value="60">60mm 컵</option><option value="90">90mm 컵</option><option value="none">컵 없음</option></select>
           <label for="tN">버전당 시행 수</label><input id="tN" type="number" min="2" max="12" value="6">
         </div>
+        <h2>장비 (본 실험과 똑같이)</h2>
+        <p class="muted">값은 본 실험과 같은 자세·화면·카메라에서 맞춰야 본 실험에 그대로 쓸 수 있습니다.</p>
+        <div class="form">
+          <label>화면 각도</label><span><b>110°</b> 고정 <button id="btnLid" type="button">맥북 각도 센서 연결</button> <span id="lidLive" class="muted">센서 없음</span>
+            <span class="muted" style="display:block;margin-top:4px">목표 ±2° 안이면 초록. 센서가 없으면 아이폰 측정 앱 수평계를 화면 뒷면에 대고 20°.</span></span>
+          <label>카메라 (자동)</label><span id="camInfo" class="muted">카메라 준비 중…</span>
+          <label>확인</label><span id="tChecks">
+            <label><input type="checkbox" value="standing"> 서서, 책상·바닥 테이프 자리</label><br>
+            <label><input type="checkbox" value="other_hand_band"> 반대 손 밴드</label><br>
+            <label><input type="checkbox" value="chrome_zoom_100"> 크롬 확대 100%</label><br>
+            <label><input type="checkbox" value="no_video_effects"> 카메라 비디오 효과 끔 (제어 센터 → 비디오 효과)</label><br>
+            <label><input type="checkbox" value="cup_250g"> 컵 250 g (본 실험과 같은 컵)</label></span>
+        </div>
         <h2>맞출 값 (순서대로)</h2>
         <div id="paramList" class="box"></div>
         <h2>보정</h2>
@@ -262,6 +275,34 @@ const BASE = { ...E.P };
 $('paramList').innerHTML = PARAMS.map((p,i) => `<div>${i+1}. ${p.name} <span class="muted">· 지금 ${BASE[p.k]}${p.unit} · 한 칸 ${p.step}${p.unit} · ${p.why}</span></div>`).join('')
   + `<div class="muted" style="margin-top:6px">고정: ${FIXED.map(p => `${p.name} ${BASE[p.k]}${p.unit}`).join(' · ')}</div>`;
 
+// ---------- apparatus: same screen angle and camera as the study ----------
+const SCREEN_ANGLE = 110;
+const LID = { dev:null, angle:null };
+function lidShow(){
+  const a = LID.angle, ok = a != null && Math.abs(a - SCREEN_ANGLE) <= 2;
+  $('lidLive').textContent = a == null ? (LID.dev ? '읽는 중…' : '센서 없음') : `${a}° ${ok ? '맞음' : (a > SCREEN_ANGLE ? '−' + (a - SCREEN_ANGLE) : '+' + (SCREEN_ANGLE - a)) + '°'}`;
+  $('lidLive').className = a == null ? 'muted' : ok ? 'good' : 'bad';
+}
+const lidSet = a => { if(!(a > 0 && a < 360) || a === LID.angle) return; LID.angle = a; lidShow(); };
+async function lidOpen(d){
+  if(!d.opened) await d.open(); LID.dev = d; lidShow();
+  d.addEventListener('inputreport', e => lidSet(e.data.getUint16(0, true)));
+  const poll = async () => { try{ const v = await d.receiveFeatureReport(1); lidSet(v.getUint16(v.byteLength >= 3 ? 1 : 0, true)); }catch(err){} };
+  poll(); setInterval(poll, 500);
+}
+$('btnLid').onclick = async () => {
+  if(!navigator.hid){ $('lidLive').textContent = '이 브라우저는 지원 안 함 (크롬 필요)'; return; }
+  try{ const [d] = await navigator.hid.requestDevice({ filters:[{ vendorId:0x05ac, productId:0x8104, usagePage:0x0020, usage:0x008a }] });
+    if(!d){ $('lidLive').textContent = '선택 안 됨'; return; } await lidOpen(d); }
+  catch(e){ $('lidLive').textContent = '연결 실패: ' + e.message; }
+};
+if(navigator.hid) navigator.hid.getDevices().then(ds => { const d = ds.find(x => x.vendorId === 0x05ac && x.productId === 0x8104); if(d) lidOpen(d).catch(() => {}); }).catch(() => {});
+const camTimer = setInterval(() => { const c = E.camera; if(!c) return; clearInterval(camTimer);
+  const builtIn = /facetime|macbook|built-?in/i.test(c.label || '');
+  $('camInfo').className = builtIn ? 'muted' : 'bad';
+  $('camInfo').innerHTML = `${c.label || '이름 없음'} · ${c.width}×${c.height} · ${Math.round(c.frameRate || 0)} fps` + (builtIn ? ' · 내장 카메라' : ' · <b>내장 카메라가 아닙니다</b>. 크롬 주소창 왼쪽 › 카메라에서 맥북 카메라를 고르고 새로고침');
+}, 500);
+
 let T = null;      // tuning session
 let run = null;    // block of trials
 $('tCalib').onclick = () => { E.r0 = null; E.startRange(); $('tCalibR').textContent = '손 범위 → 편한 V 순서로 잽니다'; T = T || {}; T.calibWait = true; };
@@ -274,6 +315,9 @@ function updCalib(){
   $('tStart').disabled = !ok;
 }
 $('tStart').onclick = () => {
+  const offAngle = LID.angle != null && Math.abs(LID.angle - SCREEN_ANGLE) > 2, unchecked = [...document.querySelectorAll('#tChecks input')].filter(i => !i.checked).length;
+  const warn = [offAngle ? `화면 각도가 ${LID.angle}°입니다 (목표 ${SCREEN_ANGLE}°)` : '', LID.angle == null ? '화면 각도를 센서로 확인하지 않았습니다' : '', unchecked ? `확인 안 된 장비 항목 ${unchecked}개` : ''].filter(Boolean);
+  if(warn.length && !confirm(warn.join('\n') + '\n\n그래도 시작할까요?')) return;
   const keys = PARAMS.map(p => p.k);
   Object.assign(E.P, BASE);
   T = { id:$('tId').value.trim() || 'T?', cup:$('tCup').value, n:Math.max(2, +$('tN').value || 4), keys, ki:0,
@@ -369,7 +413,9 @@ function finishTuning(){
 $('tSave').onclick = async () => {
   const out = { tuning_id:T.id, target_marked:MARK_TARGET, cup:T.cup, trials_per_version:T.n, practice_trials:T.practice_trials || 0, started:T.started, finished:T.finished, calibration:T.calib,
     start_values:Object.fromEntries(T.keys.map(k => [k, BASE[k]])), final_values:Object.fromEntries(T.keys.map(k => [k, T.values[k]])),
-    all_engine_values:T.values, comparisons:T.comparisons, trials:T.trials };
+    all_engine_values:T.values, comparisons:T.comparisons, trials:T.trials,
+    apparatus:{ screen_angle_target_deg:SCREEN_ANGLE, screen_angle_measured_deg:LID.angle, screen_angle_source:LID.angle != null ? 'lid_sensor' : 'phone_level', camera:E.camera || null,
+      checks:[...document.querySelectorAll('#tChecks input')].filter(i => i.checked).map(i => i.value), angle_mode:E.P.angleMode } };
   download(`tuning_${T.id}_${T.started.slice(0,10)}.json`, out);
   const msg = t => $('tSaveMsg').textContent = t;
   try{ msg('서버에 올리는 중…'); await SRV.putJSON(`tuning/tuning_${String(T.id).replace(/[^A-Za-z0-9-]/g, '') || 'X'}_${SRV.stamp()}.json`, out); msg('파일 저장 + 서버 tuning 폴더에 올림'); }
