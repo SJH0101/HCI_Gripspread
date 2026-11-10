@@ -18,7 +18,7 @@ rm -rf dist/demo && python3 analysis/make_fake_data.py dist/demo 12 >/dev/null &
 rm -rf dist/docs && mkdir -p dist/docs/seed && cp docs/team/*.md dist/docs/seed/ && python3 -c "
 import os,re,json
 d='dist/docs/seed'; out=[]
-first=['schedule','meeting_1110','operator_manual','participant_script']
+first=['day_1110','schedule','operator_manual','participant_script']
 for f in sorted(os.listdir(d), key=lambda f:(first.index(f[:-3]) if f[:-3] in first else 99, f)):
     if f.endswith('.md'):
         m=re.search(r'^#\s+(.+)$', open(os.path.join(d,f),encoding='utf-8').read(), re.M)
