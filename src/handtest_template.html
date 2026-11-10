@@ -54,6 +54,7 @@
     <span>원래 θ 손등 / 손끝</span><b id="raw">–</b>
     <span>옆 각도 검지 / 중지</span><b id="abd">–</b>
     <span>손 방향 |n·z| (0.35↑)</span><b id="facing">–</b>
+    <span>첫 마디 펴짐 검지 / 중지 (0.4↑)</span><b id="base">–</b>
     <span>입력</span><b id="rel">–</b>
     <span>범위 (최소~최대)</span><b id="range">–</b>
     <span>편한 V</span><b id="r0">–</b>
@@ -123,6 +124,7 @@ function loop(now){
     $('raw').textContent = f ? `${f1(f.degDorsal)} / ${f1(f.degTips)}` : '–';
     $('abd').textContent = f ? `${f1(f.abdI)} / ${f1(f.abdM)}` : '–';
     $('facing').textContent = f ? f1(f.facing, 2) : '–';
+    $('base').textContent = f ? `${f1(f.baseI, 2)} / ${f1(f.baseM, 2)}` : '–';
     $('rel').textContent = E.reliable ? (E.reason === 'coast' ? '메우는 중' : '정상') : E.lm ? ({ facing:'손등 방향', folded:'접힘', lost:'불안정' }[E.reason] || '멈춤') : '손 없음';
     $('range').textContent = E.range ? `${f1(E.range.min)} ~ ${f1(E.range.max)}` : '–';
     $('r0').textContent = f1(E.r0);

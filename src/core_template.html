@@ -336,10 +336,12 @@ function spreadAngle(world){
   const unit = v => { const l = norm(v) || 1e-12; return {x:v.x/l, y:v.y/l, z:v.z/l}; };
   const k = unit(proj(sub(world[17], world[5])));
   let f = unit(cross(n, k)); if(dot(f, sub(world[9], world[0])) < 0) f = {x:-f.x, y:-f.y, z:-f.z};
-  const dir = b => { const w = [0.6, 0.3, 0.1]; let d = {x:0,y:0,z:0};
-    for(let s=0; s<3; s++){ const u = unit(sub(world[b+s+1], world[b+s])); d = {x:d.x+w[s]*u.x, y:d.y+w[s]*u.y, z:d.z+w[s]*u.z}; } return d; };
-  const abd = d => Math.atan2(dot(d, k), dot(d, f)) * 180 / Math.PI;
-  const deg = abd(dir(9)) - abd(dir(5));
+  const W = [0.6, 0.3, 0.1];
+  const abd = mcp => { let x = 0, y = 0;   // bones curled past 90° are flipped toward the fingers (see engine.js)
+    for(let s=0; s<3; s++){ const u = unit(sub(world[mcp+s+1], world[mcp+s])), fy = dot(u, f), sg = fy < 0 ? -1 : 1;
+      x += W[s] * sg * dot(u, k); y += W[s] * sg * fy; }
+    return Math.atan2(x, y) * 180 / Math.PI; };
+  const deg = abd(9) - abd(5);
   return { deg, rawDeg:deg, degTips, folded:false, facing, extI, extM };
 }
 

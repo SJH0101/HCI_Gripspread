@@ -8,7 +8,8 @@ const GripEngine = (() => {
     boostMax:2.5, boostMs:1200, boostOn:0.6, boostDecayMs:200, accMs:250, brakeMs:60, minSide:10, minSpeed:15,
     angleMode:'dorsal' };  // 'dorsal' (11/10): back of the hand faces the camera; 'tips': the earlier tip-based V
   const FOLD_PERSIST = 6; // frames (~0.1 s) a 'folded' reading must last before input freezes
-  const EXT_MIN = 0.55;    // in-plane knuckle->tip length / palm length below this = fingers folded
+  const EXT_MIN = 0.55;    // 'tips': in-plane knuckle->tip length / palm length below this = fingers folded
+  const BASE_MIN = 0.4;    // 'dorsal': in-plane share of the first finger bone below this (knuckle bent > ~66°) = folded
   const JUMP_MAX = 20;     // deg per frame; bigger jumps are dropped unless they persist 3 frames
   const FACING_MIN = 0.35; // |palm normal . camera axis| below this = palm seen edge-on
   const HOLD_SD = 2.5;     // deg; neutral capture restarts when the spread moves more than this
@@ -56,11 +57,11 @@ const GripEngine = (() => {
   //                  axis across the finger; per-person calibration absorbs the rest).
   //             θ  = abduction(middle) − abduction(index): grows as the V opens, ~0 when the fingers lie side by
   //                  side, below 0 if they cross. Fingertips are barely used.
-  //           The fold check is off in this mode (curled fingers are the normal grip); facing still applies.
+  //           Fold check: only the bend at the knuckle counts (first bone nearly perpendicular to the back of the hand,
+  //           as in a fist); curled PIP/DIP joints are the normal grip. Facing still applies.
   const unit = v => { const l = norm(v) || 1e-12; return {x:v.x/l, y:v.y/l, z:v.z/l}; };
   const add = (a,b,k=1) => ({x:a.x+k*b.x, y:a.y+k*b.y, z:a.z+k*b.z});
   const W_SEG = [0.6, 0.3, 0.1];
-  function fingerDir(w, mcp){ let d = {x:0,y:0,z:0}; for(let s=0; s<3; s++) d = add(d, unit(sub(w[mcp+s+1], w[mcp+s])), W_SEG[s]); return unit(d); }
   function spreadAngle(world){
     // palm plane: facing check, and the 'tips' angle
     const n0 = cross(sub(world[5], world[0]), sub(world[17], world[0])), nl = norm(n0);
@@ -74,11 +75,22 @@ const GripEngine = (() => {
     // dorsal: abduction of each finger along the knuckle line
     const k = unit(proj(sub(world[17], world[5])));
     let f = unit(cross(n, k)); if(dot(f, sub(world[9], world[0])) < 0) f = {x:-f.x, y:-f.y, z:-f.z};
-    const abd = d => Math.atan2(dot(d, k), dot(d, f)) * 180 / Math.PI;
-    const abdI = abd(fingerDir(world, 5)), abdM = abd(fingerDir(world, 9));
+    // Each bone's in-plane direction is taken pointing toward the fingers: a bone curled past 90° (back toward the
+    // wrist) is flipped, because flipping undoes the curl and leaves its true sideways lean. Without this, a deep
+    // grip turns the summed direction backward and the lean changes sign.
+    const abd = mcp => { let x = 0, y = 0;
+      for(let s=0; s<3; s++){ const u = unit(sub(world[mcp+s+1], world[mcp+s])), fy = dot(u, f), sg = fy < 0 ? -1 : 1;
+        x += W_SEG[s] * sg * dot(u, k); y += W_SEG[s] * sg * fy; }
+      return Math.atan2(x, y) * 180 / Math.PI; };
+    const abdI = abd(5), abdM = abd(9);
     const degDorsal = abdM - abdI;
     const deg = P.angleMode === 'tips' ? degTips : degDorsal;
-    return { deg, degTips, degDorsal, abdI, abdM, facing:Math.abs(n.z), extI:la/palmLen, extM:lb/palmLen };
+    // dorsal fold measure: how much of each finger's first bone (knuckle -> PIP) lies in the back-of-hand plane.
+    // 1 = straight out, cos(bend at the knuckle) in general; a fist or fingers wrapped flat on the cup drive it to 0,
+    // and then the sideways angle is read from a stub and turns to noise.
+    const base = b => { const u = unit(sub(world[b+1], world[b])); return norm(proj(u)); };
+    const baseI = base(5), baseM = base(9);
+    return { deg, degTips, degDorsal, abdI, abdM, baseI, baseM, facing:Math.abs(n.z), extI:la/palmLen, extM:lb/palmLen };
   }
 
   // ---------- state machine ----------
@@ -212,7 +224,9 @@ const GripEngine = (() => {
       const m = spreadAngle(world);
       E.feat = m ? { ...m, curlI:fingerCurl(world,5), curlM:fingerCurl(world,9),
         score: res.handedness && res.handedness[0] && res.handedness[0][0] ? res.handedness[0][0].score : null } : null;
-      const folded = m && P.angleMode === 'tips' && (Math.min(m.extI, m.extM) < EXT_MIN || Math.max(E.feat.curlI, E.feat.curlM) > P.curlMax);
+      const folded = m && (P.angleMode === 'tips'
+        ? (Math.min(m.extI, m.extM) < EXT_MIN || Math.max(E.feat.curlI, E.feat.curlM) > P.curlMax)
+        : Math.min(m.baseI, m.baseM) < BASE_MIN);   // dorsal: only the knuckle bend counts, PIP/DIP curl is the grip
       foldFrames = folded ? foldFrames + 1 : 0;
       E.reason = !m ? 'lost' : m.facing < FACING_MIN ? 'facing' : foldFrames >= FOLD_PERSIST ? 'folded' : null;
       E.reliable = !E.reason;
