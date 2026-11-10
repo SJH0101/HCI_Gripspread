@@ -13,6 +13,14 @@ const GripEngine = (() => {
   const HOLD_SD = 2.5;     // deg; neutral capture restarts when the spread moves more than this
   const REARM_MS = 250;    // after a pause, the spread must sit in the dead zone this long before input resumes
   const CALIB_MS = 1500, COUNT_MS = 3000;
+  // Dropouts (hand not detected) while ACTIVE. Closing the V hides the gap between index and middle and, in front
+  // of a white cup, the detector often loses the hand exactly then. So a dropout is bridged instead of cutting input:
+  //   - any direction: the last angle is kept for COAST_MS (one or two lost frames are invisible to the user)
+  //   - last reading on the closing side (spread below the neutral): kept up to GAP_MS, so scrolling continues
+  //   - otherwise input stops (command 0) but the state stays ACTIVE; the hand back within GAP_MS resumes at once
+  //   - after GAP_MS: PAUSE as before (the spread must come back to the dead zone to resume)
+  // Frames logged with reason 'coast' are bridged frames.
+  const COAST_MS = 250, GAP_MS = 1500;
   const RANGE_KEY = 'gripspread_range_deg_v1';
 
   const E = {
@@ -158,7 +166,7 @@ const GripEngine = (() => {
     try{ const tr = stream.getVideoTracks()[0], st = tr.getSettings(); E.camera = { label:tr.label, width:st.width, height:st.height, frameRate:st.frameRate }; }catch(e){ E.camera = null; }
     const fileset = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
     const opts = d => ({ baseOptions:{ modelAssetPath:"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", delegate:d },
-      runningMode:"VIDEO", numHands:1, minHandDetectionConfidence:0.5, minHandPresenceConfidence:0.5, minTrackingConfidence:0.5 });
+      runningMode:"VIDEO", numHands:1, minHandDetectionConfidence:0.4, minHandPresenceConfidence:0.3, minTrackingConfidence:0.3 });
     try{ landmarker = await HandLandmarker.createFromOptions(fileset, opts("GPU")); }
     catch(e){ landmarker = await HandLandmarker.createFromOptions(fileset, opts("CPU")); }
     status();
@@ -180,16 +188,21 @@ const GripEngine = (() => {
       foldFrames = folded ? foldFrames + 1 : 0;
       E.reason = !m ? 'lost' : m.facing < FACING_MIN ? 'facing' : foldFrames >= FOLD_PERSIST ? 'folded' : null;
       E.reliable = !E.reason;
-      if(E.reliable && !folded){   // brief folded readings keep the last angle instead of feeding noise
+      if(E.reliable && m && !folded){   // brief folded readings keep the last angle instead of feeding noise
         if(E.theta != null && Math.abs(m.deg - E.theta) > JUMP_MAX && ++jumpCount < 3){ /* drop spike */ }
         else { jumpCount = 0; E.theta = E.theta == null ? m.deg : E.theta + P.smooth * (m.deg - E.theta); }
       }
-    } else { E.reliable = false; E.reason = null; E.feat = null; }
+    } else {
+      E.feat = null;
+      const gap = now - lastSeen, closing = E.r0 != null && E.theta != null && E.theta < E.r0;
+      const coast = !E.calibStep && E.state === 'ACTIVE' && E.theta != null && (gap <= COAST_MS || (closing && gap <= GAP_MS));
+      E.reliable = coast; E.reason = coast ? 'coast' : null;
+    }
 
     if(E.calibStep){
       if(!lm) calibTick(now, null); else if(E.reliable) calibTick(now, E.theta);
     } else if(!lm){
-      if(now - lastSeen > 500){
+      if(now - lastSeen > (E.state === 'ACTIVE' ? GAP_MS : 500)){
         if(E.r0 != null && (E.state === 'ACTIVE' || E.state === 'PAUSE')) setState('PAUSE');   // keep the neutral
         else { setState('IDLE'); needHandDown = false; }
         E.theta = null;
