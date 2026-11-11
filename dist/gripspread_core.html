@@ -243,7 +243,7 @@ function showReliability(lm){
 }
 
 // ---------- range calibration (per user) ----------
-const RANGE_KEY = 'gripspread_range_deg_v2';   // v2: dorsal θ (11/10)
+const RANGE_KEY = 'gripspread_range_deg_v2';   // v2: dorsal θ
 let range = null; // {min, max}
 try{ const v = JSON.parse(localStorage.getItem(RANGE_KEY)); if(v && v.max > v.min) range = v; }catch(e){}
 const mRange = document.getElementById('mRange');
@@ -327,7 +327,7 @@ const norm = a => Math.hypot(a.x, a.y, a.z);
 const EXT_MIN = 0.55;   // in-plane knuckle->tip length / palm length below this = fingers folded
 const JUMP_MAX = 20;   // deg per frame; bigger jumps are dropped unless they persist
 const FACING_MIN = 0.35; // |palm normal · camera axis| below this = palm seen nearly edge-on -> unreliable
-// V angle (see the 11/10 note inside). degTips keeps the earlier tip-based angle for the diagnostics only.
+// V angle (dorsal, see engine.js). degTips keeps the tip-based angle for the diagnostics only.
 function spreadAngle(world){
   const n0 = cross(sub(world[5], world[0]), sub(world[17], world[0])), nl = norm(n0);
   if(nl < 1e-9) return null;
@@ -342,7 +342,7 @@ function spreadAngle(world){
   const extI = la / palmLen, extM = lb / palmLen;
   const c = Math.max(-1, Math.min(1, dot(a,b)/(la*lb)));
   const degTips = Math.acos(c) * 180 / Math.PI;
-  // 11/10: back of the hand faces the camera and the fingertips curl round the cup, so θ comes from the finger
+  // Back of the hand faces the camera and the fingertips curl round the cup, so θ comes from the finger
   // bases (same as engine.js 'dorsal'): abduction of each finger in the back-of-hand plane, measured from across the
   // knuckle line 5->17, θ = middle − index. Curled fingers are the normal grip here, so nothing counts as folded.
   const unit = v => { const l = norm(v) || 1e-12; return {x:v.x/l, y:v.y/l, z:v.z/l}; };
@@ -474,7 +474,7 @@ const oc = overlay.getContext('2d');
 const CONN = [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]];
 // Only the landmarks that feed the angle are drawn strongly; thumb, ring and pinky (unused, often occluded by the cup) stay faint.
 const USED_CONN = [[0,5],[5,9],[9,13],[13,17],[0,17],[5,6],[6,7],[7,8],[9,10],[10,11],[11,12]];
-const USED_PTS = [0,5,6,7,9,10,11,17];   // 11/10: knuckles and the first bones (dorsal angle)
+const USED_PTS = [0,5,6,7,9,10,11,17];   // knuckles and the first bones (dorsal angle)
 function drawOverlay(lm){
   overlay.width = video.videoWidth; overlay.height = video.videoHeight;
   oc.clearRect(0,0,overlay.width,overlay.height);
@@ -572,7 +572,7 @@ function loop(){
       } : null;
       showDiag(feat);
       if(recording && feat) recordFrame(now, feat, lm, world);
-      const curled = false;   // 11/10: curled fingers are the normal grip with the back of the hand to the camera
+      const curled = false;   // curled fingers are the normal grip with the back of the hand to the camera
       const foldedNow = !!m && (m.folded || curled);
       foldFrames = foldedNow ? foldFrames + 1 : 0;   // ~0.1 s persistence before freezing
       unreliableReason = !m ? 'lost' : m.facing < FACING_MIN ? 'facing' : foldFrames >= 6 ? 'folded' : null;

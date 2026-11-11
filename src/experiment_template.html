@@ -765,7 +765,7 @@ $('btnImuCalApply').onclick = () => {
 // apparatus: device fields are remembered in this browser; checks are per session
 const ENV_KEY = 'gripspread_env_v1';
 let ENV_PREV = null;
-try{ ENV_PREV = JSON.parse(localStorage.getItem(ENV_KEY)); if(ENV_PREV){ $('eDevice').value = ENV_PREV.device || ''; $('eOS').value = ENV_PREV.os || '';  /* angle is fixed by the protocol (110°, 11/10); not restored from earlier sessions */ } }catch(e){}
+try{ ENV_PREV = JSON.parse(localStorage.getItem(ENV_KEY)); if(ENV_PREV){ $('eDevice').value = ENV_PREV.device || ''; $('eOS').value = ENV_PREV.os || '';  /* angle is fixed by the protocol (110°); not restored from earlier sessions */ } }catch(e){}
 // ---------- MacBook lid angle sensor over WebHID (Apple sensor hub 05AC:8104, usage page 0x20, usage 0x8A) ----------
 // Reports the hinge angle in degrees (0 = closed) as a little-endian uint16. Read continuously so a lid bumped
 // during the session is noticed and logged.
@@ -1066,9 +1066,8 @@ document.addEventListener('keydown', e => {
 // Clutch at each trial start. A trackpad has a natural clutch (fingers off = no input); GripSpread does not, so any
 // spread at the moment the next target appears would move the content before it is read. The target is shown at
 // once, and GS input is engaged ARM_MS after it appears (GripSpread must be on).
-// 11/10: until then engaging also required the spread to rest in the dead zone. In use that felt like the
-// technique not responding (moving the hand during the wait kept postponing the start), so it is a fixed delay
-// now, as in Fashimpaur et al. Whether the hand was at rest when input engaged is logged per trial (gs_start_rest).
+// It is a fixed delay, as in Fashimpaur et al.; the spread does not have to rest in the dead zone. Whether the hand
+// was at rest when input engaged is logged per trial (gs_start_rest).
 // ARM_MS = 150 ms, following Fashimpaur et al. (CHI 2023), who added a 0.15 s delay between activating a freehand
 // scroll technique (pinch) and list movement, for freehand techniques only. Likewise only GripSpread gets this clutch;
 // the trackpad is live as soon as the target appears (its fingers-off state is already a clutch).

@@ -75,7 +75,7 @@ const GripEngine = (() => {
   // ---------- tunable parameters (pilot values) ----------
   const P = { dead:0.15, gain:800, gamma:2.2, holdMs:700, smooth:0.35, curlMax:80,
     boostMax:2.5, boostMs:1200, boostOn:0.6, boostDecayMs:200, accMs:250, brakeMs:60, minSide:10, minSpeed:15,
-    angleMode:'dorsal' };  // 'dorsal' (11/10): back of the hand faces the camera; 'tips': the earlier tip-based V
+    angleMode:'dorsal' };  // 'dorsal': back of the hand faces the camera; 'tips': tip-based V
   const FOLD_PERSIST = 6; // frames (~0.1 s) a 'folded' reading must last before input freezes
   const EXT_MIN = 0.55;    // 'tips': in-plane knuckle->tip length / palm length below this = fingers folded
   const BASE_MIN = 0.4;    // 'dorsal': in-plane share of the first finger bone below this (knuckle bent > ~66°) = folded
@@ -89,15 +89,14 @@ const GripEngine = (() => {
   //   - any direction: the last angle is kept for COAST_MS (one or two lost frames are invisible to the user)
   //   - last reading on the closing side (spread below the neutral): kept up to GAP_MS, so scrolling continues
   //   - otherwise input stops (command 0) but the state stays ACTIVE; the hand back within GAP_MS resumes at once
-  //   - after GAP_MS: PAUSE as before (the spread must come back to the dead zone to resume)
+  //   - after GAP_MS: PAUSE (the spread must come back to the dead zone to resume)
   // Frames logged with reason 'coast' are bridged frames.
   const COAST_MS = 250, GAP_MS = 1500;
-  // Dead zone floor in degrees, each side. The dorsal angle spans fewer degrees than the old tip angle (a range of
-  // about 10° on the opening side is normal), so dead = 0.15 of it was ~1.5°: hand jitter kept leaving the zone, the
-  // command never sat at 0, and a trial could not arm (the scroll did not move at all). The zone is now at least
-  // DEAD_MIN_DEG wide on each side; with the old tip angle's larger ranges this floor never applies.
+  // Dead zone floor in degrees, each side. The dorsal angle spans few degrees (about 10° on the opening side is
+  // normal), so dead = 0.15 alone would be ~1.5° and hand jitter would keep the command off zero. The zone is at least
+  // DEAD_MIN_DEG wide on each side.
   const DEAD_MIN_DEG = 3;
-  const RANGE_KEY = 'gripspread_range_deg_v2';   // v2: dorsal θ (11/10); v1 ranges were tip-based
+  const RANGE_KEY = 'gripspread_range_deg_v2';   // v2: dorsal θ
 
   const E = {
     P, dirSign:-1, state:'IDLE', r0:null, range:null, theta:null, reliable:false, reason:null,
@@ -116,9 +115,9 @@ const GripEngine = (() => {
   const bend = (w,a,b,c) => angBetween(sub(w[b],w[a]), sub(w[c],w[b]));
   const fingerCurl = (w, mcp) => bend(w,mcp,mcp+1,mcp+2) + bend(w,mcp+1,mcp+2,mcp+3);
   // Two ways to read the V angle; P.angleMode picks which one drives θ (both are computed and kept in E.feat).
-  //  'tips'   (until 11/10): from the midpoint of knuckles 5 and 9, the angle between fingertips 8 and 12, in the
+  //  'tips':   from the midpoint of knuckles 5 and 9, the angle between fingertips 8 and 12, in the
   //           palm plane (0,5,17). Needs both tips in view.
-  //  'dorsal' (from 11/10): the back of the hand faces the camera and the cup sits in the palm, so the knuckles and
+  //  'dorsal': the back of the hand faces the camera and the cup sits in the palm, so the knuckles and
   //           the first finger bones are what the camera sees well; the fingertips curl round the cup, behind it.
   //           θ is the difference of the two fingers' sideways (abduction) angles at the knuckles:
   //             k  = knuckle line, index knuckle 5 -> little-finger knuckle 17 (long baseline, seen on the back)
