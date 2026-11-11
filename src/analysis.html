@@ -49,6 +49,7 @@
     <p class="muted">서버의 <b>experiment</b> 폴더에서 참가자마다 마지막 전체 zip(…_final.zip), 없으면 가장 최근 중간 저장본을 가져옵니다. 비밀번호가 기억돼 있으면 페이지를 열 때 자동으로 불러옵니다.</p>
     <div class="form">
       <label>연구자 비밀번호<input id="cPw" class="srvPw" type="password" autocomplete="current-password"></label>
+      <label>오차 막대<select id="errMode"><option value="sd">±1 표준편차 (SD)</option><option value="ci">피험자 내 95% 신뢰구간</option></select></label>
       <label>데이터<select id="cKind"><option value="experiment">본 실험 (experiment)</option><option value="pilot">본 실험 파일럿 (pilot)</option><option value="rehearsal">리허설 (rehearsal)</option></select></label>
     </div>
     <div class="actions"><button class="primary" id="cLoad">불러와서 분석</button><button id="cDemo">데모(가짜 데이터 12명)로 보기</button><span id="cMsg" class="muted"></span></div>
@@ -384,7 +385,7 @@ function artAnova2(Y, a, b){
   return out;
 }
 function pairedT(x, y){ const d = x.map((v,i) => v - y[i]), n = d.length, m = mean(d), s = sd(d), se = s/Math.sqrt(n), t = m / se, h = tCrit(n-1) * se;
-  return { t, df:n-1, p:pT2(Math.abs(t), n-1), d:m/s, m, lo:m-h, hi:m+h }; }
+  return { t, df:n-1, p:pT2(Math.abs(t), n-1), d:m/s, m, s, lo:m-h, hi:m+h }; }
 // Holm step-down adjustment (controls family-wise error like Bonferroni, never less powerful)
 function holm(ps){ const o = ps.map((p, i) => [p, i]).filter(x => isFinite(x[0])).sort((a, b) => a[0]-b[0]), m = o.length, adj = ps.map(() => NaN); let run = 0;
   o.forEach(([p, i], k) => { run = Math.max(run, Math.min(1, (m-k)*p)); adj[i] = run; }); return adj; }
@@ -484,7 +485,7 @@ const fp = p => !isFinite(p) ? '–' : p < .001 ? '< .001' : p.toFixed(3).replac
 const stars = p => p < .05 ? ' sig' : '';
 function chart(desc, cups, { yLabel, pct = false, digits = 2 }){
   const W = 440, H = 260, L = 52, R = 16, T = 16, B = 40;
-  const vals = Object.values(desc).flatMap(d => [d.lo, d.hi, d.m]).filter(isFinite);
+  const vals = Object.values(desc).flatMap(d => [errLo(d), errHi(d), d.m]).filter(isFinite);
   if(!vals.length) return '<p class="muted">데이터 없음</p>';
   let lo = Math.min(0, ...vals), hi = Math.max(...vals); if(hi === lo) hi = lo + 1;
   const raw = (hi - lo) / 5, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 2.5, 5, 10].map(k => k*mag).find(k => k >= raw);
@@ -500,7 +501,7 @@ function chart(desc, cups, { yLabel, pct = false, digits = 2 }){
     const path = pts.filter(Boolean).map((p, i) => (i ? 'L' : 'M') + p[0] + ',' + p[1]).join('');
     g += `<path d="${path}" fill="none" stroke="${col}" stroke-width="2"/>`;
     for(const p of pts.filter(Boolean)){ const d = p[2];
-      if(isFinite(d.lo)) g += `<line x1="${p[0]}" x2="${p[0]}" y1="${y(d.lo)}" y2="${y(d.hi)}" stroke="${col}" stroke-width="1.5"/>`;
+      if(isFinite(errLo(d)) && isFinite(errHi(d))) g += `<line x1="${p[0]}" x2="${p[0]}" y1="${y(errLo(d))}" y2="${y(errHi(d))}" stroke="${col}" stroke-width="1.5"/>`;
       g += `<circle cx="${p[0]}" cy="${p[1]}" r="4" fill="${col}"><title>${TECH_NAME[t]} ${fmt(pct ? d.m*100 : d.m, digits)}${pct?'%':''} (n=${d.n})</title></circle>`; }
   });
   return `<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`;
@@ -578,7 +579,7 @@ function orderSection(cells, roster, key){
     if(row.every(isFinite)){ Yp.push(row); usedP.push(p); } }
   out += `<h3 style="margin-top:20px">블록 안 위치: 몇 번째 조건이었나 (컵과 무관, 학습·피로)</h3>`;
   if(Yp.length >= 3){ const A = rmAnova2(Yp, 2, 4), rename = { '기법':'기법', '컵':'위치', '기법 × 컵':'기법 × 위치' };
-    out += `<div class="grid"><div>${linePlot({ xs:['1번째', '2번째', '3번째', '4번째'], W:340, H:210, series:TECHS.map((t, ti) => ({ name:TECH_NAME[t], col:t === 'gs' ? 'var(--gs)' : 'var(--tp)', ys:[0,1,2,3].map(k => mean(Yp.map(y => y[ti*4 + k]))) })) })}${legend.replace('점 = 평균, 막대 = 피험자 내 95% 신뢰구간', '점 = 평균')}</div>
+    out += `<div class="grid"><div>${linePlot({ xs:['1번째', '2번째', '3번째', '4번째'], W:340, H:210, series:TECHS.map((t, ti) => ({ name:TECH_NAME[t], col:t === 'gs' ? 'var(--gs)' : 'var(--tp)', ys:[0,1,2,3].map(k => mean(Yp.map(y => y[ti*4 + k]))) })) })}${legendOf().replace(/점 = 평균, 막대 = [^<]*/, '점 = 평균')}</div>
       <div>${fHead}${Object.entries(A).map(([k, r]) => fRow(rename[k], r)).join('')}</table><p class="muted">반복측정 ANOVA, n = ${Yp.length}. 위치 효과가 있으면 학습(뒤로 갈수록 좋아짐)이나 피로(나빠짐)가 있다는 뜻. 라틴 방격이 컵마다 위치를 고르게 나눴으므로 컵 비교를 치우치게 하지는 않지만, 보고서에 적는다.</p></div></div>`; }
   else out += '<p class="muted">모든 위치가 있는 참가자가 3명 이상 필요합니다(컵이 없는 지표는 위치 4개가 다 안 나옴).</p>';
   out += '</details>';
@@ -601,7 +602,7 @@ function orderPlots(cells, roster){
            `<circle cx="${x(0)}" cy="${y(a)}" r="3.5" fill="var(--tp)"/><circle cx="${x(1)}" cy="${y(b)}" r="3.5" fill="var(--gs)"/>`; });
     return `<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`; }).join('') + '</div><div class="legend"><span>실선 = 트랙패드 먼저 한 그룹</span><span>점선 = GripSpread 먼저 한 그룹</span><span>두 선이 평행하면 순서 효과 없음(대칭)</span></div>';
 }
-const legend = '<div class="legend"><span><i style="background:var(--tp)"></i>트랙패드</span><span><i style="background:var(--gs)"></i>GripSpread</span><span>점 = 평균, 막대 = 피험자 내 95% 신뢰구간</span></div>';
+const legendOf = () => `<div class="legend"><span><i style="background:var(--tp)"></i>트랙패드</span><span><i style="background:var(--gs)"></i>GripSpread</span><span>점 = 평균, 막대 = ${ERR === 'sd' ? '±1 표준편차' : '피험자 내 95% 신뢰구간'}</span></div>`;
 function anovaTable(A, n, ART){
   return `<table><tr><th>효과</th><th>F</th><th>df</th><th>GG ε</th><th>p</th><th>η²G</th><th>부분 η²</th><th>ART p</th></tr>` + Object.entries(A).map(([k, r]) => { const q = ART && ART[k];
     const flip = q && (q.p < .05) !== (r.p < .05);
@@ -614,20 +615,25 @@ function postHoc(cells, key, cups, digits, pct){
     for(const pid of used){ const a = cells.find(e => e.pid === pid && e.tech === 'trackpad' && e.cup === c), b = cells.find(e => e.pid === pid && e.tech === 'gs' && e.cup === c); x.push(a[key]); y.push(b[key]); }
     return x.length >= 3 ? pairedT(x, y) : null; });
   const adj = holm(tests.map(r => r ? r.p : NaN)), f = v => pct ? fmt(v*100, digits) + '%p' : fmt(v, digits);
-  const rows = cups.map((c, i) => { const r = tests[i]; if(!r) return `<tr><td>${CUP_NAME[c]}</td><td colspan="5" class="muted">참가자 부족</td></tr>`;
-    return `<tr><td>${CUP_NAME[c]}</td><td class="num">${f(r.m)}</td><td class="num">[${f(r.lo)}, ${f(r.hi)}]</td><td class="num">t(${r.df}) = ${fmt(r.t)}</td><td class="num${stars(adj[i])}">${fp(adj[i])}</td><td class="num">${fmt(r.d)}</td></tr>`; });
-  return `<h3>컵별 기법 차이 (트랙패드 − GripSpread, 대응 t, Holm 보정 ${cups.length}회)</h3><table><tr><th>컵</th><th>평균 차</th><th>95% CI</th><th>t</th><th>p (Holm)</th><th>dz</th></tr>${rows.join('')}</table>`;
+  const rows = cups.map((c, i) => { const r = tests[i]; if(!r) return `<tr><td>${CUP_NAME[c]}</td><td colspan="6" class="muted">참가자 부족</td></tr>`;
+    return `<tr><td>${CUP_NAME[c]}</td><td class="num">${f(r.m)}</td><td class="num">${f(r.s)}</td><td class="num">[${f(r.lo)}, ${f(r.hi)}]</td><td class="num">t(${r.df}) = ${fmt(r.t)}</td><td class="num${stars(adj[i])}">${fp(adj[i])}</td><td class="num">${fmt(r.d)}</td></tr>`; });
+  return `<h3>컵별 기법 차이 (트랙패드 − GripSpread, 대응 t, Holm 보정 ${cups.length}회)</h3><table><tr><th>컵</th><th>평균 차</th><th>차의 SD</th><th>95% CI</th><th>t</th><th>p (Holm)</th><th>dz</th></tr>${rows.join('')}</table>`;
 }
 function block(title, cells, key, cups, opt){
   const desc = describeWS(cells, key, cups), { Y, used } = matrix(cells, key, cups);
   const tbl = `<table><tr><th>기법</th>${cups.map(c => `<th>${CUP_NAME[c]}</th>`).join('')}</tr>` + TECHS.map(t => `<tr><td>${TECH_NAME[t]}</td>` +
     cups.map(c => { const d = desc[t+c]; return `<td class="num">${opt.pct ? fmt(d.m*100,1)+'%' : fmt(d.m, opt.digits)} <span class="muted">± ${opt.pct ? fmt(d.s*100,1) : fmt(d.s, opt.digits)}</span></td>`; }).join('') + '</tr>').join('') + `</table><p class="muted">평균 ± 표준편차 (모든 조건이 있는 참가자)</p>`;
   const A = Y.length >= 3 ? rmAnova2(Y, 2, cups.length) : null, ART = A ? artAnova2(Y, 2, cups.length) : null;
-  return { html:`<div class="card"><h3>${title}</h3><div class="grid"><div class="chart">${chart(desc, cups, opt)}${legend}</div><div class="scroll">${tbl}${A ? anovaTable(A, Y.length, ART) : '<p class="muted">검정에는 모든 조건이 있는 참가자가 3명 이상 필요합니다.</p>'}</div></div>${A ? postHoc(cells, key, cups, opt.digits, opt.pct) : ''}</div>`, desc, A, ART, n:Y.length };
+  return { html:`<div class="card"><h3>${title}</h3><div class="grid"><div class="chart">${chart(desc, cups, opt)}${legendOf()}</div><div class="scroll">${tbl}${A ? anovaTable(A, Y.length, ART) : '<p class="muted">검정에는 모든 조건이 있는 참가자가 3명 이상 필요합니다.</p>'}</div></div>${A ? postHoc(cells, key, cups, opt.digits, opt.pct) : ''}</div>`, desc, A, ART, n:Y.length };
 }
 
 const IMU_FIG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" font-family="-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif">   <defs>     <!-- cup outline in its own frame: rim at y=-70, bottom at y=+70, centred on x=0 -->     <path id="cupShape" d="M-46,-70 L46,-70 L36,70 L-36,70 Z"/>     <clipPath id="cupClip"><use href="#cupShape"/></clipPath>     <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D9622B"/></marker>     <!-- hand gripping the cup: ring and little finger wrap the front, thumb on the left, index and middle in a V above -->     <g id="hand">       <path d="M40,-34 C70,-34 78,-6 70,30 C64,58 44,66 30,62" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <rect x="-40" y="0" width="86" height="20" rx="10" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <rect x="-36" y="22" width="80" height="18" rx="9" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <path d="M-44,-10 C-62,-14 -66,6 -50,12 L-30,12 C-24,4 -30,-8 -44,-10 Z" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <path d="M52,-30 L58,-112 Q62,-122 70,-112 L70,-32 Z" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <path d="M66,-28 L96,-104 Q104,-112 108,-100 L82,-22 Z" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>     </g>     <g id="cupUpright">       <use href="#cupShape" fill="#fff" stroke="#1F2328" stroke-width="2.5"/>       <rect x="-60" y="-52" width="120" height="130" fill="#8B5E3C" opacity=".85" clip-path="url(#cupClip)"/>       <use href="#cupShape" fill="none" stroke="#1F2328" stroke-width="2.5"/>       <use href="#hand"/>     </g>   </defs>   <rect width="960" height="420" fill="#fff"/>    <!-- 1 rotation wobble -->   <g transform="translate(160,190)">     <g transform="rotate(-9)" opacity=".22"><use href="#cupUpright"/></g>     <g transform="rotate(9)" opacity=".22"><use href="#cupUpright"/></g>     <use href="#cupUpright"/>     <path d="M-78,-104 A120,120 0 0 1 78,-104" fill="none" stroke="#D9622B" stroke-width="3" marker-start="url(#ah)" marker-end="url(#ah)"/>   </g>   <text x="160" y="318" text-anchor="middle" font-size="17" font-weight="700" fill="#1F2328">회전 떨림</text>   <text x="160" y="340" text-anchor="middle" font-size="13" fill="#1F2328">각속도 RMS (°/s) · 주 지표</text>   <text x="160" y="362" text-anchor="middle" font-size="12" fill="#6B7178">컵이 1초에 평균 몇 도씩 까딱이며 도나</text>   <text x="160" y="380" text-anchor="middle" font-size="12" fill="#6B7178">손가락을 뻗을 때 쥔 손이 끌려가면</text>   <text x="160" y="398" text-anchor="middle" font-size="12" fill="#6B7178">컵이 같이 돌아가 커진다</text>    <!-- 2 translation shake -->   <g transform="translate(480,190)">     <g transform="translate(-26,0)" opacity=".22"><use href="#cupUpright"/></g>     <g transform="translate(26,0)" opacity=".22"><use href="#cupUpright"/></g>     <g>       <use href="#cupShape" fill="#fff" stroke="#1F2328" stroke-width="2.5"/>       <!-- sloshing surface: higher on the trailing side -->       <path d="M-60,-62 L60,-40 L60,80 L-60,80 Z" fill="#8B5E3C" opacity=".85" clip-path="url(#cupClip)"/>       <use href="#cupShape" fill="none" stroke="#1F2328" stroke-width="2.5"/>       <use href="#hand"/>     </g>     <path d="M-108,-104 L108,-104" stroke="#D9622B" stroke-width="3" marker-start="url(#ah)" marker-end="url(#ah)"/>   </g>   <text x="480" y="318" text-anchor="middle" font-size="17" font-weight="700" fill="#1F2328">밀리는 떨림</text>   <text x="480" y="340" text-anchor="middle" font-size="13" fill="#1F2328">선형 가속도 RMS (m/s²) · 보조</text>   <text x="480" y="362" text-anchor="middle" font-size="12" fill="#6B7178">기울지 않고 옆·앞뒤로 툭툭 밀리는 세기</text>   <text x="480" y="380" text-anchor="middle" font-size="12" fill="#6B7178">음료가 출렁여 가장자리로 올라온다</text>   <text x="480" y="398" text-anchor="middle" font-size="12" fill="#6B7178">1 m/s² ≈ 중력의 0.1배</text>    <!-- 3 tilt and spill angle -->   <g transform="translate(800,190)">     <line x1="0" y1="-140" x2="0" y2="96" stroke="#9AA1A9" stroke-dasharray="5 4"/>     <g transform="rotate(16)">       <use href="#cupShape" fill="#fff" stroke="#1F2328" stroke-width="2.5"/>       <!-- liquid stays level in the world frame: counter-rotate the fill -->       <g clip-path="url(#cupClip)"><g transform="rotate(-16)"><rect x="-120" y="-55" width="240" height="200" fill="#8B5E3C" opacity=".85"/></g></g>       <use href="#cupShape" fill="none" stroke="#1F2328" stroke-width="2.5"/>       <use href="#hand"/>       <line x1="0" y1="-140" x2="0" y2="96" stroke="#D9622B" stroke-width="2"/>     </g>     <path d="M0,-120 A120,120 0 0 1 33,-115" fill="none" stroke="#D9622B" stroke-width="3"/>     <text x="22" y="-128" font-size="16" font-weight="700" fill="#D9622B">θ</text>   </g>   <text x="800" y="318" text-anchor="middle" font-size="17" font-weight="700" fill="#1F2328">기울기</text>   <text x="800" y="340" text-anchor="middle" font-size="13" fill="#1F2328">최대 기울기 변화 θ (°) · H3</text>   <text x="800" y="362" text-anchor="middle" font-size="12" fill="#6B7178">시작 자세에서 가장 많이 기운 각도</text>   <text x="800" y="380" text-anchor="middle" font-size="12" fill="#6B7178">넘치는 각도: tan θ = 2 × 남은 높이 ÷ 지름</text>   <text x="800" y="398" text-anchor="middle" font-size="12" fill="#6B7178">90 mm 컵, 5 mm 남기면 약 6°에서 넘침</text> </svg> `;
 let LAST = null;
+// Error bars on the condition charts: 'sd' = ±1 standard deviation (course requirement, 11/11; Lecture 13 reports
+// means with SD), 'ci' = 95% within-subject CI. Tables always show mean ± SD.
+let ERR = 'sd';
+document.addEventListener('change', e => { if(e.target && e.target.id === 'errMode'){ ERR = e.target.value; if(LAST) render(LAST); } });
+const errLo = d => ERR === 'sd' ? d.m - d.s : d.lo, errHi = d => ERR === 'sd' ? d.m + d.s : d.hi;
 function render(R){
   LAST = R; const { cells, roster, tlx } = R;
   const tp = block('처리량 (bits/s)', cells, 'tp', CUPS, { yLabel:'처리량 (bits/s)', digits:2 });
@@ -675,11 +681,11 @@ function render(R){
   <section id="a-subj">  <h2>주관 평가 · 조건별 난이도 (SEQ)</h2>${seqB.html}
   <h2>주관 평가 · 작업 부하 (NASA-TLX)</h2>
   <div class="card">${dotPlot(tlxRows, { min:0, max:100, step:20, label:'0–100, 낮을수록 부담이 적음 (수행: 0 완벽 – 100 실패)' })}</div>
-  <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
+  <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${fmt(mean(r.x),1)} (${fmt(sd(r.x),1)})</td><td class="num">${fmt(mean(r.y),1)} (${fmt(sd(r.y),1)})</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩 받았으므로 대응 Wilcoxon 부호순위 검정(정확 p). 0–100점, 낮을수록 부담이 적다.</p></div>
   <h2>주관 평가 · 장치 평가 (ISO 9241-9)</h2>
   <div class="card">${dotPlot(isoRows.map(r => ({ ...r, name:r.name.replace(/ \(.*\)$/, '') })), { min:1, max:5, step:1, label:'1–5 (왼쪽 끝 말 – 오른쪽 끝 말, 아래 표 참고). 초록 칸 = 좋은 쪽', idealOf:r => ({ mid:3, lo:1, hi:5 })[r.ideal] })}</div>
-  <div class="card scroll"><table><tr><th style="text-align:left">항목</th><th>좋은 쪽</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p</th><th>Holm p</th><th>3에서 거리 p</th></tr>${isoRows.map((r, i) => `<tr><td style="text-align:left">${r.name}</td><td>${{ mid:'3 (적당)', lo:'1', hi:'5' }[r.ideal]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td><td class="num${stars(isoP[i])}">${fp(isoP[i])}</td><td class="num">${r.dist ? fp(r.dist.p) : '–'}</td></tr>`).join('')}</table>
+  <div class="card scroll"><table><tr><th style="text-align:left">항목</th><th>좋은 쪽</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>n</th><th>Wilcoxon W</th><th>p</th><th>Holm p</th><th>3에서 거리 p</th></tr>${isoRows.map((r, i) => `<tr><td style="text-align:left">${r.name}</td><td>${{ mid:'3 (적당)', lo:'1', hi:'5' }[r.ideal]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${fmt(mean(r.x),2)} (${fmt(sd(r.x),2)})</td><td class="num">${fmt(mean(r.y),2)} (${fmt(sd(r.y),2)})</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td><td class="num${stars(isoP[i])}">${fp(isoP[i])}</td><td class="num">${r.dist ? fp(r.dist.p) : '–'}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩, 13문항 전부(Douglas, Kirkpatrick &amp; MacKenzie, CHI 1999의 5점 형식). 대응 Wilcoxon 부호순위 검정(정확 p), 13문항에 Holm 보정. 힘·정신적 노력·신체적 노력·속도는 "너무 적음–너무 많음" 척도라 3이 가장 좋으므로, 3에서 얼마나 떨어졌는지(|값 − 3|)도 따로 비교한다.</p></div>
 </section>
   <section id="a-iv"><h2>인터뷰 요약</h2>${interviewTable(R.interview)}</section>
@@ -780,12 +786,13 @@ function lineChart(t, y, ymax, label, opt, col){
 }
 
 function sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n, tlxRows }){
-  const d = (b, t, c, digits, pct) => { const x = b.desc[t + c]; return x && isFinite(x.m) ? (pct ? fmt(x.m*100, 1) + '%' : fmt(x.m, digits)) : '–'; };
+  // M (SD): every mean in the sentences carries its standard deviation (course requirement)
+  const d = (b, t, c, digits, pct) => { const x = b.desc[t + c]; return x && isFinite(x.m) ? (pct ? `${fmt(x.m*100, 1)}% (SD ${fmt(x.s*100, 1)}%p)` : `${fmt(x.m, digits)} (SD ${fmt(x.s, digits)})`) : '–'; };
   const eff = (A, k, b) => A ? `F(${fmt(A[k].df1*A[k].eps,2)}, ${fmt(A[k].df2*A[k].eps,1)}) = ${fmt(A[k].F)}, p ${A[k].p < .001 ? '< .001' : '= ' + fp(A[k].p)}, η²G = ${fmt(A[k].etaG,3)}` +
     (b && b.ART && (b.ART[k].p < .05) !== (A[k].p < .05) ? ` [주의: ART에서는 p = ${fp(b.ART[k].p)}]` : '') : '(검정 불가)';
   const raw = tlxRows[0];
   return [
-    `참가자 ${tp.n}명의 자료를 분석했다(모든 조건이 있는 참가자 기준).`,
+    `참가자 ${tp.n}명의 자료를 분석했다(모든 조건이 있는 참가자 기준). 값은 평균(SD 표준편차)이다.`,
     `컵이 없을 때 처리량은 트랙패드 ${d(tp,'trackpad','none',2)} bits/s, GripSpread ${d(tp,'gs','none',2)} bits/s였다.`,
     `90 mm 컵에서 컵 없음 대비 처리량은 트랙패드가 ${d(loss,'trackpad','90',1,true)}, GripSpread가 ${d(loss,'gs','90',1,true)} 줄었다.`,
     `처리량 손실에 대한 기법 × 컵 상호작용: ${eff(loss.A, '기법 × 컵', loss)}. 기법 주효과: ${eff(loss.A, '기법', loss)}.`,
@@ -794,7 +801,7 @@ function sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n, tlxRows }){
       `${name}는 컵 지름 60 / 75 / 90 mm에서 트랙패드 ${CUPS3.map(c => d(b,'trackpad',c,dg)).join(' / ')} ${unit}, GripSpread ${CUPS3.map(c => d(b,'gs',c,dg)).join(' / ')} ${unit}였다. ` +
       `기법 × 컵 상호작용: ${eff(b.A, '기법 × 컵', b)}. 기법 주효과: ${eff(b.A, '기법', b)}. 컵 주효과: ${eff(b.A, '컵', b)}.`),
     seqB.ART ? `SEQ(1–7, 높을수록 쉬움) 평균은 90 mm 컵에서 트랙패드 ${d(seqB,'trackpad','90',2)}, GripSpread ${d(seqB,'gs','90',2)}였다. 기법 × 컵 상호작용(ART): F = ${fmt(seqB.ART['기법 × 컵'].F)}, p ${seqB.ART['기법 × 컵'].p < .001 ? '< .001' : '= ' + fp(seqB.ART['기법 × 컵'].p)}.` : '',
-    raw ? `Raw TLX 중앙값은 트랙패드 ${fmt(raw.mx,1)}, GripSpread ${fmt(raw.my,1)}였다(Wilcoxon W = ${fmt(raw.w.W,1)}, p ${raw.w.p < .001 ? '< .001' : '= ' + fp(raw.w.p)}, n = ${raw.n}).` : ''
+    raw ? `Raw TLX 중앙값은 트랙패드 ${fmt(raw.mx,1)}, GripSpread ${fmt(raw.my,1)}(평균 ${fmt(mean(raw.x),1)} (SD ${fmt(sd(raw.x),1)}) / ${fmt(mean(raw.y),1)} (SD ${fmt(sd(raw.y),1)}))였다(Wilcoxon W = ${fmt(raw.w.W,1)}, p ${raw.w.p < .001 ? '< .001' : '= ' + fp(raw.w.p)}, n = ${raw.n}).` : ''
   ].filter(Boolean).join('\n');
 }
 function toCSV(rows, keys){ return [keys.join(',')].concat(rows.map(r => keys.map(k => { const v = r[k]; return v == null || (typeof v === 'number' && !isFinite(v)) ? '' : typeof v === 'number' ? +v.toFixed(5) : String(v).includes(',') ? `"${v}"` : v; }).join(','))).join('\n'); }
