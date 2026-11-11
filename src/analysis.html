@@ -14,7 +14,7 @@
   html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}
   main{max-width:1080px;margin:0 auto;padding:24px 16px 64px}
   h1{font-size:22px;margin:0 0 4px} h2{font-size:17px;margin:28px 0 10px} h3{font-size:14px;margin:16px 0 6px}
-  p{margin:6px 0} .muted{color:var(--muted)} .num{font-variant-numeric:tabular-nums}
+  p{margin:6px 0} .muted{color:var(--muted)} .purpose{margin:2px 0 10px;font-size:13px;color:var(--fg);background:var(--chip,#F1F2F4);border-radius:6px;padding:6px 10px} .purpose b{color:var(--gs)} .num{font-variant-numeric:tabular-nums}
   .card{background:var(--card);border:1px solid var(--hair);border-radius:10px;padding:16px;margin:12px 0}
   #drop{border:2px dashed var(--hair);border-radius:10px;padding:28px;text-align:center;background:#fff;cursor:pointer}
   #drop.over{border-color:var(--ink)}
@@ -287,6 +287,12 @@ function analyze(people){
         ...Object.fromEntries(['tp','mt_ms','imu_rms','lin_rms','tilt_max','tilt_1s'].map(k => [k + '_ex', ex[k]])) };
       delete cell.nImu;
       const sq = p.seq.find(r => r.technique === tech && String(r.cup) === cup); cell.seq = sq ? numOr(sq.seq, NaN) : NaN;
+      // Fitts fit per participant x condition: mean MT of the successful trials at each ID, then ordinary least squares
+      // MT = a + b*ID. a and b feed the slope/intercept ANOVA; idMt feeds the condition-level fit.
+      const byId = {}; for(const t of ok){ (byId[(+t.ID).toFixed(3)] = byId[(+t.ID).toFixed(3)] || []).push(+t.mt_ms); }
+      cell.idMt = Object.fromEntries(Object.entries(byId).map(([k, v]) => [k, mean(v)]));
+      const fit = ols(Object.keys(cell.idMt).map(Number), Object.values(cell.idMt));
+      Object.assign(cell, { fitts_a:fit.a, fitts_b:fit.b, fitts_r2:fit.r2 });
       cells.push(cell);
       for(const t of rows){ const x = imu && imu.get(t.trial_uid);
         trialsOut.push({ pid:p.pid, technique:tech, cup, trial_uid:t.trial_uid, D:t.D, W:t.W, ID:t.ID, success:truthy(t.success) ? 1 : 0, mt_ms:t.mt_ms, plan_ms:t.plan_ms,
@@ -389,6 +395,12 @@ function pairedT(x, y){ const d = x.map((v,i) => v - y[i]), n = d.length, m = me
 // Holm step-down adjustment (controls family-wise error like Bonferroni, never less powerful)
 function holm(ps){ const o = ps.map((p, i) => [p, i]).filter(x => isFinite(x[0])).sort((a, b) => a[0]-b[0]), m = o.length, adj = ps.map(() => NaN); let run = 0;
   o.forEach(([p, i], k) => { run = Math.max(run, Math.min(1, (m-k)*p)); adj[i] = run; }); return adj; }
+// Ordinary least squares y = a + b x, R², and the t test of the slope (df = k - 2)
+function ols(x, y){ const k = x.length; if(k < 3) return { a:NaN, b:NaN, r2:NaN, p:NaN, k };
+  const mx = mean(x), my = mean(y), sxx = x.reduce((s, v) => s + (v-mx)**2, 0), sxy = x.reduce((s, v, i) => s + (v-mx)*(y[i]-my), 0);
+  const b = sxy / sxx, a = my - b*mx, sse = y.reduce((s, v, i) => s + (v - a - b*x[i])**2, 0), sst = y.reduce((s, v) => s + (v-my)**2, 0);
+  const r2 = sst ? 1 - sse/sst : NaN, se = Math.sqrt(sse / (k-2) / sxx), t = b / se;
+  return { a, b, r2, t, p:isFinite(t) ? pT2(Math.abs(t), k-2) : NaN, k }; }
 // Bonferroni: p × number of comparisons, capped at 1 (the post hoc correction used in the report; Lecture 13)
 function bonf(ps){ const m = ps.filter(isFinite).length; return ps.map(p => isFinite(p) ? Math.min(1, p * m) : NaN); }
 // Wilcoxon signed-rank, exact (ties: average ranks, distribution over doubled ranks)
@@ -476,14 +488,38 @@ function orderTable(cells, roster){
 }
 function tiltMtTable(T){
   if(!T.length) return '<p class="muted">IMU 데이터가 없습니다.</p>';
-  const row = t => { const v = T.filter(x => x.tech === t); return `<tr><td>${TECH_NAME[t]}</td><td class="num">${fmt(median(v.map(x => x.rho)),2)}</td><td class="num">${fmt(median(v.map(x => x.rho1)),2)}</td><td class="num">${v.length}</td></tr>`; };
-  return `<table><tr><th>기법</th><th>이동 시간 vs 최대 기울기 (ρ 중앙값)</th><th>이동 시간 vs 1초 안 최대 기울기 (ρ 중앙값)</th><th>참가자 × 컵</th></tr>${TECHS.map(row).join('')}</table>
+  const w0 = v => { const x = v.filter(isFinite); return x.length ? wilcoxon(x, x.map(() => 0)) : { W:NaN, p:NaN }; };
+  const row = t => { const v = T.filter(x => x.tech === t), a = w0(v.map(x => x.rho)), b = w0(v.map(x => x.rho1));
+    return `<tr><td>${TECH_NAME[t]}</td><td class="num">${fmt(median(v.map(x => x.rho)),2)} <span class="muted">(p ${pEq(a.p)})</span></td><td class="num">${fmt(median(v.map(x => x.rho1)),2)} <span class="muted">(p ${pEq(b.p)})</span></td><td class="num">${v.length}</td></tr>`; };
+  return `<table><tr><th>기법</th><th>이동 시간 vs 최대 기울기 (ρ 중앙값, Wilcoxon p)</th><th>이동 시간 vs 1초 안 최대 기울기 (ρ 중앙값, Wilcoxon p)</th><th>참가자 × 컵</th></tr>${TECHS.map(row).join('')}</table>
   <p class="muted">참가자 × 컵마다 시행 단위 Spearman ρ를 구해 중앙값을 보인다. 최대 기울기 쪽 ρ가 크면 느린 시행일수록 더 기운다는 뜻이라, 기법 간 이동 시간 차이가 최대 기울기 차이로 섞여 들어간다. 이때는 시간 길이에 덜 민감한 1초 안 최대 기울기를 함께 보고한다.</p>`;
+}
+
+// Fitts analysis. Purpose: throughput compares techniques only if movement time follows Fitts' law in every condition.
+// Condition level: mean MT per ID over the participants who have every ID in that condition, OLS fit, R² and the slope
+// t test. Per participant: R² median. Slope b and intercept a per participant go through the same RM-ANOVA as the
+// other measures (where the cost comes from: harder targets (b) or a fixed cost per trial (a)).
+function fittsSection(cells){
+  const ids = [...new Set(cells.flatMap(c => Object.keys(c.idMt || {})))].sort((a, b) => a - b);
+  const rows = [];
+  for(const t of TECHS) for(const c of CUPS){
+    const cs = cells.filter(e => e.tech === t && e.cup === c && ids.every(k => isFinite((e.idMt || {})[k])));
+    const ys = ids.map(k => mean(cs.map(e => e.idMt[k]))), fit = ols(ids.map(Number), ys);
+    rows.push({ t, c, n:cs.length, ys, fit, r2med:median(cs.map(e => e.fitts_r2).filter(isFinite)) });
+  }
+  const tbl = `<table><tr><th>기법</th><th>컵</th><th>n</th><th>a (ms)</th><th>b (ms/bit)</th><th>R²</th><th>기울기 검정</th><th>참가자별 R² 중앙값</th></tr>` +
+    rows.map(r => `<tr><td>${TECH_NAME[r.t]}</td><td>${CUP_NAME[r.c]}</td><td class="num">${r.n}</td><td class="num">${fmt(r.fit.a,0)}</td><td class="num">${fmt(r.fit.b,0)}</td><td class="num${r.fit.r2 >= .8 ? '' : ' w'}">${fmt(r.fit.r2,3)}</td><td class="num">t(${r.fit.k - 2}) = ${fmt(r.fit.t,2)}, p ${pEq(r.fit.p)}</td><td class="num">${fmt(r.r2med,2)}</td></tr>`).join('') + '</table>';
+  const plots = CUPS.map(c => linePlot({ title:CUP_NAME[c], xs:ids.map(k => (+k).toFixed(1)), W:240, H:180, series:TECHS.map(t => ({ name:TECH_NAME[t], col:t === 'gs' ? 'var(--gs)' : 'var(--tp)', ys:rows.find(r => r.t === t && r.c === c).ys })) })).join('');
+  return { rows, html:`<div class="card"><h3>Fitts 법칙 적합 (이동 시간 = a + b × ID)</h3>
+    <p class="purpose"><b>목적</b> 처리량으로 기법을 비교해도 되는지 확인. 8조건 모두 R²가 높으면(0.8 이상) 이동 시간이 Fitts 법칙을 따르므로 처리량 비교가 정당하다. 0.8 미만은 노랗게 표시.</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr))">${plots}</div>${legendOf().replace(/<span>점 = [^<]*<\/span>/, '<span>가로축 = ID (bits), 세로축 = 평균 이동 시간 (ms)</span>')}
+    <div class="scroll">${tbl}</div><p class="muted">조건마다 ID(log₂(D/W + 1)) 4개의 평균 이동 시간(그 조건의 모든 ID가 있는 참가자 평균)에 직선을 맞춘다. 기울기 검정 df = ID 개수 − 2. 명목 폭을 쓴다(회색 영역 안에 멈춰야 성공이라 끝점이 폭 안으로 제한되므로 유효 폭을 쓰지 않음).</p></div>` };
 }
 
 // ====================================================================== rendering
 const fmt = (x, d = 2) => isFinite(x) ? (+x).toFixed(d) : '–';
 const fp = p => !isFinite(p) ? '–' : p < .001 ? '< .001' : p.toFixed(3).replace(/^0/, '');
+const pEq = p => !isFinite(p) ? '–' : p < .001 ? '< .001' : '= ' + fp(p);
 const stars = p => p < .05 ? ' sig' : '';
 function chart(desc, cups, { yLabel, pct = false, digits = 2 }){
   const W = 440, H = 260, L = 52, R = 16, T = 16, B = 40;
@@ -628,7 +664,7 @@ function block(title, cells, key, cups, opt){
   const tbl = `<table><tr><th>기법</th>${cups.map(c => `<th>${CUP_NAME[c]}</th>`).join('')}</tr>` + TECHS.map(t => `<tr><td>${TECH_NAME[t]}</td>` +
     cups.map(c => { const d = desc[t+c]; return `<td class="num">${opt.pct ? fmt(d.m*100,1)+'%' : fmt(d.m, opt.digits)} <span class="muted">± ${opt.pct ? fmt(d.s*100,1) : fmt(d.s, opt.digits)}</span></td>`; }).join('') + '</tr>').join('') + `</table><p class="muted">평균 ± 표준편차 (모든 조건이 있는 참가자)</p>`;
   const A = Y.length >= 3 ? rmAnova2(Y, 2, cups.length) : null, ART = A ? artAnova2(Y, 2, cups.length) : null;
-  return { html:`<div class="card"><h3>${title}</h3><div class="grid"><div class="chart">${chart(desc, cups, opt)}${legendOf()}</div><div class="scroll">${tbl}${A ? anovaTable(A, Y.length, ART) : '<p class="muted">검정에는 모든 조건이 있는 참가자가 3명 이상 필요합니다.</p>'}</div></div>${A ? postHoc(cells, key, cups, opt.digits, opt.pct) : ''}</div>`, desc, A, ART, n:Y.length };
+  return { html:`<div class="card"><h3>${title}</h3>${opt.purpose ? `<p class="purpose"><b>목적</b> ${opt.purpose}</p>` : ''}<div class="grid"><div class="chart">${chart(desc, cups, opt)}${legendOf()}</div><div class="scroll">${tbl}${A ? anovaTable(A, Y.length, ART) : '<p class="muted">검정에는 모든 조건이 있는 참가자가 3명 이상 필요합니다.</p>'}</div></div>${A ? postHoc(cells, key, cups, opt.digits, opt.pct) : ''}</div>`, desc, A, ART, n:Y.length };
 }
 
 const IMU_FIG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" font-family="-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif">   <defs>     <!-- cup outline in its own frame: rim at y=-70, bottom at y=+70, centred on x=0 -->     <path id="cupShape" d="M-46,-70 L46,-70 L36,70 L-36,70 Z"/>     <clipPath id="cupClip"><use href="#cupShape"/></clipPath>     <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D9622B"/></marker>     <!-- hand gripping the cup: ring and little finger wrap the front, thumb on the left, index and middle in a V above -->     <g id="hand">       <path d="M40,-34 C70,-34 78,-6 70,30 C64,58 44,66 30,62" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <rect x="-40" y="0" width="86" height="20" rx="10" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <rect x="-36" y="22" width="80" height="18" rx="9" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <path d="M-44,-10 C-62,-14 -66,6 -50,12 L-30,12 C-24,4 -30,-8 -44,-10 Z" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <path d="M52,-30 L58,-112 Q62,-122 70,-112 L70,-32 Z" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <path d="M66,-28 L96,-104 Q104,-112 108,-100 L82,-22 Z" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>     </g>     <g id="cupUpright">       <use href="#cupShape" fill="#fff" stroke="#1F2328" stroke-width="2.5"/>       <rect x="-60" y="-52" width="120" height="130" fill="#8B5E3C" opacity=".85" clip-path="url(#cupClip)"/>       <use href="#cupShape" fill="none" stroke="#1F2328" stroke-width="2.5"/>       <use href="#hand"/>     </g>   </defs>   <rect width="960" height="420" fill="#fff"/>    <!-- 1 rotation wobble -->   <g transform="translate(160,190)">     <g transform="rotate(-9)" opacity=".22"><use href="#cupUpright"/></g>     <g transform="rotate(9)" opacity=".22"><use href="#cupUpright"/></g>     <use href="#cupUpright"/>     <path d="M-78,-104 A120,120 0 0 1 78,-104" fill="none" stroke="#D9622B" stroke-width="3" marker-start="url(#ah)" marker-end="url(#ah)"/>   </g>   <text x="160" y="318" text-anchor="middle" font-size="17" font-weight="700" fill="#1F2328">회전 떨림</text>   <text x="160" y="340" text-anchor="middle" font-size="13" fill="#1F2328">각속도 RMS (°/s) · 주 지표</text>   <text x="160" y="362" text-anchor="middle" font-size="12" fill="#6B7178">컵이 1초에 평균 몇 도씩 까딱이며 도나</text>   <text x="160" y="380" text-anchor="middle" font-size="12" fill="#6B7178">손가락을 뻗을 때 쥔 손이 끌려가면</text>   <text x="160" y="398" text-anchor="middle" font-size="12" fill="#6B7178">컵이 같이 돌아가 커진다</text>    <!-- 2 translation shake -->   <g transform="translate(480,190)">     <g transform="translate(-26,0)" opacity=".22"><use href="#cupUpright"/></g>     <g transform="translate(26,0)" opacity=".22"><use href="#cupUpright"/></g>     <g>       <use href="#cupShape" fill="#fff" stroke="#1F2328" stroke-width="2.5"/>       <!-- sloshing surface: higher on the trailing side -->       <path d="M-60,-62 L60,-40 L60,80 L-60,80 Z" fill="#8B5E3C" opacity=".85" clip-path="url(#cupClip)"/>       <use href="#cupShape" fill="none" stroke="#1F2328" stroke-width="2.5"/>       <use href="#hand"/>     </g>     <path d="M-108,-104 L108,-104" stroke="#D9622B" stroke-width="3" marker-start="url(#ah)" marker-end="url(#ah)"/>   </g>   <text x="480" y="318" text-anchor="middle" font-size="17" font-weight="700" fill="#1F2328">밀리는 떨림</text>   <text x="480" y="340" text-anchor="middle" font-size="13" fill="#1F2328">선형 가속도 RMS (m/s²) · 보조</text>   <text x="480" y="362" text-anchor="middle" font-size="12" fill="#6B7178">기울지 않고 옆·앞뒤로 툭툭 밀리는 세기</text>   <text x="480" y="380" text-anchor="middle" font-size="12" fill="#6B7178">음료가 출렁여 가장자리로 올라온다</text>   <text x="480" y="398" text-anchor="middle" font-size="12" fill="#6B7178">1 m/s² ≈ 중력의 0.1배</text>    <!-- 3 tilt and spill angle -->   <g transform="translate(800,190)">     <line x1="0" y1="-140" x2="0" y2="96" stroke="#9AA1A9" stroke-dasharray="5 4"/>     <g transform="rotate(16)">       <use href="#cupShape" fill="#fff" stroke="#1F2328" stroke-width="2.5"/>       <!-- liquid stays level in the world frame: counter-rotate the fill -->       <g clip-path="url(#cupClip)"><g transform="rotate(-16)"><rect x="-120" y="-55" width="240" height="200" fill="#8B5E3C" opacity=".85"/></g></g>       <use href="#cupShape" fill="none" stroke="#1F2328" stroke-width="2.5"/>       <use href="#hand"/>       <line x1="0" y1="-140" x2="0" y2="96" stroke="#D9622B" stroke-width="2"/>     </g>     <path d="M0,-120 A120,120 0 0 1 33,-115" fill="none" stroke="#D9622B" stroke-width="3"/>     <text x="22" y="-128" font-size="16" font-weight="700" fill="#D9622B">θ</text>   </g>   <text x="800" y="318" text-anchor="middle" font-size="17" font-weight="700" fill="#1F2328">기울기</text>   <text x="800" y="340" text-anchor="middle" font-size="13" fill="#1F2328">최대 기울기 변화 θ (°) · H3</text>   <text x="800" y="362" text-anchor="middle" font-size="12" fill="#6B7178">시작 자세에서 가장 많이 기운 각도</text>   <text x="800" y="380" text-anchor="middle" font-size="12" fill="#6B7178">넘치는 각도: tan θ = 2 × 남은 높이 ÷ 지름</text>   <text x="800" y="398" text-anchor="middle" font-size="12" fill="#6B7178">90 mm 컵, 5 mm 남기면 약 6°에서 넘침</text> </svg> `;
@@ -640,14 +676,14 @@ document.addEventListener('change', e => { if(e.target && e.target.id === 'errMo
 const errLo = d => ERR === 'sd' ? d.m - d.s : d.lo, errHi = d => ERR === 'sd' ? d.m + d.s : d.hi;
 function render(R){
   LAST = R; const { cells, roster, tlx } = R;
-  const tp = block('처리량 (bits/s)', cells, 'tp', CUPS, { yLabel:'처리량 (bits/s)', digits:2 });
-  const loss = block('컵 없음 대비 처리량 손실 (H1)', cells, 'tp_loss', CUPS3, { yLabel:'처리량 손실', pct:true, digits:1 });
-  const mt = block('이동 시간 (ms, 첫 움직임 → 멈춤)', cells, 'mt_ms', CUPS, { yLabel:'이동 시간 (ms)', digits:0 });
-  const er = block('실패율 (15초 초과)', cells, 'error_rate', CUPS, { yLabel:'실패율', pct:true, digits:1 });
-  const rms = block('컵 각속도 RMS (°/s, H2)', cells, 'imu_rms', CUPS3, { yLabel:'각속도 RMS (°/s)', digits:2 });
-  const lin = block('컵 선형 가속도 RMS (m/s², 보조: 회전 없이 밀리는 떨림)', cells, 'lin_rms', CUPS3, { yLabel:'선형 가속도 RMS (m/s²)', digits:3 });
-  const tilt = block('컵 최대 기울기 변화 (°, H3)', cells, 'tilt_max', CUPS3, { yLabel:'최대 기울기 변화 (°)', digits:2 });
-  const tilt1 = block('컵 1초 안 최대 기울기 변화 (°, H3 보조: 시행 길이에 덜 민감)', cells, 'tilt_1s', CUPS3, { yLabel:'1초 안 최대 기울기 변화 (°)', digits:2 });
+  const tp = block('처리량 (bits/s)', cells, 'tp', CUPS, { yLabel:'처리량 (bits/s)', digits:2, purpose:'속도와 정확도를 합친 성능 요약(Fitts 처리량). H1의 손실을 계산하는 바탕. 기법 × 컵 반복측정 ANOVA.' });
+  const loss = block('컵 없음 대비 처리량 손실 (H1)', cells, 'tp_loss', CUPS3, { yLabel:'처리량 손실', pct:true, digits:1, purpose:'<b>H1</b> 컵이 커질 때 트랙패드만 성능을 잃는가. 기법 × 컵 상호작용이 유의하고 큰 컵에서 트랙패드 손실이 더 크면 H1 지지.' });
+  const mt = block('이동 시간 (ms, 첫 움직임 → 멈춤)', cells, 'mt_ms', CUPS, { yLabel:'이동 시간 (ms)', digits:0, purpose:'처리량을 "몇 초 걸렸나"로 풀어 보고하기 위해. 기법 × 컵 반복측정 ANOVA.' });
+  const er = block('실패율 (15초 초과)', cells, 'error_rate', CUPS, { yLabel:'실패율', pct:true, digits:1, purpose:'빠른 대신 실패가 늘었는지(속도–정확도 교환) 확인. 실패가 거의 없으면 서술만.' });
+  const rms = block('컵 각속도 RMS (°/s, H2)', cells, 'imu_rms', CUPS3, { yLabel:'각속도 RMS (°/s)', digits:2, purpose:'<b>H2</b> GripSpread가 스크롤 중 컵을 덜 흔드는가. 기법 주효과가 유의하고 GripSpread가 작으면 H2 지지.' });
+  const lin = block('컵 선형 가속도 RMS (m/s², 보조: 회전 없이 밀리는 떨림)', cells, 'lin_rms', CUPS3, { yLabel:'선형 가속도 RMS (m/s²)', digits:3, purpose:'H2 보조. 기울지 않고 옆으로 밀리는 흔들림도 각속도와 같은 방향인가.' });
+  const tilt = block('컵 최대 기울기 변화 (°, H3)', cells, 'tilt_max', CUPS3, { yLabel:'최대 기울기 변화 (°)', digits:2, purpose:'<b>H3</b> 컵이 커질수록 트랙패드에서 컵이 더 기우는가. 기법 × 컵 상호작용이 유의하고 큰 컵에서 트랙패드가 더 크면 H3 지지.' });
+  const tilt1 = block('컵 1초 안 최대 기울기 변화 (°, H3 보조: 시행 길이에 덜 민감)', cells, 'tilt_1s', CUPS3, { yLabel:'1초 안 최대 기울기 변화 (°)', digits:2, purpose:'H3 보조. 오래 걸려서 많이 기운 것뿐인지 배제. 이것도 같은 방향이면 H3 해석이 단단해진다.' });
   const seqB = block('SEQ: 조건별 난이도 (1 매우 어려움 – 7 매우 쉬움)', cells, 'seq', CUPS, { yLabel:'SEQ (높을수록 쉬움)', digits:2 });
   // SEQ is ordinal: per cup, the two techniques compared with a Wilcoxon signed-rank test, Bonferroni over the cups
   const seqRows = CUPS.map(c => { const x = [], y = [];
@@ -656,13 +692,16 @@ function render(R){
     return { c, x, y, n:x.length, w:x.length ? wilcoxon(x, y) : { W:NaN, p:NaN } }; });
   const seqP = bonf(seqRows.map(r => r.w.p));
   const seqMed = v => { const q = [...v].sort((a, b) => a - b); return q.length ? (q[(q.length-1)>>1] + q[q.length>>1]) / 2 : NaN; };
-  const seqHtml = `<div class="card"><h3>SEQ: 조건별 난이도 (1 매우 어려움 – 7 매우 쉬움)</h3><div class="grid"><div class="chart">${chart(seqB.desc, CUPS, { yLabel:'SEQ (높을수록 쉬움)', digits:2 })}${legendOf()}</div><div class="scroll">
-    <table><tr><th>컵</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th></tr>${seqRows.map(r => `<tr><td>${CUP_NAME[r.c]}</td><td class="num">${fmt(mean(r.x),2)} (${fmt(sd(r.x),2)})</td><td class="num">${fmt(mean(r.y),2)} (${fmt(sd(r.y),2)})</td><td class="num">${fmt(seqMed(r.x),1)}</td><td class="num">${fmt(seqMed(r.y),1)}</td><td class="num">${r.n}</td></tr>`).join('')}</table>
-    <p class="muted">보조 지표라 검정 없이 서술만 한다.</p></div></div>
-    <details><summary class="muted">추가 점검 (보고서에 안 씀): 컵별 Wilcoxon, 반복측정 ANOVA·ART</summary>
-    <table><tr><th>컵</th><th>n</th><th>Wilcoxon W</th><th>p (Bonferroni ×4)</th></tr>${seqRows.map((r, i) => `<tr><td>${CUP_NAME[r.c]}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num">${fp(seqP[i])}</td></tr>`).join('')}</table>${seqB.html}</details></div>`;
+  const seqHtml = `<div class="card"><h3>SEQ: 조건별 난이도 (1 매우 어려움 – 7 매우 쉬움)</h3>
+    <p class="purpose"><b>목적</b> 성능 결과(H1)와 참가자 체감이 같은 방향인가. 보조 지표라 결론은 성능·IMU로 내고 이건 뒷받침용. 서열 척도라 컵마다 두 기법을 Wilcoxon으로 비교(Bonferroni ×4).</p>
+    <div class="grid"><div class="chart">${chart(seqB.desc, CUPS, { yLabel:'SEQ (높을수록 쉬움)', digits:2 })}${legendOf()}</div><div class="scroll">
+    <table><tr><th>컵</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p (Bonferroni)</th></tr>${seqRows.map((r, i) => `<tr><td>${CUP_NAME[r.c]}</td><td class="num">${fmt(mean(r.x),2)} (${fmt(sd(r.x),2)})</td><td class="num">${fmt(mean(r.y),2)} (${fmt(sd(r.y),2)})</td><td class="num">${fmt(seqMed(r.x),1)}</td><td class="num">${fmt(seqMed(r.y),1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(seqP[i])}">${fp(seqP[i])}</td></tr>`).join('')}</table></div></div>
+    <details><summary class="muted">추가 점검 (보고서에 안 씀): 반복측정 ANOVA·ART</summary>${seqB.html}</details></div>`;
   seqB.rows = seqRows; seqB.p = seqP;
-  const sb = block('방향 전환 횟수', cells, 'switchbacks', CUPS, { yLabel:'방향 전환 (회)', digits:2 });
+  const fitts = fittsSection(cells);
+  const fb = block('Fitts 기울기 b (ms/bit)', cells, 'fitts_b', CUPS, { yLabel:'기울기 b (ms/bit)', digits:0, purpose:'처리량 차이가 어디서 오는지: 어려운 목표(먼 거리·좁은 폭)에서 더 느려지는가. 기법 × 컵 반복측정 ANOVA.' });
+  const fa = block('Fitts 절편 a (ms)', cells, 'fitts_a', CUPS, { yLabel:'절편 a (ms)', digits:0, purpose:'처리량 차이가 어디서 오는지: 난이도와 상관없는 고정 비용(손가락 자리 잡기, 멈추기)이 큰가. 기법 × 컵 반복측정 ANOVA.' });
+  const sb = block('방향 전환 횟수', cells, 'switchbacks', CUPS, { yLabel:'방향 전환 (회)', digits:2, purpose:'멈추기 어려움(지나쳤다 돌아오기)이 어느 기법·컵에서 많은지. 처리량 차이의 원인 설명용.' });
 
   // TLX: technique only -> Wilcoxon signed-rank
   const tlxRows = TLX_KEYS.map(k => { const pids = [...new Set(tlx.map(r => r.pid))], x = [], y = [];
@@ -686,21 +725,23 @@ function render(R){
     &nbsp;|&nbsp; <b>자료</b> <a href="#a-imu">IMU 시행 보기</a> · <a href="#a-dl">내려받기</a></nav>
   <h1 class="part">주 분석</h1>
   <section id="a-sum">  <h2>핵심 결과 (보고서용 문장)</h2>
-  <div class="card"><pre id="sentences">${sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n:Math.min(tp.n, rms.n || tp.n), tlxRows })}</pre></div>
+  <div class="card"><pre id="sentences">${sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n:Math.min(tp.n, rms.n || tp.n), tlxRows, fitts })}</pre></div>
 
 </section>
-  <section id="a-h1">  <h2>H1 · 성능 손실</h2>${loss.html}${tp.html}${mt.html}${er.html}
+  <section id="a-h1">  <h2>H1 · 성능 손실</h2>${loss.html}${tp.html}${fitts.html}${fb.html}${fa.html}${mt.html}${er.html}
 </section>
   <section id="a-h23">  <h2>H2, H3 · 컵 흔들림</h2>
   <div class="card">${IMU_FIG}</div>${rms.html}${lin.html}${tilt.html}${tilt1.html}
-  <div class="card scroll"><h3>기울기와 이동 시간</h3>${tiltMtTable(R.tiltMt)}</div>
+  <div class="card scroll"><h3>기울기와 이동 시간 (Spearman)</h3><p class="purpose"><b>목적</b> H3 보조. 기울기 차이가 단지 "오래 걸려서 많이 기운 것"인지 확인. 참가자 × 컵마다 시행 단위 ρ를 구하고, ρ가 0보다 큰지 Wilcoxon(ρ vs 0)으로 본다.</p>${tiltMtTable(R.tiltMt)}</div>
 </section>
   <section id="a-subj">  <h2>주관 평가 · 조건별 난이도 (SEQ)</h2>${seqHtml}
   <h2>주관 평가 · 작업 부하 (NASA-TLX)</h2>
+  <p class="purpose"><b>목적</b> GripSpread가 성능을 얻는 대신 더 힘들게 하지는 않는가. 기법별 한 번이라 대응 Wilcoxon.</p>
   <div class="card">${dotPlot(tlxRows, { min:0, max:100, step:20, label:'0–100, 낮을수록 부담이 적음 (수행: 0 완벽 – 100 실패)' })}</div>
   <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${fmt(mean(r.x),1)} (${fmt(sd(r.x),1)})</td><td class="num">${fmt(mean(r.y),1)} (${fmt(sd(r.y),1)})</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩 받았으므로 대응 Wilcoxon 부호순위 검정(정확 p). 0–100점, 낮을수록 부담이 적다.</p></div>
   <h2>주관 평가 · 장치 평가 (ISO 9241-9)</h2>
+  <p class="purpose"><b>목적</b> 어느 부위가 힘든지(손가락·손목·팔·어깨·목)와 조작감이 어떻게 다른지. TLX의 "신체적 요구" 한 숫자를 부위별로 풀어 본다. 대응 Wilcoxon, 13문항 Bonferroni.</p>
   <div class="card">${dotPlot(isoRows.map(r => ({ ...r, name:r.name.replace(/ \(.*\)$/, '') })), { min:1, max:5, step:1, label:'1–5 (왼쪽 끝 말 – 오른쪽 끝 말, 아래 표 참고). 초록 칸 = 좋은 쪽', idealOf:r => ({ mid:3, lo:1, hi:5 })[r.ideal] })}</div>
   <div class="card scroll"><table><tr><th style="text-align:left">항목</th><th>좋은 쪽</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>n</th><th>Wilcoxon W</th><th>p</th><th>Bonferroni p</th></tr>${isoRows.map((r, i) => `<tr><td style="text-align:left">${r.name}</td><td>${{ mid:'3 (적당)', lo:'1', hi:'5' }[r.ideal]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${fmt(mean(r.x),2)} (${fmt(sd(r.x),2)})</td><td class="num">${fmt(mean(r.y),2)} (${fmt(sd(r.y),2)})</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td><td class="num${stars(isoP[i])}">${fp(isoP[i])}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩, 13문항 전부(Douglas, Kirkpatrick &amp; MacKenzie, CHI 1999의 5점 형식). 대응 Wilcoxon 부호순위 검정, 13문항에 Bonferroni 보정. 힘·정신적 노력·신체적 노력·속도는 "너무 적음–너무 많음" 척도라 3이 가장 좋다.</p></div>
@@ -733,7 +774,7 @@ function render(R){
   <div class="card"><div class="actions"><button class="primary" id="dlCells">조건 요약 CSV (참가자 × 기법 × 컵)</button><button id="dlTrials">시행별 CSV (IMU 지표 포함)</button><button id="dlText">보고서용 문장 TXT</button></div></div></section>`;
   setupImuView(R.imuView);
   const drawOrder = () => $('ordOut').innerHTML = orderSection(cells, roster, $('ordKey').value); $('ordKey').onchange = drawOrder; drawOrder();
-  $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','lin_rms','tilt_max','tilt_1s','seq','n_flagged','tp_ex','tp_loss_ex','mt_ms_ex','imu_rms_ex','lin_rms_ex','tilt_max_ex','tilt_1s_ex']));
+  $('dlCells').onclick = () => download('gripspread_conditions.csv', toCSV(cells, ['pid','tech','cup','n','n_ok','error_rate','mt_ms','plan_ms','tp','tp_loss','switchbacks','overshoot_px','imu_rms','lin_rms','tilt_max','tilt_1s','seq','n_flagged','fitts_a','fitts_b','fitts_r2','tp_ex','tp_loss_ex','mt_ms_ex','imu_rms_ex','lin_rms_ex','tilt_max_ex','tilt_1s_ex']));
   $('dlTrials').onclick = () => download('gripspread_trials_all.csv', toCSV(R.trialsOut, Object.keys(R.trialsOut[0] || {})));
   $('dlText').onclick = () => download('gripspread_results.txt', $('sentences').textContent);
 }
@@ -802,13 +843,15 @@ function lineChart(t, y, ymax, label, opt, col){
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${g}</svg>`;
 }
 
-function sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n, tlxRows }){
+function sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n, tlxRows, fitts }){
   // M (SD): every mean in the sentences carries its standard deviation (course requirement)
   const d = (b, t, c, digits, pct) => { const x = b.desc[t + c]; return x && isFinite(x.m) ? (pct ? `${fmt(x.m*100, 1)}% (SD ${fmt(x.s*100, 1)}%p)` : `${fmt(x.m, digits)} (SD ${fmt(x.s, digits)})`) : '–'; };
   const eff = (A, k) => A ? `F(${fmt(A[k].df1*A[k].eps,2)}, ${fmt(A[k].df2*A[k].eps,1)}) = ${fmt(A[k].F)}, p ${A[k].p < .001 ? '< .001' : '= ' + fp(A[k].p)}, 부분 η² = ${fmt(A[k].eta,2)}` : '(검정 불가)';
   const raw = tlxRows[0];
   return [
     `참가자 ${tp.n}명의 자료를 분석했다(모든 조건이 있는 참가자 기준). 값은 평균(SD 표준편차)이다.`,
+    fitts && fitts.rows.some(r => isFinite(r.fit.r2)) ? (() => { const r2 = fitts.rows.map(r => r.fit.r2).filter(isFinite), low = fitts.rows.filter(r => r.fit.r2 < .8);
+      return `조건별 Fitts 회귀(이동 시간 = a + b × ID)의 R²는 ${fmt(Math.min(...r2),2)}–${fmt(Math.max(...r2),2)}` + (low.length ? `였다(0.8 미만: ${low.map(r => TECH_NAME[r.t] + ' ' + CUP_NAME[r.c]).join(', ')}).` : `로, 모든 조건이 Fitts 법칙을 따랐다.`); })() : '',
     `컵이 없을 때 처리량은 트랙패드 ${d(tp,'trackpad','none',2)} bits/s, GripSpread ${d(tp,'gs','none',2)} bits/s였다.`,
     `90 mm 컵에서 컵 없음 대비 처리량은 트랙패드가 ${d(loss,'trackpad','90',1,true)}, GripSpread가 ${d(loss,'gs','90',1,true)} 줄었다.`,
     `처리량 손실에 대한 기법 × 컵 상호작용: ${eff(loss.A, '기법 × 컵', loss)}. 기법 주효과: ${eff(loss.A, '기법', loss)}.`,
@@ -816,7 +859,7 @@ function sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n, tlxRows }){
     ...[[rms, '스크롤 중 컵 각속도 RMS', '°/s', 2], [lin, '선형 가속도 RMS(보조)', 'm/s²', 2], [tilt, '최대 기울기 변화', '°', 2], [tilt1, '1초 안 최대 기울기 변화', '°', 2]].filter(([b]) => b).map(([b, name, unit, dg]) =>
       `${name}는 컵 지름 60 / 75 / 90 mm에서 트랙패드 ${CUPS3.map(c => d(b,'trackpad',c,dg)).join(' / ')} ${unit}, GripSpread ${CUPS3.map(c => d(b,'gs',c,dg)).join(' / ')} ${unit}였다. ` +
       `기법 × 컵 상호작용: ${eff(b.A, '기법 × 컵', b)}. 기법 주효과: ${eff(b.A, '기법', b)}. 컵 주효과: ${eff(b.A, '컵', b)}.`),
-    seqB.rows ? `SEQ(1–7, 높을수록 쉬움)는 컵 없음 / 60 / 75 / 90 mm에서 트랙패드 ${CUPS.map(c => d(seqB,'trackpad',c,2)).join(' / ')}, GripSpread ${CUPS.map(c => d(seqB,'gs',c,2)).join(' / ')}였다.` : '',
+    seqB.rows ? `SEQ(1–7, 높을수록 쉬움)는 컵 없음 / 60 / 75 / 90 mm에서 트랙패드 ${CUPS.map(c => d(seqB,'trackpad',c,2)).join(' / ')}, GripSpread ${CUPS.map(c => d(seqB,'gs',c,2)).join(' / ')}였다. 컵별 Wilcoxon(Bonferroni): ${CUPS.map((c, i) => `${CUP_NAME[c]} p ${seqB.p[i] < .001 ? '< .001' : '= ' + fp(seqB.p[i])}`).join(', ')}.` : '',
     raw ? `Raw TLX 중앙값은 트랙패드 ${fmt(raw.mx,1)}, GripSpread ${fmt(raw.my,1)}(평균 ${fmt(mean(raw.x),1)} (SD ${fmt(sd(raw.x),1)}) / ${fmt(mean(raw.y),1)} (SD ${fmt(sd(raw.y),1)}))였다(Wilcoxon W = ${fmt(raw.w.W,1)}, p ${raw.w.p < .001 ? '< .001' : '= ' + fp(raw.w.p)}, n = ${raw.n}).` : ''
   ].filter(Boolean).join('\n');
 }
