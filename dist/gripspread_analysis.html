@@ -430,7 +430,7 @@ function ols(x, y){ const k = x.length; if(k < 3) return { a:NaN, b:NaN, r2:NaN,
   const b = sxy / sxx, a = my - b*mx, sse = y.reduce((s, v, i) => s + (v - a - b*x[i])**2, 0), sst = y.reduce((s, v) => s + (v-my)**2, 0);
   const r2 = sst ? 1 - sse/sst : NaN, se = Math.sqrt(sse / (k-2) / sxx), t = b / se;
   return { a, b, r2, t, p:isFinite(t) ? pT2(Math.abs(t), k-2) : NaN, k }; }
-// Bonferroni: p × number of comparisons, capped at 1 (the post hoc correction used in the report; Lecture 13)
+// Bonferroni: p × number of comparisons, capped at 1 (kept for reference; the report uses Holm)
 function bonf(ps){ const m = ps.filter(isFinite).length; return ps.map(p => isFinite(p) ? Math.min(1, p * m) : NaN); }
 // Wilcoxon signed-rank, exact (ties: average ranks, distribution over doubled ranks)
 function wilcoxon(x, y){
@@ -683,10 +683,10 @@ function postHoc(cells, key, cups, digits, pct){
   const tests = cups.map(c => { const x = [], y = [];
     for(const pid of used){ const a = cells.find(e => e.pid === pid && e.tech === 'trackpad' && e.cup === c), b = cells.find(e => e.pid === pid && e.tech === 'gs' && e.cup === c); x.push(a[key]); y.push(b[key]); }
     return x.length >= 3 ? pairedT(x, y) : null; });
-  const adj = bonf(tests.map(r => r ? r.p : NaN)), f = v => pct ? fmt(v*100, digits) + '%p' : fmt(v, digits);
+  const adj = holm(tests.map(r => r ? r.p : NaN)), f = v => pct ? fmt(v*100, digits) + '%p' : fmt(v, digits);
   const rows = cups.map((c, i) => { const r = tests[i]; if(!r) return `<tr><td>${CUP_NAME[c]}</td><td colspan="6" class="muted">참가자 부족</td></tr>`;
     return `<tr><td>${CUP_NAME[c]}</td><td class="num">${f(r.m)}</td><td class="num">${f(r.s)}</td><td class="num">[${f(r.lo)}, ${f(r.hi)}]</td><td class="num">t(${r.df}) = ${fmt(r.t)}</td><td class="num${stars(adj[i])}">${fp(adj[i])}</td><td class="num">${fmt(r.d)}</td></tr>`; });
-  return `<h3>컵별 기법 차이 (트랙패드 − GripSpread, 대응 t검정, Bonferroni 보정 ×${cups.length})</h3><table><tr><th>컵</th><th>평균 차</th><th>차의 SD</th><th>95% CI</th><th>t</th><th>p (Bonferroni)</th><th>dz</th></tr>${rows.join('')}</table>`;
+  return `<h3>컵별 기법 차이 (트랙패드 − GripSpread, 대응 t검정, Holm 보정 ${cups.length}회)</h3><table><tr><th>컵</th><th>평균 차</th><th>차의 SD</th><th>95% CI</th><th>t</th><th>p (Holm)</th><th>dz</th></tr>${rows.join('')}</table>`;
 }
 function block(title, cells, key, cups, opt){
   const desc = describeWS(cells, key, cups), { Y, used } = matrix(cells, key, cups);
@@ -714,17 +714,17 @@ function render(R){
   const tilt = block('컵 최대 기울기 변화 (°, H3)', cells, 'tilt_max', CUPS3, { yLabel:'최대 기울기 변화 (°)', digits:2, purpose:'<b>H3</b> 컵이 커질수록 트랙패드에서 컵이 더 기우는가. 기법 × 컵 상호작용이 유의하고 큰 컵에서 트랙패드가 더 크면 H3 지지.' });
   const tilt1 = block('컵 1초 안 최대 기울기 변화 (°, H3 보조: 시행 길이에 덜 민감)', cells, 'tilt_1s', CUPS3, { yLabel:'1초 안 최대 기울기 변화 (°)', digits:2, purpose:'H3 보조. 오래 걸려서 많이 기운 것뿐인지 배제. 이것도 같은 방향이면 H3 해석이 단단해진다.' });
   const seqB = block('SEQ: 조건별 난이도 (1 매우 어려움 – 7 매우 쉬움)', cells, 'seq', CUPS, { yLabel:'SEQ (높을수록 쉬움)', digits:2 });
-  // SEQ is ordinal: per cup, the two techniques compared with a Wilcoxon signed-rank test, Bonferroni over the cups
+  // SEQ is ordinal: per cup, the two techniques compared with a Wilcoxon signed-rank test, Holm over the cups
   const seqRows = CUPS.map(c => { const x = [], y = [];
     for(const pid of [...new Set(cells.map(e => e.pid))]){ const a = cells.find(e => e.pid === pid && e.tech === 'trackpad' && e.cup === c), b = cells.find(e => e.pid === pid && e.tech === 'gs' && e.cup === c);
       if(a && b && isFinite(a.seq) && isFinite(b.seq)){ x.push(a.seq); y.push(b.seq); } }
     return { c, x, y, n:x.length, w:x.length ? wilcoxon(x, y) : { W:NaN, p:NaN } }; });
-  const seqP = bonf(seqRows.map(r => r.w.p));
+  const seqP = holm(seqRows.map(r => r.w.p));
   const seqMed = v => { const q = [...v].sort((a, b) => a - b); return q.length ? (q[(q.length-1)>>1] + q[q.length>>1]) / 2 : NaN; };
   const seqHtml = `<div class="card"><h3>SEQ: 조건별 난이도 (1 매우 어려움 – 7 매우 쉬움)</h3>
-    <p class="purpose"><b>목적</b> 성능 결과(H1)와 참가자 체감이 같은 방향인가. 보조 지표라 결론은 성능·IMU로 내고 이건 뒷받침용. 서열 척도라 컵마다 두 기법을 Wilcoxon으로 비교(Bonferroni ×4).</p>
+    <p class="purpose"><b>목적</b> 성능 결과(H1)와 참가자 체감이 같은 방향인가. 보조 지표라 결론은 성능·IMU로 내고 이건 뒷받침용. 서열 척도라 컵마다 두 기법을 Wilcoxon으로 비교(Holm 보정 4회).</p>
     <div class="grid"><div class="chart">${chart(seqB.desc, CUPS, { yLabel:'SEQ (높을수록 쉬움)', digits:2 })}${legendOf()}</div><div class="scroll">
-    <table><tr><th>컵</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p (Bonferroni)</th></tr>${seqRows.map((r, i) => `<tr><td>${CUP_NAME[r.c]}</td><td class="num">${fmt(mean(r.x),2)} (${fmt(sd(r.x),2)})</td><td class="num">${fmt(mean(r.y),2)} (${fmt(sd(r.y),2)})</td><td class="num">${fmt(seqMed(r.x),1)}</td><td class="num">${fmt(seqMed(r.y),1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(seqP[i])}">${fp(seqP[i])}</td></tr>`).join('')}</table></div></div>
+    <table><tr><th>컵</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th><th>Wilcoxon W</th><th>p (Holm)</th></tr>${seqRows.map((r, i) => `<tr><td>${CUP_NAME[r.c]}</td><td class="num">${fmt(mean(r.x),2)} (${fmt(sd(r.x),2)})</td><td class="num">${fmt(mean(r.y),2)} (${fmt(sd(r.y),2)})</td><td class="num">${fmt(seqMed(r.x),1)}</td><td class="num">${fmt(seqMed(r.y),1)}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(seqP[i])}">${fp(seqP[i])}</td></tr>`).join('')}</table></div></div>
     <details><summary class="muted">추가 점검 (보고서에 안 씀): 반복측정 ANOVA·ART</summary>${seqB.html}</details></div>`;
   seqB.rows = seqRows; seqB.p = seqP;
   const fitts = fittsSection(cells);
@@ -744,7 +744,7 @@ function render(R){
     // for middle-ideal items also compare the distance from 3 (how far from "just right")
     const dist = ideal === 'mid' ? wilcoxon(x.map(v => Math.abs(v - 3)), y.map(v => Math.abs(v - 3))) : null;
     return { k, name, ideal, n:x.length, mx:med(x), my:med(y), w:wilcoxon(x, y), dist, x, y }; });
-  const isoP = bonf(isoRows.map(r => r.w.p));
+  const isoP = holm(isoRows.map(r => r.w.p));
   const people = roster.map(r => `<tr><td>${r.pid}</td><td>${r.order}</td><td>${r.hand}</td><td class="num">${fmt(r.handLen,0)}</td><td class="num">${fmt(r.span,0)}</td><td class="num">${r.stature ?? '–'}</td><td class="num">${r.trials}</td><td class="num">${fmt(r.success*100,1)}%</td><td class="num">${r.outliers}</td><td class="num">${r.imuTrials}</td><td class="${r.warn.length ? 'w' : 'muted'}" style="text-align:left;white-space:normal">${r.warn.join(' · ') || '없음'}</td></tr>`).join('');
 
   $('out').innerHTML = (DEMO ? `<div class="card" style="border-color:#B00020;color:#B00020"><b>데모 · 가짜 데이터</b> 아래 숫자는 모두 지어낸 것이다. 표와 그림이 어떻게 나오는지 보는 용도.</div>` : '') + `
@@ -770,10 +770,10 @@ function render(R){
   <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${fmt(mean(r.x),1)} (${fmt(sd(r.x),1)})</td><td class="num">${fmt(mean(r.y),1)} (${fmt(sd(r.y),1)})</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
   <p class="muted">기법별로 한 번씩 받았으므로 대응 Wilcoxon 부호순위 검정(정확 p). 0–100점, 낮을수록 부담이 적다.</p></div>
   <h2>주관 평가 · 장치 평가 (ISO 9241-9)</h2>
-  <p class="purpose"><b>목적</b> 어느 부위가 힘든지(손가락·손목·팔·어깨·목)와 조작감이 어떻게 다른지. TLX의 "신체적 요구" 한 숫자를 부위별로 풀어 본다. 대응 Wilcoxon, 13문항 Bonferroni.</p>
+  <p class="purpose"><b>목적</b> 어느 부위가 힘든지(손가락·손목·팔·어깨·목)와 조작감이 어떻게 다른지. TLX의 "신체적 요구" 한 숫자를 부위별로 풀어 본다. 대응 Wilcoxon, 13문항 Holm 보정.</p>
   <div class="card">${dotPlot(isoRows.map(r => ({ ...r, name:r.name.replace(/ \(.*\)$/, '') })), { min:1, max:5, step:1, label:'1–5 (왼쪽 끝 말 – 오른쪽 끝 말, 아래 표 참고). 초록 칸 = 좋은 쪽', idealOf:r => ({ mid:3, lo:1, hi:5 })[r.ideal] })}</div>
-  <div class="card scroll"><table><tr><th style="text-align:left">항목</th><th>좋은 쪽</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>n</th><th>Wilcoxon W</th><th>p</th><th>Bonferroni p</th></tr>${isoRows.map((r, i) => `<tr><td style="text-align:left">${r.name}</td><td>${{ mid:'3 (적당)', lo:'1', hi:'5' }[r.ideal]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${fmt(mean(r.x),2)} (${fmt(sd(r.x),2)})</td><td class="num">${fmt(mean(r.y),2)} (${fmt(sd(r.y),2)})</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td><td class="num${stars(isoP[i])}">${fp(isoP[i])}</td></tr>`).join('')}</table>
-  <p class="muted">기법별로 한 번씩, 13문항 전부(Douglas, Kirkpatrick &amp; MacKenzie, CHI 1999의 5점 형식). 대응 Wilcoxon 부호순위 검정, 13문항에 Bonferroni 보정. 힘·정신적 노력·신체적 노력·속도는 "너무 적음–너무 많음" 척도라 3이 가장 좋다.</p></div>
+  <div class="card scroll"><table><tr><th style="text-align:left">항목</th><th>좋은 쪽</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>n</th><th>Wilcoxon W</th><th>p</th><th>Holm p</th></tr>${isoRows.map((r, i) => `<tr><td style="text-align:left">${r.name}</td><td>${{ mid:'3 (적당)', lo:'1', hi:'5' }[r.ideal]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${fmt(mean(r.x),2)} (${fmt(sd(r.x),2)})</td><td class="num">${fmt(mean(r.y),2)} (${fmt(sd(r.y),2)})</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td><td class="num${stars(isoP[i])}">${fp(isoP[i])}</td></tr>`).join('')}</table>
+  <p class="muted">기법별로 한 번씩, 13문항 전부(Douglas, Kirkpatrick &amp; MacKenzie, CHI 1999의 5점 형식). 대응 Wilcoxon 부호순위 검정, 13문항에 Holm 보정. 힘·정신적 노력·신체적 노력·속도는 "너무 적음–너무 많음" 척도라 3이 가장 좋다.</p></div>
 </section>
   <section id="a-iv"><h2>인터뷰 요약</h2>${interviewTable(R.interview)}</section>
   <h1 class="part">추가 점검 (보고서에 안 씀)</h1>
@@ -888,7 +888,7 @@ function sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n, tlxRows, fitts })
     ...[[rms, '스크롤 중 컵 각속도 RMS', '°/s', 2], [lin, '선형 가속도 RMS(보조)', 'm/s²', 2], [tilt, '최대 기울기 변화', '°', 2], [tilt1, '1초 안 최대 기울기 변화', '°', 2]].filter(([b]) => b).map(([b, name, unit, dg]) =>
       `${name}는 컵 지름 60 / 75 / 90 mm에서 트랙패드 ${CUPS3.map(c => d(b,'trackpad',c,dg)).join(' / ')} ${unit}, GripSpread ${CUPS3.map(c => d(b,'gs',c,dg)).join(' / ')} ${unit}였다. ` +
       `기법 × 컵 상호작용: ${eff(b.A, '기법 × 컵', b)}. 기법 주효과: ${eff(b.A, '기법', b)}. 컵 주효과: ${eff(b.A, '컵', b)}.`),
-    seqB.rows ? `SEQ(1–7, 높을수록 쉬움)는 컵 없음 / 60 / 75 / 90 mm에서 트랙패드 ${CUPS.map(c => d(seqB,'trackpad',c,2)).join(' / ')}, GripSpread ${CUPS.map(c => d(seqB,'gs',c,2)).join(' / ')}였다. 컵별 Wilcoxon(Bonferroni): ${CUPS.map((c, i) => `${CUP_NAME[c]} p ${seqB.p[i] < .001 ? '< .001' : '= ' + fp(seqB.p[i])}`).join(', ')}.` : '',
+    seqB.rows ? `SEQ(1–7, 높을수록 쉬움)는 컵 없음 / 60 / 75 / 90 mm에서 트랙패드 ${CUPS.map(c => d(seqB,'trackpad',c,2)).join(' / ')}, GripSpread ${CUPS.map(c => d(seqB,'gs',c,2)).join(' / ')}였다. 컵별 Wilcoxon(Holm): ${CUPS.map((c, i) => `${CUP_NAME[c]} p ${seqB.p[i] < .001 ? '< .001' : '= ' + fp(seqB.p[i])}`).join(', ')}.` : '',
     raw ? `Raw TLX 중앙값은 트랙패드 ${fmt(raw.mx,1)}, GripSpread ${fmt(raw.my,1)}(평균 ${fmt(mean(raw.x),1)} (SD ${fmt(sd(raw.x),1)}) / ${fmt(mean(raw.y),1)} (SD ${fmt(sd(raw.y),1)}))였다(Wilcoxon W = ${fmt(raw.w.W,1)}, p ${raw.w.p < .001 ? '< .001' : '= ' + fp(raw.w.p)}, n = ${raw.n}).` : ''
   ].filter(Boolean).join('\n');
 }
