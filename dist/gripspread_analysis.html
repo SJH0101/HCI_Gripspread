@@ -29,6 +29,7 @@
   .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin:2px 0 0}
   .legend i{display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:5px}
   .sig{font-weight:700} .w{color:var(--warn)} .b{color:var(--bad)}
+  .report p{margin:8px 0;line-height:1.6} .report h4{margin:14px 0 2px;font-size:13px;color:var(--muted)}
   pre{white-space:pre-wrap;background:#F7F8F9;border:1px solid var(--hair);border-radius:8px;padding:12px;font-size:13px}
   .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
   .scroll{overflow-x:auto}
@@ -678,12 +679,15 @@ function anovaTable(A, n, ART){
     return `<tr><td>${k}</td><td class="num">${fmt(r.etaG,3)}</td><td class="num${flip ? ' w' : ''}">${q ? fp(q.p) : '–'}${flip ? ' ⚠ ANOVA와 유의 여부가 다름' : ''}</td></tr>`; }).join('') + `</table></details>`;
   return main + extra;
 }
-function postHoc(cells, key, cups, digits, pct){
+function phTests(cells, key, cups){
   const used = new Set(matrix(cells, key, cups).used);
   const tests = cups.map(c => { const x = [], y = [];
     for(const pid of used){ const a = cells.find(e => e.pid === pid && e.tech === 'trackpad' && e.cup === c), b = cells.find(e => e.pid === pid && e.tech === 'gs' && e.cup === c); x.push(a[key]); y.push(b[key]); }
     return x.length >= 3 ? pairedT(x, y) : null; });
-  const adj = holm(tests.map(r => r ? r.p : NaN)), f = v => pct ? fmt(v*100, digits) + '%p' : fmt(v, digits);
+  return { tests, adj:holm(tests.map(r => r ? r.p : NaN)) };
+}
+function postHoc(cells, key, cups, digits, pct){
+  const { tests, adj } = phTests(cells, key, cups), f = v => pct ? fmt(v*100, digits) + '%p' : fmt(v, digits);
   const rows = cups.map((c, i) => { const r = tests[i]; if(!r) return `<tr><td>${CUP_NAME[c]}</td><td colspan="6" class="muted">참가자 부족</td></tr>`;
     return `<tr><td>${CUP_NAME[c]}</td><td class="num">${f(r.m)}</td><td class="num">${f(r.s)}</td><td class="num">[${f(r.lo)}, ${f(r.hi)}]</td><td class="num">t(${r.df}) = ${fmt(r.t)}</td><td class="num${stars(adj[i])}">${fp(adj[i])}</td><td class="num">${fmt(r.d)}</td></tr>`; });
   return `<h3>컵별 기법 차이 (트랙패드 − GripSpread, 대응 t검정, Holm 보정 ${cups.length}회)</h3><table><tr><th>컵</th><th>평균 차</th><th>차의 SD</th><th>95% CI</th><th>t</th><th>p (Holm)</th><th>dz</th></tr>${rows.join('')}</table>`;
@@ -693,7 +697,7 @@ function block(title, cells, key, cups, opt){
   const tbl = `<table><tr><th>기법</th>${cups.map(c => `<th>${CUP_NAME[c]}</th>`).join('')}</tr>` + TECHS.map(t => `<tr><td>${TECH_NAME[t]}</td>` +
     cups.map(c => { const d = desc[t+c]; return `<td class="num">${opt.pct ? fmt(d.m*100,1)+'%' : fmt(d.m, opt.digits)} <span class="muted">± ${opt.pct ? fmt(d.s*100,1) : fmt(d.s, opt.digits)}</span></td>`; }).join('') + '</tr>').join('') + `</table><p class="muted">평균 ± 표준편차 (모든 조건이 있는 참가자)</p>`;
   const A = Y.length >= 3 ? rmAnova2(Y, 2, cups.length) : null, ART = A ? artAnova2(Y, 2, cups.length) : null;
-  return { html:`<div class="card"><h3>${title}</h3>${opt.purpose ? `<p class="purpose"><b>목적</b> ${opt.purpose}</p>` : ''}<div class="grid"><div class="chart">${chart(desc, cups, opt)}${legendOf()}</div><div class="scroll">${tbl}${A ? anovaTable(A, Y.length, ART) : '<p class="muted">검정에는 모든 조건이 있는 참가자가 3명 이상 필요합니다.</p>'}</div></div>${A ? postHoc(cells, key, cups, opt.digits, opt.pct) : ''}</div>`, desc, A, ART, n:Y.length };
+  return { html:`<div class="card"><h3>${title}</h3>${opt.purpose ? `<p class="purpose"><b>목적</b> ${opt.purpose}</p>` : ''}<div class="grid"><div class="chart">${chart(desc, cups, opt)}${legendOf()}</div><div class="scroll">${tbl}${A ? anovaTable(A, Y.length, ART) : '<p class="muted">검정에는 모든 조건이 있는 참가자가 3명 이상 필요합니다.</p>'}</div></div>${A ? postHoc(cells, key, cups, opt.digits, opt.pct) : ''}</div>`, desc, A, ART, n:Y.length, Y, cups, ph:A ? phTests(cells, key, cups) : null };
 }
 
 const IMU_FIG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" font-family="-apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif">   <defs>     <!-- cup outline in its own frame: rim at y=-70, bottom at y=+70, centred on x=0 -->     <path id="cupShape" d="M-46,-70 L46,-70 L36,70 L-36,70 Z"/>     <clipPath id="cupClip"><use href="#cupShape"/></clipPath>     <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#D9622B"/></marker>     <!-- hand gripping the cup: ring and little finger wrap the front, thumb on the left, index and middle in a V above -->     <g id="hand">       <path d="M40,-34 C70,-34 78,-6 70,30 C64,58 44,66 30,62" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <rect x="-40" y="0" width="86" height="20" rx="10" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <rect x="-36" y="22" width="80" height="18" rx="9" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <path d="M-44,-10 C-62,-14 -66,6 -50,12 L-30,12 C-24,4 -30,-8 -44,-10 Z" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <path d="M52,-30 L58,-112 Q62,-122 70,-112 L70,-32 Z" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>       <path d="M66,-28 L96,-104 Q104,-112 108,-100 L82,-22 Z" fill="#F2C9A5" stroke="#B9835E" stroke-width="2"/>     </g>     <g id="cupUpright">       <use href="#cupShape" fill="#fff" stroke="#1F2328" stroke-width="2.5"/>       <rect x="-60" y="-52" width="120" height="130" fill="#8B5E3C" opacity=".85" clip-path="url(#cupClip)"/>       <use href="#cupShape" fill="none" stroke="#1F2328" stroke-width="2.5"/>       <use href="#hand"/>     </g>   </defs>   <rect width="960" height="420" fill="#fff"/>    <!-- 1 rotation wobble -->   <g transform="translate(160,190)">     <g transform="rotate(-9)" opacity=".22"><use href="#cupUpright"/></g>     <g transform="rotate(9)" opacity=".22"><use href="#cupUpright"/></g>     <use href="#cupUpright"/>     <path d="M-78,-104 A120,120 0 0 1 78,-104" fill="none" stroke="#D9622B" stroke-width="3" marker-start="url(#ah)" marker-end="url(#ah)"/>   </g>   <text x="160" y="318" text-anchor="middle" font-size="17" font-weight="700" fill="#1F2328">회전 떨림</text>   <text x="160" y="340" text-anchor="middle" font-size="13" fill="#1F2328">각속도 RMS (°/s) · 주 지표</text>   <text x="160" y="362" text-anchor="middle" font-size="12" fill="#6B7178">컵이 1초에 평균 몇 도씩 까딱이며 도나</text>   <text x="160" y="380" text-anchor="middle" font-size="12" fill="#6B7178">손가락을 뻗을 때 쥔 손이 끌려가면</text>   <text x="160" y="398" text-anchor="middle" font-size="12" fill="#6B7178">컵이 같이 돌아가 커진다</text>    <!-- 2 translation shake -->   <g transform="translate(480,190)">     <g transform="translate(-26,0)" opacity=".22"><use href="#cupUpright"/></g>     <g transform="translate(26,0)" opacity=".22"><use href="#cupUpright"/></g>     <g>       <use href="#cupShape" fill="#fff" stroke="#1F2328" stroke-width="2.5"/>       <!-- sloshing surface: higher on the trailing side -->       <path d="M-60,-62 L60,-40 L60,80 L-60,80 Z" fill="#8B5E3C" opacity=".85" clip-path="url(#cupClip)"/>       <use href="#cupShape" fill="none" stroke="#1F2328" stroke-width="2.5"/>       <use href="#hand"/>     </g>     <path d="M-108,-104 L108,-104" stroke="#D9622B" stroke-width="3" marker-start="url(#ah)" marker-end="url(#ah)"/>   </g>   <text x="480" y="318" text-anchor="middle" font-size="17" font-weight="700" fill="#1F2328">밀리는 떨림</text>   <text x="480" y="340" text-anchor="middle" font-size="13" fill="#1F2328">선형 가속도 RMS (m/s²) · 보조</text>   <text x="480" y="362" text-anchor="middle" font-size="12" fill="#6B7178">기울지 않고 옆·앞뒤로 툭툭 밀리는 세기</text>   <text x="480" y="380" text-anchor="middle" font-size="12" fill="#6B7178">음료가 출렁여 가장자리로 올라온다</text>   <text x="480" y="398" text-anchor="middle" font-size="12" fill="#6B7178">1 m/s² ≈ 중력의 0.1배</text>    <!-- 3 tilt and spill angle -->   <g transform="translate(800,190)">     <line x1="0" y1="-140" x2="0" y2="96" stroke="#9AA1A9" stroke-dasharray="5 4"/>     <g transform="rotate(16)">       <use href="#cupShape" fill="#fff" stroke="#1F2328" stroke-width="2.5"/>       <!-- liquid stays level in the world frame: counter-rotate the fill -->       <g clip-path="url(#cupClip)"><g transform="rotate(-16)"><rect x="-120" y="-55" width="240" height="200" fill="#8B5E3C" opacity=".85"/></g></g>       <use href="#cupShape" fill="none" stroke="#1F2328" stroke-width="2.5"/>       <use href="#hand"/>       <line x1="0" y1="-140" x2="0" y2="96" stroke="#D9622B" stroke-width="2"/>     </g>     <path d="M0,-120 A120,120 0 0 1 33,-115" fill="none" stroke="#D9622B" stroke-width="3"/>     <text x="22" y="-128" font-size="16" font-weight="700" fill="#D9622B">θ</text>   </g>   <text x="800" y="318" text-anchor="middle" font-size="17" font-weight="700" fill="#1F2328">기울기</text>   <text x="800" y="340" text-anchor="middle" font-size="13" fill="#1F2328">최대 기울기 변화 θ (°) · H3</text>   <text x="800" y="362" text-anchor="middle" font-size="12" fill="#6B7178">시작 자세에서 가장 많이 기운 각도</text>   <text x="800" y="380" text-anchor="middle" font-size="12" fill="#6B7178">넘치는 각도: tan θ = 2 × 남은 높이 ÷ 지름</text>   <text x="800" y="398" text-anchor="middle" font-size="12" fill="#6B7178">90 mm 컵, 5 mm 남기면 약 6°에서 넘침</text> </svg> `;
@@ -754,7 +758,7 @@ function render(R){
     &nbsp;|&nbsp; <b>자료</b> <a href="#a-imu">IMU 시행 보기</a> · <a href="#a-dl">내려받기</a></nav>
   <h1 class="part">주 분석</h1>
   <section id="a-sum">  <h2>핵심 결과 (보고서용 문장)</h2>
-  <div class="card"><pre id="sentences">${sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n:Math.min(tp.n, rms.n || tp.n), tlxRows, fitts })}</pre></div>
+  <div class="card report" id="sentences">${sentences({ tp, loss, mt, er, rms, lin, tilt, tilt1, fb, fa, seqB, tlxRows, isoRows, isoP, fitts })}<p class="muted">수업자료(Lecture 13) "Reporting ANOVA Results" 형식: 평균 (SD)을 먼저 쓰고 통계는 괄호 안, F·p 이탤릭, 유의하지 않으면 F &lt; 1이면 ns, 아니면 p &gt; .05. 부분 η² 추가. 이 칸을 드래그해서 복사하면 이탤릭·아래첨자가 유지된다.</p></div>
 
 </section>
   <section id="a-h1">  <h2>H1 · 성능 손실</h2>${loss.html}${tp.html}${fitts.html}${fb.html}${fa.html}${mt.html}${er.html}
@@ -872,25 +876,50 @@ function lineChart(t, y, ymax, label, opt, col){
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${g}</svg>`;
 }
 
-function sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n, tlxRows, fitts }){
-  // M (SD): every mean in the sentences carries its standard deviation (course requirement)
-  const d = (b, t, c, digits, pct) => { const x = b.desc[t + c]; return x && isFinite(x.m) ? (pct ? `${fmt(x.m*100, 1)}% (SD ${fmt(x.s*100, 1)}%p)` : `${fmt(x.m, digits)} (SD ${fmt(x.s, digits)})`) : '–'; };
-  const eff = (A, k) => A ? `F(${fmt(A[k].df1*A[k].eps,2)}, ${fmt(A[k].df2*A[k].eps,1)}) = ${fmt(A[k].F)}, p ${A[k].p < .001 ? '< .001' : '= ' + fp(A[k].p)}, 부분 η² = ${fmt(A[k].eta,2)}` : '(검정 불가)';
+// Report paragraphs in the course's format (Lecture 13, "Reporting ANOVA Results"): describe the means first (with SD),
+// then the statistics in parentheses; italic F and p, df as subscript, p against the thresholds .05 .01 .005 .001
+// .0005 .0001; non-significant effects reported as "ns" when F < 1 and "p > .05" otherwise. Partial eta squared added.
+const P_THR = [.0001, .0005, .001, .005, .01, .05];
+const pRep = (p, F) => { if(!isFinite(p)) return '–'; const t = P_THR.find(t => p < t); return t != null ? `<i>p</i> < ${String(t).replace(/^0/, '')}` : (F < 1 ? 'ns' : '<i>p</i> > .05'); };
+const dfRep = (v, eps) => eps < 1 ? fmt(v * eps, 2) : String(Math.round(v));
+const fRep = r => `<i>F</i><sub>${dfRep(r.df1, r.eps)},${dfRep(r.df2, r.eps)}</sub> = ${fmt(r.F, 2)}, ${pRep(r.p, r.F)}, η<sub>p</sub><sup>2</sup> = ${fmt(r.eta, 2).replace(/^0/, '')}`;
+const sigWord = r => r.p < .05 ? 'statistically significant' : 'not statistically significant';
+const CUP_EN = { none:'no cup', '60':'60 mm cup', '75':'75 mm cup', '90':'90 mm cup' }, withCup = c => c === 'none' ? 'without a cup' : `with the ${CUP_EN[c]}`, TECH_EN = { trackpad:'the trackpad', gs:'GripSpread' };
+function reportMeasure(b, name, unit, digits, pct){
+  if(!b || !b.A || !b.Y || !b.Y.length) return '';
+  const k = b.cups.length, Y = b.Y, A = b.A, v = x => pct ? `${fmt(x*100, digits)}%` : `${fmt(x, digits)}${unit ? (unit[0] === '°' && unit.length === 1 ? '' : ' ') + unit : ''}`, sdv = x => pct ? `${fmt(x*100, digits)}%` : fmt(x, digits);
+  const per = f => { const xs = Y.map(f); return { m:mean(xs), s:sd(xs) }; };
+  const g = per(y => mean(y)), tm = TECHS.map((t, ti) => per(y => mean(y.slice(ti*k, ti*k + k)))), cm = b.cups.map((c, ci) => per(y => (y[ci] + y[k + ci]) / 2));
+  const lo = cm.reduce((a, x, i) => x.m < cm[a].m ? i : a, 0), hi = cm.reduce((a, x, i) => x.m > cm[a].m ? i : a, 0);
+  let out = `The grand mean for ${name} was ${v(g.m)} (SD = ${sdv(g.s)}). It was ${v(tm[0].m)} (SD = ${sdv(tm[0].s)}) with the trackpad and ${v(tm[1].m)} (SD = ${sdv(tm[1].s)}) with GripSpread; the main effect of technique was ${sigWord(A['기법'])} (${fRep(A['기법'])}). `;
+  out += `Across cups, ${name} was lowest ${withCup(b.cups[lo])} (${v(cm[lo].m)}, SD = ${sdv(cm[lo].s)}) and highest ${withCup(b.cups[hi])} (${v(cm[hi].m)}, SD = ${sdv(cm[hi].s)}); the main effect of cup was ${sigWord(A['컵'])} (${fRep(A['컵'])}). `;
+  const I = A['기법 × 컵'];
+  out += `The technique × cup interaction was ${sigWord(I)} (${fRep(I)})`;
+  if(I.p < .05 && b.ph){ const sig = b.cups.map((c, i) => ({ c, t:b.ph.tests[i], p:b.ph.adj[i] })).filter(x => x.t && x.p < .05);
+    const list = sig.map(x => `${withCup(x.c)} (${pRep(x.p, 2)})`), joined = list.length > 1 ? list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1] : list[0];
+    out += !sig.length ? `; Holm-corrected paired t-tests found no difference at any single cup.` :
+      `; Holm-corrected paired t-tests showed that the two techniques differed ${joined}${sig.length < b.cups.length ? ', but not ' + b.cups.filter(c => !sig.some(x => x.c === c)).map(withCup).join(' or ') : ''}.`;
+  } else out += '.';
+  return `<p>${out}</p>`;
+}
+function sentences({ tp, loss, mt, er, rms, lin, tilt, tilt1, fb, fa, seqB, tlxRows, isoRows, isoP, fitts }){
+  const parts = [];
+  parts.push(`<p>Data from ${tp.n} participants who completed every condition were analysed with two-way repeated-measures ANOVAs (technique × cup). Greenhouse–Geisser corrected degrees of freedom are reported where the cup factor has more than two levels. Means are reported with standard deviations.</p>`);
+  if(fitts && fitts.rows.some(r => isFinite(r.fit.r2))){ const r2 = fitts.rows.map(r => r.fit.r2).filter(isFinite), low = fitts.rows.filter(r => r.fit.r2 < .8);
+    parts.push(`<p>Movement time ${low.length ? 'mostly followed' : 'followed'} Fitts' law (MT = a + b × ID) in every condition (<i>R</i><sup>2</sup> = ${fmt(Math.min(...r2),2).replace(/^0/, '')}–${fmt(Math.max(...r2),2).replace(/^0/, '')})${low.length ? `, with lower fits for ${low.map(r => `${TECH_EN[r.t]} with the ${CUP_EN[r.c]}`).join(', ')}` : ''}, so throughput was used to compare the techniques.</p>`); }
+  parts.push('<h4>H1 · performance</h4>', reportMeasure(loss, 'throughput loss relative to no cup', '', 1, true), reportMeasure(tp, 'throughput', 'bits/s', 2), reportMeasure(mt, 'movement time', 'ms', 0), reportMeasure(er, 'error rate', '', 1, true),
+    reportMeasure(fb, 'the Fitts slope', 'ms/bit', 0), reportMeasure(fa, 'the Fitts intercept', 'ms', 0));
+  parts.push('<h4>H2, H3 · cup motion</h4>', reportMeasure(rms, 'angular velocity RMS of the cup', '°/s', 2), reportMeasure(lin, 'linear acceleration RMS', 'm/s²', 3), reportMeasure(tilt, 'maximum tilt change', '°', 2), reportMeasure(tilt1, 'maximum tilt change within 1 s', '°', 2));
+  parts.push('<h4>Subjective ratings</h4>');
+  if(seqB.rows){ const sig = seqB.rows.map((r, i) => ({ r, p:seqB.p[i] })).filter(x => x.p < .05);
+    parts.push(`<p>SEQ ratings (1 = very difficult, 7 = very easy) were ${CUPS.map(c => { const a = seqB.desc['trackpad' + c], g = seqB.desc['gs' + c]; return `${fmt(a.m,2)} (SD = ${fmt(a.s,2)}) vs ${fmt(g.m,2)} (SD = ${fmt(g.s,2)}) ${withCup(c)}`; }).join(', ')} for the trackpad and GripSpread respectively. ` +
+      (sig.length ? `Holm-corrected Wilcoxon signed-rank tests showed a difference ${sig.map(x => `${withCup(x.r.c)} (${pRep(x.p, 2)})`).join(', ')}.` : `Holm-corrected Wilcoxon signed-rank tests found no difference at any cup (<i>p</i> > .05).`) + `</p>`); }
   const raw = tlxRows[0];
-  return [
-    `참가자 ${tp.n}명의 자료를 분석했다(모든 조건이 있는 참가자 기준). 값은 평균(SD 표준편차)이다.`,
-    fitts && fitts.rows.some(r => isFinite(r.fit.r2)) ? (() => { const r2 = fitts.rows.map(r => r.fit.r2).filter(isFinite), low = fitts.rows.filter(r => r.fit.r2 < .8);
-      return `조건별 Fitts 회귀(이동 시간 = a + b × ID)의 R²는 ${fmt(Math.min(...r2),2)}–${fmt(Math.max(...r2),2)}` + (low.length ? `였다(0.8 미만: ${low.map(r => TECH_NAME[r.t] + ' ' + CUP_NAME[r.c]).join(', ')}).` : `로, 모든 조건이 Fitts 법칙을 따랐다.`); })() : '',
-    `컵이 없을 때 처리량은 트랙패드 ${d(tp,'trackpad','none',2)} bits/s, GripSpread ${d(tp,'gs','none',2)} bits/s였다.`,
-    `90 mm 컵에서 컵 없음 대비 처리량은 트랙패드가 ${d(loss,'trackpad','90',1,true)}, GripSpread가 ${d(loss,'gs','90',1,true)} 줄었다.`,
-    `처리량 손실에 대한 기법 × 컵 상호작용: ${eff(loss.A, '기법 × 컵', loss)}. 기법 주효과: ${eff(loss.A, '기법', loss)}.`,
-    `처리량(컵 4조건)에 대한 기법 × 컵 상호작용: ${eff(tp.A, '기법 × 컵', tp)}.`,
-    ...[[rms, '스크롤 중 컵 각속도 RMS', '°/s', 2], [lin, '선형 가속도 RMS(보조)', 'm/s²', 2], [tilt, '최대 기울기 변화', '°', 2], [tilt1, '1초 안 최대 기울기 변화', '°', 2]].filter(([b]) => b).map(([b, name, unit, dg]) =>
-      `${name}는 컵 지름 60 / 75 / 90 mm에서 트랙패드 ${CUPS3.map(c => d(b,'trackpad',c,dg)).join(' / ')} ${unit}, GripSpread ${CUPS3.map(c => d(b,'gs',c,dg)).join(' / ')} ${unit}였다. ` +
-      `기법 × 컵 상호작용: ${eff(b.A, '기법 × 컵', b)}. 기법 주효과: ${eff(b.A, '기법', b)}. 컵 주효과: ${eff(b.A, '컵', b)}.`),
-    seqB.rows ? `SEQ(1–7, 높을수록 쉬움)는 컵 없음 / 60 / 75 / 90 mm에서 트랙패드 ${CUPS.map(c => d(seqB,'trackpad',c,2)).join(' / ')}, GripSpread ${CUPS.map(c => d(seqB,'gs',c,2)).join(' / ')}였다. 컵별 Wilcoxon(Holm): ${CUPS.map((c, i) => `${CUP_NAME[c]} p ${seqB.p[i] < .001 ? '< .001' : '= ' + fp(seqB.p[i])}`).join(', ')}.` : '',
-    raw ? `Raw TLX 중앙값은 트랙패드 ${fmt(raw.mx,1)}, GripSpread ${fmt(raw.my,1)}(평균 ${fmt(mean(raw.x),1)} (SD ${fmt(sd(raw.x),1)}) / ${fmt(mean(raw.y),1)} (SD ${fmt(sd(raw.y),1)}))였다(Wilcoxon W = ${fmt(raw.w.W,1)}, p ${raw.w.p < .001 ? '< .001' : '= ' + fp(raw.w.p)}, n = ${raw.n}).` : ''
-  ].filter(Boolean).join('\n');
+  if(raw && raw.n){ const med = v => median(v);
+    parts.push(`<p>The median raw NASA-TLX score was ${fmt(med(raw.x),1)} with the trackpad (M = ${fmt(mean(raw.x),1)}, SD = ${fmt(sd(raw.x),1)}) and ${fmt(med(raw.y),1)} with GripSpread (M = ${fmt(mean(raw.y),1)}, SD = ${fmt(sd(raw.y),1)}); the difference was ${raw.w.p < .05 ? 'statistically significant' : 'not statistically significant'} (Wilcoxon signed-rank, <i>W</i> = ${fmt(raw.w.W,1)}, ${pRep(raw.w.p, 2)}, <i>n</i> = ${raw.n}).</p>`); }
+  if(isoRows && isoRows.length){ const sig = isoRows.map((r, i) => ({ r, p:isoP[i] })).filter(x => x.p < .05);
+    parts.push(`<p>Of the 13 ISO 9241-9 items, ${sig.length ? `${sig.length} differed between the techniques after Holm correction (Wilcoxon signed-rank): ${sig.map(x => `${x.r.name.replace(/ \(.*\)$/, '')} (median ${fmt(x.r.mx,1)} vs ${fmt(x.r.my,1)}, ${pRep(x.p, 2)})`).join('; ')}.` : 'none differed between the techniques after Holm correction (Wilcoxon signed-rank, <i>p</i> > .05).'}</p>`); }
+  return parts.filter(Boolean).join('\n');
 }
 function toCSV(rows, keys){ return [keys.join(',')].concat(rows.map(r => keys.map(k => { const v = r[k]; return v == null || (typeof v === 'number' && !isFinite(v)) ? '' : typeof v === 'number' ? +v.toFixed(5) : String(v).includes(',') ? `"${v}"` : v; }).join(','))).join('\n'); }
 function download(name, text){ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type:'text/plain;charset=utf-8' })); a.download = name; a.click(); }
