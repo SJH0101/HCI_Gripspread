@@ -657,9 +657,10 @@ function render(R){
   const seqP = bonf(seqRows.map(r => r.w.p));
   const seqMed = v => { const q = [...v].sort((a, b) => a - b); return q.length ? (q[(q.length-1)>>1] + q[q.length>>1]) / 2 : NaN; };
   const seqHtml = `<div class="card"><h3>SEQ: 조건별 난이도 (1 매우 어려움 – 7 매우 쉬움)</h3><div class="grid"><div class="chart">${chart(seqB.desc, CUPS, { yLabel:'SEQ (높을수록 쉬움)', digits:2 })}${legendOf()}</div><div class="scroll">
-    <table><tr><th>컵</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>n</th><th>Wilcoxon W</th><th>p (Bonferroni)</th></tr>${seqRows.map((r, i) => `<tr><td>${CUP_NAME[r.c]}</td><td class="num">${fmt(seqMed(r.x),1)}</td><td class="num">${fmt(seqMed(r.y),1)}</td><td class="num">${fmt(mean(r.x),2)} (${fmt(sd(r.x),2)})</td><td class="num">${fmt(mean(r.y),2)} (${fmt(sd(r.y),2)})</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(seqP[i])}">${fp(seqP[i])}</td></tr>`).join('')}</table>
-    <p class="muted">서열 척도라 컵마다 두 기법을 대응 Wilcoxon 부호순위 검정으로 비교하고, 컵 4개에 Bonferroni 보정.</p></div></div>
-    <details><summary class="muted">추가 점검 (보고서에 안 씀): 반복측정 ANOVA·ART</summary>${seqB.html}</details></div>`;
+    <table><tr><th>컵</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>n</th></tr>${seqRows.map(r => `<tr><td>${CUP_NAME[r.c]}</td><td class="num">${fmt(mean(r.x),2)} (${fmt(sd(r.x),2)})</td><td class="num">${fmt(mean(r.y),2)} (${fmt(sd(r.y),2)})</td><td class="num">${fmt(seqMed(r.x),1)}</td><td class="num">${fmt(seqMed(r.y),1)}</td><td class="num">${r.n}</td></tr>`).join('')}</table>
+    <p class="muted">보조 지표라 검정 없이 서술만 한다.</p></div></div>
+    <details><summary class="muted">추가 점검 (보고서에 안 씀): 컵별 Wilcoxon, 반복측정 ANOVA·ART</summary>
+    <table><tr><th>컵</th><th>n</th><th>Wilcoxon W</th><th>p (Bonferroni ×4)</th></tr>${seqRows.map((r, i) => `<tr><td>${CUP_NAME[r.c]}</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num">${fp(seqP[i])}</td></tr>`).join('')}</table>${seqB.html}</details></div>`;
   seqB.rows = seqRows; seqB.p = seqP;
   const sb = block('방향 전환 횟수', cells, 'switchbacks', CUPS, { yLabel:'방향 전환 (회)', digits:2 });
 
@@ -815,7 +816,7 @@ function sentences({ tp, loss, rms, lin, tilt, tilt1, seqB, n, tlxRows }){
     ...[[rms, '스크롤 중 컵 각속도 RMS', '°/s', 2], [lin, '선형 가속도 RMS(보조)', 'm/s²', 2], [tilt, '최대 기울기 변화', '°', 2], [tilt1, '1초 안 최대 기울기 변화', '°', 2]].filter(([b]) => b).map(([b, name, unit, dg]) =>
       `${name}는 컵 지름 60 / 75 / 90 mm에서 트랙패드 ${CUPS3.map(c => d(b,'trackpad',c,dg)).join(' / ')} ${unit}, GripSpread ${CUPS3.map(c => d(b,'gs',c,dg)).join(' / ')} ${unit}였다. ` +
       `기법 × 컵 상호작용: ${eff(b.A, '기법 × 컵', b)}. 기법 주효과: ${eff(b.A, '기법', b)}. 컵 주효과: ${eff(b.A, '컵', b)}.`),
-    seqB.rows ? (() => { const i = CUPS.indexOf('90'), r = seqB.rows[i]; return r && r.n ? `SEQ(1–7, 높을수록 쉬움)는 90 mm 컵에서 트랙패드 ${d(seqB,'trackpad','90',2)}, GripSpread ${d(seqB,'gs','90',2)}였다(Wilcoxon W = ${fmt(r.w.W,1)}, Bonferroni p ${seqB.p[i] < .001 ? '< .001' : '= ' + fp(seqB.p[i])}, n = ${r.n}).` : ''; })() : '',
+    seqB.rows ? `SEQ(1–7, 높을수록 쉬움)는 컵 없음 / 60 / 75 / 90 mm에서 트랙패드 ${CUPS.map(c => d(seqB,'trackpad',c,2)).join(' / ')}, GripSpread ${CUPS.map(c => d(seqB,'gs',c,2)).join(' / ')}였다.` : '',
     raw ? `Raw TLX 중앙값은 트랙패드 ${fmt(raw.mx,1)}, GripSpread ${fmt(raw.my,1)}(평균 ${fmt(mean(raw.x),1)} (SD ${fmt(sd(raw.x),1)}) / ${fmt(mean(raw.y),1)} (SD ${fmt(sd(raw.y),1)}))였다(Wilcoxon W = ${fmt(raw.w.W,1)}, p ${raw.w.p < .001 ? '< .001' : '= ' + fp(raw.w.p)}, n = ${raw.n}).` : ''
   ].filter(Boolean).join('\n');
 }
