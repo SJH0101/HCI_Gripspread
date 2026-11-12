@@ -1036,7 +1036,7 @@ function nextTrial(){
 function practiceCriterion(){
   const done = stepTrials.length;
   if(run.pracDone) return true;   // experimenter ended it (S key), even before the minimum
-  if(done < S.cfg.pracMin) return false;   // 12 = each of the 6 D x W cells twice
+  if(done < S.cfg.pracMin) return false;   // 18 = each of the 6 D x W cells three times
   if(done >= S.cfg.pracMax) return true;
   const mt = stepTrials.map(r=>r.success ? r.mt_ms : S.cfg.timeout);
   const last = mt.slice(-6).reduce((a,b)=>a+b,0)/6, prev = mt.slice(-12,-6).reduce((a,b)=>a+b,0)/6;
