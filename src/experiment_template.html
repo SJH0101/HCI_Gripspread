@@ -118,15 +118,15 @@
   .tlx-item input.untouched{opacity:.45}
   /* no default mark: the knob appears only where the participant clicks, so the middle position does not anchor answers */
   .tlx-item input.untouched::-webkit-slider-thumb{opacity:0} .tlx-item input.untouched::-moz-range-thumb{opacity:0}
-  .tlx-item .ends{display:flex;justify-content:space-between;color:var(--muted);font-size:12px}
+  .tlx-item .ends{display:flex;justify-content:space-between;color:var(--ink);font-size:14px;font-weight:600;margin-top:2px}
   .seq-row{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin:18px 0 6px}
   .seq-row button{padding:14px 0;font-size:18px;font-variant-numeric:tabular-nums}
   .seq-row button.on, #ivPref button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
-  .seq-ends{display:flex;justify-content:space-between;color:var(--muted);font-size:13px;margin-bottom:12px}
+  .seq-ends{display:flex;justify-content:space-between;color:var(--ink);font-size:15px;font-weight:600;margin-bottom:12px}
   /* ISO 9241-9 questionnaire */
   .iso-item{margin:0 0 14px} .iso-item .q{font-weight:500}
   .iso-item .seq-row{grid-template-columns:repeat(5,1fr);margin:6px 0 2px} .iso-item .seq-row button{padding:8px 0;font-size:15px}
-  .iso-item .seq-ends{margin-bottom:0;font-size:12px}
+  .iso-item .seq-ends{margin-bottom:0;font-size:13px}
   #isoWarn{color:#B00020;font-size:13px;margin-left:8px;align-self:center}
   #tlxWarn{color:#B00020;font-size:13px;margin-left:8px;align-self:center}
   .wizard{max-width:820px;margin:24px auto 40px;padding:0 16px}
@@ -1331,8 +1331,12 @@ function showTlx(st){
     ${ticks}<div class="scale"><input type="range" class="untouched" min="0" max="100" step="5" value="50" data-k="${k}" aria-label="${name}"></div>
     <div class="ends"><span>${lo}</span><span>${hi}</span></div></div>`).join('');
   $('tlxWarn').textContent = '';
-  document.querySelectorAll('#tlxItems input').forEach(i => i.addEventListener('input', () => {
-    i.classList.remove('untouched'); const v = $('v_' + i.dataset.k); v.textContent = '선택함'; v.classList.remove('none'); }));   // the number is recorded, not shown
+  // The hidden starting value is 50, so a click on the middle mark changes nothing and fires no 'input' event.
+  // Any click, drag or key on the slider therefore counts as an answer, the middle included.
+  document.querySelectorAll('#tlxItems input').forEach(i => { const mark = () => {
+    i.classList.remove('untouched'); const v = $('v_' + i.dataset.k); v.textContent = '선택함'; v.classList.remove('none'); };   // the number is recorded, not shown
+    ['input', 'change', 'pointerup'].forEach(ev => i.addEventListener(ev, mark));
+    i.addEventListener('keyup', e => { if(/^(Arrow|Home|End|Page)/.test(e.key)) mark(); }); });
   show('sTlx');
 }
 window.GS_DEBUG.showTlx = showTlx;   // console/testing
