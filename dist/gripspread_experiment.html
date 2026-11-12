@@ -76,6 +76,9 @@
 
   /* task */
   #track{position:absolute;inset:0;overflow-y:scroll;scrollbar-width:none;overscroll-behavior:none}
+  /* While the task screen is on: no text selection (a one-finger press-and-drag on the trackpad would select line
+     numbers and make the browser auto-scroll the list) and no visible pointer (it is not part of either technique) */
+  body.taskOn, body.taskOn *{cursor:none !important;-webkit-user-select:none;user-select:none}
   #track::-webkit-scrollbar{display:none}
   #content{position:relative;width:min(760px, calc(100% - 64px));margin:0 auto;background:#fff;
     background-image:repeating-linear-gradient(to bottom, transparent 0 22px, #EEF0F2 22px 30px, transparent 30px 36px);
@@ -1646,6 +1649,17 @@ track.addEventListener('wheel', e => {
   if(!run || run.st.tech !== 'trackpad' || run.phase !== 'running'){ e.preventDefault(); return; }
   wheelAcc += e.deltaY;
 }, {passive:false});
+// The pointer is hidden during trials and a stray one-finger touch can move it off the list. Two-finger scrolls
+// that land anywhere else on the page are passed to the list, so where the hidden pointer sits does not matter.
+document.addEventListener('wheel', e => {
+  if(!$('sTask').classList.contains('on') || track.contains(e.target)) return;
+  e.preventDefault();
+  if(!run || run.st.tech !== 'trackpad' || run.phase !== 'running') return;
+  const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * track.clientHeight : e.deltaY;
+  track.scrollTop += px; wheelAcc += px;
+}, {passive:false});
+// no selection or drag of page content while the task is on
+['selectstart', 'dragstart'].forEach(ev => document.addEventListener(ev, e => { if($('sTask').classList.contains('on')) e.preventDefault(); }));
 document.addEventListener('keydown', e => {
   if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End'].includes(e.key) && $('sTask').classList.contains('on')) e.preventDefault();
   if(e.key === ' ' || e.code === 'Space'){
@@ -2122,6 +2136,7 @@ function loop(now){
   if(E.update(now)) drawOverlay();
   tickTask(now);
   const tv = !!(run && run.st && run.st.type !== 'practice' && $('sTask').classList.contains('on'));
+  document.body.classList.toggle('taskOn', $('sTask').classList.contains('on'));
   document.body.classList.toggle('trialView', tv); document.body.classList.toggle('tp', tv && run.st.tech === 'trackpad');
   $('btnSkipPrac').style.display = run && run.st.type === 'practice' ? '' : 'none';
   $('kTheta').textContent = E.theta == null ? '–' : E.theta.toFixed(1) + '°';
