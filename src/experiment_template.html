@@ -76,6 +76,8 @@
 
   /* task */
   #track{position:absolute;inset:0;overflow-y:scroll;scrollbar-width:none;overscroll-behavior:none}
+  /* a one-finger press-and-drag on the trackpad would select line numbers and make the browser auto-scroll the list */
+  #sTask, #sTask *{-webkit-user-select:none;user-select:none}
   #track::-webkit-scrollbar{display:none}
   #content{position:relative;width:min(760px, calc(100% - 64px));margin:0 auto;background:#fff;
     background-image:repeating-linear-gradient(to bottom, transparent 0 22px, #EEF0F2 22px 30px, transparent 30px 36px);
@@ -514,8 +516,22 @@ window.GS_DEBUG = { E };   // console access for the experimenter
 const statusEl = $('status'), stateText = $('stateText'), holdBar = $('holdBar');
 E.onBeep = (f,d) => beep(f,d);
 E.onStatus = (text, cls, prog) => { stateText.textContent = text; statusEl.className = 'status ' + cls; holdBar.style.width = (prog*100)+'%'; };
-$('btnRange').onclick = () => E.startRange();
-$('btnRecal').onclick = () => E.resetNeutral();
+// Re-measuring outside the calibration screen (during practice, or while paused in a condition) is logged in
+// session.json as recalibrations: which step, after which trial, the values before, and the new value once measured.
+function logRecal(action){
+  const st = S.steps && S.steps[S.stepIdx];
+  if(!st || $('sCalib').classList.contains('on')) return;
+  S.recal.push({ action, step:st.type, tech:st.tech || null, cup:st.cup || null, step_index:S.stepIdx,
+    trials_done:run && run.st === st ? stepTrials.length : null, paused:!!(run && run.phase === 'paused'),
+    before:{ r0:E.r0 == null ? null : +E.r0.toFixed(2), range_min:E.range ? +E.range.min.toFixed(2) : null, range_max:E.range ? +E.range.max.toFixed(2) : null },
+    after:{}, at:new Date().toISOString() });
+  recalOpen = S.recal[S.recal.length - 1];
+  backup();
+}
+let recalOpen = null;   // the re-measurement still waiting for its new 편한 V
+window.GS_DEBUG.recal = () => S.recal;   // console/testing
+$('btnRange').onclick = () => { logRecal('range'); E.startRange(); };
+$('btnRecal').onclick = () => { logRecal('neutral'); E.resetNeutral(); };
 const video = $('video'), overlay = $('overlay'), oc = overlay.getContext('2d');
 function drawOverlay(){
   overlay.width = video.videoWidth || 640; overlay.height = video.videoHeight || 480; oc.clearRect(0,0,overlay.width,overlay.height);
@@ -532,7 +548,7 @@ function drawOverlay(){
 
 // ---------- session ----------
 const S = { pid:null, hand:'R', handLen:null, span:null, note:'', seq:null, techOrder:null, latinRow:null,
-  cfg:null, steps:[], stepIdx:-1, startedAt:null, tlx:[], files:[], calib:[] };
+  cfg:null, steps:[], stepIdx:-1, startedAt:null, tlx:[], files:[], calib:[], recal:[] };
 const allTrials = [], tlxRows = [], seqRows = [], isoRows = [], interviewRows = [];
 let frames = [], imuRows = [], stepTrials = [];
 
@@ -961,8 +977,13 @@ function renderCalib(){
   $('btnCalibNext').disabled = !(c.range && c.r0 != null);
 }
 $('btnCalibGo').onclick = () => { if(!calibState) return; calibState.range = null; calibState.r0 = null; E.r0 = null; E.startRange(); $('btnCalibGo').textContent = '처음부터 다시'; renderCalib(); };
-E.onRange = range => { if(calibState && $('sCalib').classList.contains('on')){ calibState.range = { ...range }; renderCalib(); } };
-E.onNeutral = r0 => { if(calibState && $('sCalib').classList.contains('on') && calibState.range){ calibState.r0 = r0; renderCalib(); } };
+E.onRange = range => {
+  if(calibState && $('sCalib').classList.contains('on')){ calibState.range = { ...range }; renderCalib(); return; }
+  if(recalOpen && recalOpen.action === 'range'){ Object.assign(recalOpen.after, { range_min:+range.min.toFixed(2), range_max:+range.max.toFixed(2) }); backup(); } };
+E.onNeutral = r0 => {
+  if(calibState && $('sCalib').classList.contains('on') && calibState.range){ calibState.r0 = r0; renderCalib(); return; }
+  // both buttons end with a new 편한 V (a range re-measurement is followed by one too)
+  if(recalOpen){ recalOpen.after.r0 = +r0.toFixed(2); recalOpen.done_at = new Date().toISOString(); recalOpen = null; backup(); } };
 function finishCalib(){
   const c = calibState; if(!c || !c.range || c.r0 == null) return;
   E.range = { ...c.range }; E.r0 = c.r0;   // lock exactly what was measured
@@ -1029,7 +1050,7 @@ function nextTrial(){
   if(st.type === 'practice' && practiceCriterion()) return endStep();
   run.i++;
   if(run.i >= run.trials.length) return endStep();
-  if(pauseRequested){ pauseRequested = false; taskMsg.textContent = '일시정지. Space를 누르면 계속합니다'; run.phase = 'paused'; return; }
+  if(pauseRequested){ pauseRequested = false; taskMsg.textContent = '일시정지. Space를 누르면 계속합니다' + (st.tech === 'gs' ? ' (왼쪽에서 편한 V 다시 잡기·손 범위 재기 가능, 자동 기록)' : ''); run.phase = 'paused'; return; }
   const t = run.trials[run.i], fc = frameCenter(), viewH = track.clientHeight;
   // choose a start scroll S so that the target ends up reachable and inside the content
   let lo, hi;
@@ -1063,6 +1084,7 @@ function practiceCriterion(){
   return last >= prev * 0.9; // the last 6 are no longer 10% faster than the 6 before
 }
 
+['selectstart', 'dragstart'].forEach(ev => document.addEventListener(ev, e => { if($('sTask').classList.contains('on')) e.preventDefault(); }));
 let wheelAcc = 0;
 track.addEventListener('wheel', e => {
   if(!run || run.st.tech !== 'trackpad' || run.phase !== 'running'){ e.preventDefault(); return; }
@@ -1323,7 +1345,7 @@ function sessionObj(){
   return { session_type:S.sessionType || 'study', target_marked:MARK_TARGET, pid:S.pid, hand:S.hand, stature_cm:S.stature_cm, hand_length_mm:S.handLen, span_mm:S.span, hand_raw:S.handRaw, demographics:S.demo, note:S.note, order_seq:S.seq+1, tech_order:S.techOrder,
     latin_row:S.latinRow, cup_order:LATIN[LATIN_NAME.indexOf(S.latinRow)], config:S.cfg, engine:{...E.P, dirSign:E.dirSign},
     hand_range_deg:E.range, started_at:S.startedAt, saved_at:new Date().toISOString(), completed: S.steps[S.stepIdx] && S.steps[S.stepIdx].type === 'done',
-    tlx:S.tlx, seq:seqRows.slice(), iso:isoRows.slice(), interview:interviewRows.slice(), calibration:S.calib, params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), practice_skips:pracSkips.slice(), user_agent:navigator.userAgent };
+    tlx:S.tlx, seq:seqRows.slice(), iso:isoRows.slice(), interview:interviewRows.slice(), calibration:S.calib, recalibrations:S.recal || [], params_source:paramsSource, apparatus:S.env || null, sync_marks:SYNC.slice(), screen_angle_changes:LID.log.slice(), imu:S.imu || null, cloud_uploads:CLOUD.log.slice(), practice_skips:pracSkips.slice(), user_agent:navigator.userAgent };
 }
 $('btnSaveNow').onclick = () => { if(!S.cfg) return; if(run) { allFrames.push(...frames); allImu.push(...imuRows); frames = []; imuRows = []; } downloadZip(snapshot()); };
 // recovery list on the setup screen
@@ -1543,7 +1565,8 @@ window.GS_DEBUG.imu = { feed:onImu, markConnected:() => { imuConn = Math.max(imu
 function loop(now){
   if(E.update(now)) drawOverlay();
   tickTask(now);
-  const tv = !!(run && run.st && !['practice', 'demo'].includes(run.st.type) && $('sTask').classList.contains('on'));
+  // the camera panel stays hidden during measured trials, but comes back while paused (P) so 편한 V / 손 범위 can be redone
+  const tv = !!(run && run.st && !['practice', 'demo'].includes(run.st.type) && run.phase !== 'paused' && $('sTask').classList.contains('on'));
   document.body.classList.toggle('trialView', tv); document.body.classList.toggle('tp', tv && run.st.tech === 'trackpad');
   $('btnSkipPrac').style.display = run && run.st.type === 'practice' ? '' : 'none';
   $('kTheta').textContent = E.theta == null ? '–' : E.theta.toFixed(1) + '°';
