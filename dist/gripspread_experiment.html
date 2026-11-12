@@ -318,10 +318,10 @@
           <label for="fD">스크롤 거리 D (px)</label><input id="fD" value="400, 1200, 3600">
           <label for="fW">허용 폭 W (px)</label><input id="fW" value="40, 120">
           <label for="fReps">조합당 반복</label><input id="fReps" type="number" min="2" max="20" step="2" value="6">
-          <label for="fWarm">조건마다 적응 시행</label><input id="fWarm" type="number" min="0" max="6" value="2">
+          <label for="fWarm">조건마다 적응 시행</label><input id="fWarm" type="number" min="0" max="6" value="4">
           <label for="fDwell">멈춤 판정 (ms)</label><input id="fDwell" type="number" min="30" max="1500" step="1" value="66" title="표적이 회색 영역 안에 완전히 들어온 채 이 시간 동안 스크롤이 안 움직이면 선택 (ScrollTest 2022: 66ms)">
           <label for="fTimeout">시간 초과 (초)</label><input id="fTimeout" type="number" min="5" max="60" value="15">
-          <label for="fPrac">연습 시행 (최소, 최대)</label><input id="fPrac" value="12, 24">
+          <label for="fPrac">연습 시행 (최소, 최대)</label><input id="fPrac" value="18, 30">
           <label for="fSave">파일 저장</label><select id="fSave"><option value="1">끝날 때 zip 하나로 저장 (본 실험)</option><option value="0">저장 안 함 · 테스트 모드 (N/K 건너뛰기 켜짐)</option></select>
           <label for="fFrames">프레임 기록</label><select id="fFrames"><option value="1">켜기</option><option value="2">켜기 + 손 랜드마크</option><option value="0">끄기</option></select>
         </div>
@@ -1459,7 +1459,7 @@ $('btnStart').onclick = () => {
   const o = orderFor(pid); Object.assign(S, { seq:o.seq, techOrder:o.techOrder, latinRow:LATIN_NAME[o.latinRow] });
   const [pMin, pMax] = parseList($('fPrac').value);
   S.cfg = { D:parseList($('fD').value), W:parseList($('fW').value), reps:+$('fReps').value, warmup:+$('fWarm').value,
-    stopMs:+$('fDwell').value, timeout:+$('fTimeout').value*1000, pracMin:pMin||12, pracMax:pMax||24, frames:+$('fFrames').value, save:+$('fSave').value,
+    stopMs:+$('fDwell').value, timeout:+$('fTimeout').value*1000, pracMin:pMin||18, pracMax:pMax||30, frames:+$('fFrames').value, save:+$('fSave').value,
     itiMs:500 };
   Object.assign(E.P, { dead:+$('gDead').value, gain:+$('gGain').value, gamma:+$('gGamma').value, curlMax:+$('gCurl').value, holdMs:+$('gHold').value,
     boostMax:+$('gBoost').value, boostMs:+$('gBoostMs').value, boostOn:+$('gBoostOn').value, minSide:+$('gMinSide').value, accMs:+$('gAcc').value, brakeMs:+$('gBrake').value });
