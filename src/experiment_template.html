@@ -554,6 +554,11 @@ function showOrder(){
 }
 $('fPid').addEventListener('input', showOrder); showOrder();
 
+// Researcher demonstration before GripSpread practice: the same six trials in the same order for every participant
+// (far then near, both widths), so each participant sees the same demonstration
+const DEMO_ON = true;
+const DEMO_TRIALS = [ { D:3600, W:40, dir:'down' }, { D:400, W:40, dir:'up' }, { D:1200, W:40, dir:'down' },
+                      { D:400, W:120, dir:'up' }, { D:3600, W:120, dir:'down' }, { D:1200, W:120, dir:'up' } ];
 function buildSteps(){
   const o = orderFor(S.pid), steps = [];
   o.techOrder.forEach((tech, bi) => {
@@ -561,6 +566,9 @@ function buildSteps(){
     const add = st => { if(tech === 'gs' && st.cup !== lastCup){ steps.push({ type:'calib', tech, cup:st.cup }); lastCup = st.cup; } steps.push(st); };
     // one practice block per technique, holding the middle (75 mm) cup: most measured conditions are with a cup;
     // the per-cup GripSpread calibration and the 2 warm-up trials of every condition cover what is left
+    // GripSpread: the researcher first demonstrates with their own hand (own calibration, fixed scripted trials,
+    // logged as step 'demo' and never analysed); the participant's calibration follows before practice
+    if(tech === 'gs' && DEMO_ON){ steps.push({ type:'calib', tech, cup:'75', who:'researcher' }); steps.push({ type:'demo', tech, cup:'75' }); }
     add({ type:'practice', tech, cup:'75' });
     // SEQ (Sauro & Dumas 2009) right after every measured condition: one 7-point item, so workload can be read per cup
     o.cups.forEach((cup, ci) => { add({ type:'measure', tech, cup, condIndex: ci+1 }); steps.push({ type:'seq', tech, cup }); });
@@ -875,8 +883,9 @@ $('btnStart').onclick = () => {
 
 function stepName(st){
   if(st.type === 'practice') return `${TECH[st.tech]} 연습 · ${CUPS[st.cup]}`;
+  if(st.type === 'demo') return `${TECH[st.tech]} 연구자 시연`;
   if(st.type === 'measure') return `${TECH[st.tech]} · ${CUPS[st.cup]}`;
-  if(st.type === 'calib') return `${TECH[st.tech]} 보정 · ${CUPS[st.cup]}`;
+  if(st.type === 'calib') return `${TECH[st.tech]} 보정 · ${CUPS[st.cup]}${st.who === 'researcher' ? ' (연구자)' : ''}`;
   if(st.type === 'seq') return `${TECH[st.tech]} · ${CUPS[st.cup]} 난이도`;
   return { tlx:`${TECH[st.tech]} 설문`, iso:`${TECH[st.tech]} 장치 평가`, interview:'마지막 인터뷰', rest:'휴식', done:'끝' }[st.type] || st.type;
 }
@@ -888,7 +897,7 @@ function show(id){ document.querySelectorAll('.screen').forEach(s=>s.classList.t
 function header(){
   const st = S.steps[S.stepIdx]; if(!st) return;
   const measureSteps = S.steps.filter(s=>s.type==='measure'), mi = measureSteps.indexOf(st);
-  $('hCond').textContent = st.tech ? `${TECH[st.tech]}${st.cup ? ' · ' + CUPS[st.cup] : ''}${st.type==='practice' ? ' · 연습' : ''}` : '';
+  $('hCond').textContent = st.tech ? `${TECH[st.tech]}${st.cup ? ' · ' + CUPS[st.cup] : ''}${st.type==='practice' ? ' · 연습' : st.type==='demo' ? ' · 연구자 시연' : ''}` : '';
   $('hProg').textContent = `P${String(S.pid).padStart(2,'0')}` + (mi >= 0 ? ` · 조건 ${mi+1}/${measureSteps.length}` : '');
 }
 
@@ -897,7 +906,7 @@ function nextStep(){
   const st = S.steps[S.stepIdx]; header();
   if($('hJump').options.length) $('hJump').value = S.stepIdx;
   if(st.type === 'calib') return showCalib(st);
-  if(st.type === 'practice' || st.type === 'measure') return showBrief(st);
+  if(st.type === 'practice' || st.type === 'measure' || st.type === 'demo') return showBrief(st);
   if(st.type === 'tlx') return showTlx(st);
   if(st.type === 'iso') return showIso(st);
   if(st.type === 'seq') return showSeq(st);
@@ -908,28 +917,38 @@ function nextStep(){
 
 // ---------- brief ----------
 function showBrief(st){
-  $('bKind').textContent = st.type === 'practice' ? '연습' : `본 측정 · 조건 ${st.condIndex}/4`;
+  $('bKind').textContent = st.type === 'practice' ? '연습' : st.type === 'demo' ? '연구자 시연 (기록은 분석에서 제외)' : `본 측정 · 조건 ${st.condIndex}/4`;
   $('bTitle').textContent = `${TECH[st.tech]} · ${CUPS[st.cup]}`;
   const how = st.tech === 'gs'
     ? '컵을 쥔 손을 손등이 카메라를 보게 올리고 편한 V로 멈추면 켜집니다. 오므리면 아래로, 벌리면 위로 움직입니다. 위에 나온 번호의 주황색 줄을 가운데 회색 영역 안에 넣고 손을 편한 V로 돌려 멈추면 다음으로 넘어갑니다. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있습니다.'
     : '컵을 쥔 손 그대로, 편한 손가락으로 트랙패드를 써 주세요. 위에 나온 번호의 주황색 줄을 가운데 회색 영역 안에 넣고 잠깐 멈추면 다음으로 넘어갑니다. 왼쪽 줄 번호를 보면 어느 쪽으로 갈지 알 수 있습니다.';
-  $('bText').textContent = how + (st.type === 'practice' ? ' 연습은 익숙해질 때까지 계속됩니다.' : ' 최대한 빠르고 정확하게 해 주세요.');
+  $('bText').textContent = st.type === 'demo'
+    ? '연구자가 먼저 6번 해 보입니다. 시행마다 아래 순서대로 대본 문장만 말해 주세요.'
+    : how + (st.type === 'practice' ? ' 연습은 익숙해질 때까지 계속됩니다.' : ' 최대한 빠르고 정확하게 해 주세요.');
   const checks = [];
   if(st.cup !== 'none') checks.push(`${CUPS[st.cup]} 준비 (센서 포함 190 g), 바닥 센서와 찰흙이 단단히 붙어 있는지 확인`);
   else checks.push('컵 없이 빈손');
   checks.push('반대손은 손목 스트랩으로 고정');
   if(imuConn) checks.push('컵 IMU: 컵을 바꿨으면 왼쪽 <b>컵 수직 기준 다시 잡기</b>를 누르고 컵을 세워 1초 가만히 두세요');
   if(st.tech === 'gs' && E.r0 != null) checks.push(`보정값: 편한 V ${E.r0.toFixed(1)}°, 범위 ${E.range.min.toFixed(0)}~${E.range.max.toFixed(0)}° (이 조건 동안 고정)`);
-  $('bCheck').innerHTML = checks.map(c=>'· '+c).join('<br>');
+  if(st.type === 'demo'){ checks.length = 0; DEMO_SAY.forEach((t, i) => checks.push(`${i + 1}. ${t}`)); }
+  $('bCheck').innerHTML = checks.map(c => (st.type === 'demo' ? '' : '· ') + c).join('<br>');
   show('sBrief');
 }
 $('btnGo').onclick = () => startStep();
+// What the researcher says during the demonstration (same words for every participant; see the participant script)
+const DEMO_SAY = [
+  '컵을 쥔 손을 손등이 카메라를 보게 올리고, 편한 V로 잠깐 멈추면 켜집니다.',
+  '멀리 갈 때는 크게 벌리거나 오므려서 빨리 갑니다.',
+  '목표 줄이 화면에 보이기 시작하면, 닿기 전에 미리 손을 편한 V 쪽으로 돌리면서 속도를 줄입니다.',
+  '가까운 목표는 아주 살짝만 벌려서 천천히 맞춥니다.',
+  '지나쳤으면 편한 V보다 살짝 반대로 움직여 천천히 되돌아옵니다. 회색 영역 안에서 편한 V로 돌아오면 멈춥니다.' ];
 
 // ---------- calibration: hand range, then neutral (편한 V), once per cup ----------
 let calibState = null;
 function showCalib(st){
   calibState = { st, range:null, r0:null };
-  $('cTitle').textContent = CUPS[st.cup];
+  $('cTitle').textContent = CUPS[st.cup] + (st.who === 'researcher' ? ' · 연구자 손 (시연용)' : '');
   $('cHow').textContent = (st.cup === 'none' ? '빈손으로 해 주세요. ' : `${CUPS[st.cup]}을 쥔 그대로 해 주세요. `) + '여기서 잰 값은 이 컵 조건이 끝날 때까지 고정됩니다. 손이 화면 밖으로 나갔다 와도 바뀌지 않습니다.';
   $('btnCalibGo').textContent = '보정 시작'; $('btnCalibNext').disabled = true;
   renderCalib(); show('sCalib');
@@ -947,7 +966,7 @@ E.onNeutral = r0 => { if(calibState && $('sCalib').classList.contains('on') && c
 function finishCalib(){
   const c = calibState; if(!c || !c.range || c.r0 == null) return;
   E.range = { ...c.range }; E.r0 = c.r0;   // lock exactly what was measured
-  S.calib.push({ cup:c.st.cup, tech:c.st.tech, range_min:+c.range.min.toFixed(2), range_max:+c.range.max.toFixed(2), r0:+c.r0.toFixed(2), at:new Date().toISOString() });
+  S.calib.push({ who:c.st.who || 'participant', cup:c.st.cup, tech:c.st.tech, range_min:+c.range.min.toFixed(2), range_max:+c.range.max.toFixed(2), r0:+c.r0.toFixed(2), at:new Date().toISOString() });
   calibState = null; backup(); nextStep();
 }
 $('btnCalibNext').onclick = finishCalib;
@@ -956,6 +975,7 @@ $('btnCalibNext').onclick = finishCalib;
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j = Math.floor(Math.random()*(i+1)); [a[i],a[j]] = [a[j],a[i]]; } return a; }
 function buildTrials(st){
   const { D, W, reps, warmup } = S.cfg, list = [];
+  if(st.type === 'demo') return DEMO_TRIALS.map(t => ({ ...t, warm:0 }));
   if(st.type === 'practice'){
     for(let i=0;i<S.cfg.pracMax;i++) list.push({ D: D[i % D.length], W: W[Math.floor(i / D.length) % W.length], dir: i%2 ? 'up':'down', warm:0 });
     return shuffle(list);
@@ -1175,7 +1195,7 @@ function finishTrial(now, success){
     gs_dead:E.P.dead, gs_gain:E.P.gain, gs_gamma:E.P.gamma, gs_boost_max:E.P.boostMax, gs_boost_ms:E.P.boostMs, gs_acc_ms:E.P.accMs, gs_brake_ms:E.P.brakeMs, gs_dir:E.dirSign, tech_order:S.techOrder.join('>'), latin_row:S.latinRow,
   };
   stepTrials.push(r); allTrials.push(r);
-  $('hProg').textContent = `P${String(S.pid).padStart(2,'0')} · ${st.type === 'practice' ? '연습' : '시행'} ${run.i+1}/${run.trials.length}`;
+  $('hProg').textContent = `P${String(S.pid).padStart(2,'0')} · ${st.type === 'practice' ? '연습' : st.type === 'demo' ? '시연' : '시행'} ${run.i+1}/${run.trials.length}`;
   setTimeout(() => { if(run && run.trial === tr) nextTrial(); }, S.cfg.itiMs);
 }
 
@@ -1523,7 +1543,7 @@ window.GS_DEBUG.imu = { feed:onImu, markConnected:() => { imuConn = Math.max(imu
 function loop(now){
   if(E.update(now)) drawOverlay();
   tickTask(now);
-  const tv = !!(run && run.st && run.st.type !== 'practice' && $('sTask').classList.contains('on'));
+  const tv = !!(run && run.st && !['practice', 'demo'].includes(run.st.type) && $('sTask').classList.contains('on'));
   document.body.classList.toggle('trialView', tv); document.body.classList.toggle('tp', tv && run.st.tech === 'trackpad');
   $('btnSkipPrac').style.display = run && run.st.type === 'practice' ? '' : 'none';
   $('kTheta').textContent = E.theta == null ? '–' : E.theta.toFixed(1) + '°';
