@@ -115,9 +115,13 @@
   .tlx-item .ticks{display:flex;justify-content:space-between;align-items:flex-end;height:14px;margin:0 8px}
   .tlx-item .ticks i{width:1px;height:8px;background:#9AA0A6} .tlx-item .ticks i.mid{height:14px;background:#6B7178}
   .tlx-item input{width:100%;accent-color:var(--ink);padding:0;border:0;margin:0}
-  .tlx-item input.untouched{opacity:.45}
-  /* no default mark: the knob appears only where the participant clicks, so the middle position does not anchor answers */
-  .tlx-item input.untouched::-webkit-slider-thumb{opacity:0} .tlx-item input.untouched::-moz-range-thumb{opacity:0}
+  /* no default mark: before the first click only an empty track shows (no knob, no half-filled bar),
+     so the hidden starting value in the middle does not anchor answers */
+  .tlx-item input.untouched{-webkit-appearance:none;appearance:none;height:16px;cursor:pointer;
+    background:linear-gradient(#C9CDD2,#C9CDD2) center/100% 4px no-repeat}
+  .tlx-item input.untouched::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;opacity:0}
+  .tlx-item input.untouched::-moz-range-thumb{opacity:0} .tlx-item input.untouched::-moz-range-progress{background:transparent}
+  .tlx-item input.untouched::-moz-range-track{background:#C9CDD2;height:4px}
   .tlx-item .ends{display:flex;justify-content:space-between;color:var(--ink);font-size:14px;font-weight:600;margin-top:2px}
   .seq-row{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin:18px 0 6px}
   .seq-row button{padding:14px 0;font-size:18px;font-variant-numeric:tabular-nums}
