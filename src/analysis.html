@@ -315,7 +315,12 @@ function analyze(people){
   }
   // NASA-TLX (per participant x technique)
   const tlx = [];
-  for(const p of people) for(const r of p.tlx) tlx.push({ pid:p.pid, tech:r.technique, ...Object.fromEntries(TLX_KEYS.map(k => [k, numOr(r[k])])) });
+  for(const p of people) for(const r of p.tlx){
+    const row = { pid:p.pid, tech:r.technique, ...Object.fromEntries(TLX_KEYS.map(k => [k, numOr(r[k])])) };
+    for(const rc of TLX_RECODE) if(rc.kind === ((p.session && p.session.session_type) || 'study') && +rc.pid === +p.pid && rc.tech === row.tech && row[rc.item] != null){
+      row[rc.item] = 100 - row[rc.item];
+      const sub = TLX_KEYS.slice(1).map(k => row[k]); row.raw_tlx = sub.every(v => v != null) ? Math.round(sub.reduce((a,v)=>a+v,0) / sub.length * 10) / 10 : row.raw_tlx; }
+    tlx.push(row); }
   const iso = [];
   for(const p of people) for(const r of p.iso) iso.push({ pid:p.pid, tech:r.technique, ...Object.fromEntries(ISO_ITEMS.map(([k]) => [k, numOr(r['iso_' + k])])) });
   const interview = people.flatMap(p => p.interview.map(r => ({ pid:p.pid, q:+r.q, topic:r.topic, question:r.question, note:r.note || '' })));
@@ -328,6 +333,11 @@ const ISO_ITEMS = [['force','조작에 필요한 힘 (너무 작음 1 – 너무
   ['finger','손가락 피로 (없음 1 – 매우 심함 5)','lo'], ['wrist','손목 피로','lo'], ['arm','팔 피로','lo'], ['shoulder','어깨 피로','lo'], ['neck','목 피로','lo'],
   ['comfort','전반적 편안함 (불편 1 – 편함 5)','hi'], ['overall','전반적 사용 (어려움 1 – 쉬움 5)','hi']];
 const TLX_KEYS = ['raw_tlx','mental','physical','temporal','performance','effort','frustration'];
+// Items a participant said they answered in the reverse direction during the session ("수행" runs 0 = 완벽 to 100 = 실패).
+// Only items with the participant's own statement are reversed (100 − x); raw TLX is then recomputed.
+const TLX_RECODE = [
+  { kind:'study', pid:3, tech:'trackpad', item:'performance', why:'참가자가 세션 중 "트랙패드 (수행) 뒤집은 것 같은데"라고 말함' },
+];
 const TLX_NAME = { raw_tlx:'전체(Raw TLX)', mental:'정신적 부담', physical:'신체적 부담', temporal:'시간 압박', performance:'수행 만족(낮을수록 좋음)', effort:'노력', frustration:'좌절' };
 
 // ====================================================================== statistics
@@ -743,7 +753,7 @@ function render(R){
   <p class="purpose"><b>목적</b> GripSpread가 성능을 얻는 대신 더 힘들게 하지는 않는가. 기법별 한 번이라 대응 Wilcoxon.</p>
   <div class="card">${dotPlot(tlxRows, { min:0, max:100, step:20, label:'0–100, 낮을수록 부담이 적음 (수행: 0 완벽 – 100 실패)' })}</div>
   <div class="card scroll"><table><tr><th>항목</th><th>트랙패드 중앙값</th><th>GripSpread 중앙값</th><th>트랙패드 평균 (SD)</th><th>GripSpread 평균 (SD)</th><th>n</th><th>Wilcoxon W</th><th>p</th></tr>${tlxRows.map(r => `<tr><td>${TLX_NAME[r.k]}</td><td class="num">${fmt(r.mx,1)}</td><td class="num">${fmt(r.my,1)}</td><td class="num">${fmt(mean(r.x),1)} (${fmt(sd(r.x),1)})</td><td class="num">${fmt(mean(r.y),1)} (${fmt(sd(r.y),1)})</td><td class="num">${r.n}</td><td class="num">${fmt(r.w.W,1)}</td><td class="num${stars(r.w.p)}">${fp(r.w.p)}</td></tr>`).join('')}</table>
-  <p class="muted">기법별로 한 번씩 받았으므로 대응 Wilcoxon 부호순위 검정(정확 p). 0–100점, 낮을수록 부담이 적다.</p></div>
+  <p class="muted">기법별로 한 번씩 받았으므로 대응 Wilcoxon 부호순위 검정(정확 p). 0–100점, 낮을수록 부담이 적다.</p>${TLX_RECODE.length ? `<p class="muted">역코딩(100 − 점수, 참가자 본인 진술이 있는 문항만): ${TLX_RECODE.map(r => `${r.kind === 'study' ? '' : r.kind + ' '}P${String(r.pid).padStart(2,'0')} ${r.tech === 'gs' ? 'GripSpread' : '트랙패드'} ${TLX_NAME[r.item]} · ${r.why}`).join('; ')}. 원본 csv는 그대로 둔다.</p>` : ''}</div>
   <h2>주관 평가 · 장치 평가 (ISO 9241-9)</h2>
   <p class="purpose"><b>목적</b> 어느 부위가 힘든지(손가락·손목·팔·어깨·목)와 조작감이 어떻게 다른지. TLX의 "신체적 요구" 한 숫자를 부위별로 풀어 본다. 대응 Wilcoxon, 13문항 Holm 보정.</p>
   <div class="card">${dotPlot(isoRows.map(r => ({ ...r, name:r.name.replace(/ \(.*\)$/, '') })), { min:1, max:5, step:1, label:'1–5 (왼쪽 끝 말 – 오른쪽 끝 말, 아래 표 참고). 초록 칸 = 좋은 쪽', idealOf:r => ({ mid:3, lo:1, hi:5 })[r.ideal] })}</div>
