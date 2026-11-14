@@ -337,6 +337,7 @@ const TLX_KEYS = ['raw_tlx','mental','physical','temporal','performance','effort
 // Only items with the participant's own statement are reversed (100 − x); raw TLX is then recomputed.
 const TLX_RECODE = [
   { kind:'study', pid:3, tech:'trackpad', item:'performance', why:'참가자가 세션 중 "트랙패드 (수행) 뒤집은 것 같은데"라고 말함' },
+  { kind:'study', pid:5, tech:'gs', item:'performance', why:'참가자가 세션 중 첫 번째(GripSpread) TLX의 수행 문항 완벽–실패를 반대로 찍었다고 말함' },
 ];
 const TLX_NAME = { raw_tlx:'전체(Raw TLX)', mental:'정신적 부담', physical:'신체적 부담', temporal:'시간 압박', performance:'수행 만족(낮을수록 좋음)', effort:'노력', frustration:'좌절' };
 
