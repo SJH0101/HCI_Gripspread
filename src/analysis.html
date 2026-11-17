@@ -189,15 +189,17 @@ function imuCal(session, warn){
 function imuPerTrial(text, cal){
   const lines = text.replace(/\r/g, '').split('\n'); const head = lines[0].split(',');
   const ix = k => head.indexOf(k);
-  const I = { uid:ix('trial_uid'), ph:ix('phase'), seq:ix('seq'), t:ix('t_us'), ax:ix('ax_raw'), ay:ix('ay_raw'), az:ix('az_raw'), gx:ix('gx_raw'), gy:ix('gy_raw'), gz:ix('gz_raw') };
+  const I = { tm:ix('t_ms'), uid:ix('trial_uid'), ph:ix('phase'), seq:ix('seq'), t:ix('t_us'), ax:ix('ax_raw'), ay:ix('ay_raw'), az:ix('az_raw'), gx:ix('gx_raw'), gy:ix('gy_raw'), gz:ix('gz_raw') };
   const rows = [];
   for(let i = 1; i < lines.length; i++){
     const l = lines[i]; if(!l) continue; const v = l.split(',');
-    rows.push({ seq:+v[I.seq], t:+v[I.t], uid:v[I.uid], ph:v[I.ph],
+    rows.push({ idx:i, tm:+v[I.tm], seq:+v[I.seq], t:+v[I.t], uid:v[I.uid], ph:v[I.ph],
       a:[0,1,2].map(k => (+v[[I.ax,I.ay,I.az][k]] - cal.off[k]) / cal.cpg[k]),
       w:[0,1,2].map(k => (+v[[I.gx,I.gy,I.gz][k]] - cal.bias[k]) / cal.cpd) });          // g, deg/s
   }
-  rows.sort((p,q) => p.seq - q.seq);
+  // Time order: the 16-bit packet counter (seq) restarts every 65536 samples (about 11 min at 100 Hz), so ordering by it
+  // mixes samples from different minutes. Order by receive time, ties kept in file (arrival) order.
+  rows.sort((p,q) => (p.tm - q.tm) || (p.idx - q.idx));
   const unit = x => { const n = Math.hypot(...x); return n > 0 ? x.map(e => e/n) : [0,0,1]; };
   let v = null, prevT = null, dSum = 0, dN = 0;
   for(const r of rows){
